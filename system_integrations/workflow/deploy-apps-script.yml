@@ -1,0 +1,522 @@
+name: Deploy to Google Apps Script
+
+on:
+  push:
+    branches:
+      - main
+      - web-interface-with-design
+    paths:
+      - 'table/**'
+      - '.clasp-*.json'
+      - '.github/workflows/deploy-apps-script.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Refresh OAuth Token
+        run: |
+          echo "🔄 Refreshing access token using refresh_token..."
+          echo '${{ secrets.CLASPRC_JSON }}' > /tmp/clasprc_original.json
+          
+          # Extract credentials (support both old and new format)
+          if cat /tmp/clasprc_original.json | jq -e '.tokens.default' > /dev/null 2>&1; then
+            # New format
+            CLIENT_ID=$(cat /tmp/clasprc_original.json | jq -r '.tokens.default.client_id')
+            CLIENT_SECRET=$(cat /tmp/clasprc_original.json | jq -r '.tokens.default.client_secret')
+            REFRESH_TOKEN=$(cat /tmp/clasprc_original.json | jq -r '.tokens.default.refresh_token')
+          else
+            # Old format
+            CLIENT_ID=$(cat /tmp/clasprc_original.json | jq -r '.oauth2ClientSettings.clientId')
+            CLIENT_SECRET=$(cat /tmp/clasprc_original.json | jq -r '.oauth2ClientSettings.clientSecret')
+            REFRESH_TOKEN=$(cat /tmp/clasprc_original.json | jq -r '.token.refresh_token')
+          fi
+          
+          echo "Client ID: ${CLIENT_ID:0:20}..."
+          echo "Refresh token: ${REFRESH_TOKEN:0:20}..."
+          
+          # Request new access token from Google
+          RESPONSE=$(curl -s -X POST https://oauth2.googleapis.com/token \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "client_id=$CLIENT_ID" \
+            -d "client_secret=$CLIENT_SECRET" \
+            -d "refresh_token=$REFRESH_TOKEN" \
+            -d "grant_type=refresh_token")
+          
+          echo "Response: $(echo $RESPONSE | jq -c '.')"
+          
+          # Check for errors
+          if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+            echo "❌ Failed to refresh token:"
+            echo "$RESPONSE" | jq '.'
+            exit 1
+          fi
+          
+          # Extract new access token
+          NEW_ACCESS_TOKEN=$(echo "$RESPONSE" | jq -r '.access_token')
+          
+          if [ -z "$NEW_ACCESS_TOKEN" ] || [ "$NEW_ACCESS_TOKEN" == "null" ]; then
+            echo "❌ No access token in response"
+            exit 1
+          fi
+          
+          echo "✅ Got new access token: ${NEW_ACCESS_TOKEN:0:20}..."
+          
+          # Save for next step
+          echo "$NEW_ACCESS_TOKEN" > /tmp/new_access_token.txt
+
+      - name: Setup clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          echo "Setting up clasp credentials with FRESH token..."
+          echo "$CLASPRC_JSON" > ~/.clasprc.json
+          
+          # Verify file was written
+          if [ ! -s ~/.clasprc.json ]; then
+            echo "❌ ERROR: .clasprc.json is empty or does not exist!"
+            echo "File size: $(wc -c < ~/.clasprc.json 2>/dev/null || echo '0') bytes"
+            exit 1
+          fi
+          echo "✅ .clasprc.json written (size: $(wc -c < ~/.clasprc.json) bytes)"
+          
+          # Validate JSON
+          if ! cat ~/.clasprc.json | jq empty 2>/dev/null; then
+            echo "❌ ERROR: Invalid JSON!"
+            cat ~/.clasprc.json | head -c 200
+            exit 1
+          fi
+          
+          # Get the refreshed access token
+          NEW_ACCESS_TOKEN=$(cat /tmp/new_access_token.txt)
+          echo "✅ Using refreshed access token: ${NEW_ACCESS_TOKEN:0:30}..."
+          
+          # Check format and convert if needed (new format -> old format) WITH NEW TOKEN
+          if cat ~/.clasprc.json | jq -e '.tokens.default' > /dev/null 2>&1; then
+            echo "🔄 Detected new clasp format, converting to old format with FRESH token..."
+            cat ~/.clasprc.json | jq --arg token "$NEW_ACCESS_TOKEN" '{
+              token: {
+                access_token: $token,
+                refresh_token: .tokens.default.refresh_token,
+                scope: "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/script.projects https://www.googleapis.com/auth/script.webapp.deploy https://www.googleapis.com/auth/script.deployments",
+                token_type: "Bearer",
+                expiry_date: 9999999999999
+              },
+              oauth2ClientSettings: {
+                clientId: .tokens.default.client_id,
+                clientSecret: .tokens.default.client_secret,
+                redirectUri: "http://localhost"
+              },
+              isLocalCreds: false
+            }' > ~/.clasprc.json.new
+            mv ~/.clasprc.json.new ~/.clasprc.json
+            echo "✅ Converted to old format with FRESH token"
+          else
+            echo "🔄 Updating OLD format with FRESH token..."
+            cat ~/.clasprc.json | jq --arg token "$NEW_ACCESS_TOKEN" '.token.access_token = $token' > ~/.clasprc.json.new
+            mv ~/.clasprc.json.new ~/.clasprc.json
+            echo "✅ Updated with FRESH token"
+          fi
+          
+          echo "Final .clasprc.json structure:"
+          cat ~/.clasprc.json | jq 'keys'
+          echo "Token verification (first 30 chars): $(cat ~/.clasprc.json | jq -r '.token.access_token' | head -c 30)..."
+
+      - name: Verify clasp login
+        run: |
+          echo "Verifying clasp authentication..."
+          echo "Current .clasprc.json content:"
+          cat ~/.clasprc.json | jq '.'
+          echo ""
+          echo "Testing clasp login status..."
+          if clasp login --status 2>&1 | grep -q "logged in"; then
+            echo "✅ Clasp is authenticated"
+          else
+            echo "❌ Clasp authentication failed"
+            echo "Trying to list projects to verify access..."
+            clasp list || true
+          fi
+
+      - name: Update Deploy Timestamps
+        run: |
+          echo "📅 Updating deployment timestamps..."
+          
+          # Get current timestamp in ISO 8601 format
+          DEPLOY_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          DEPLOY_BUILD=$(date -u +"%Y%m%d%H%M%S")
+          
+          echo "Timestamp: $DEPLOY_TIMESTAMP"
+          echo "Build: $DEPLOY_BUILD"
+          
+          # Update version.json
+          sed -i "s/DEPLOY_TIMESTAMP_PLACEHOLDER/$DEPLOY_TIMESTAMP/g" version.json
+          sed -i "s/DEPLOY_BUILD_NUMBER_PLACEHOLDER/$DEPLOY_BUILD/g" version.json
+          
+          # Update Menu.gs with full timestamp
+          sed -i "s/DEPLOY_TIMESTAMP_PLACEHOLDER/$DEPLOY_TIMESTAMP/g" table/client/Menu.gs
+          
+          # Update Menu.gs with time-only version (HH:MM format)
+          DEPLOY_TIME=$(date -u +"%H:%M")
+          sed -i "s/DEPLOY_TIME_PLACEHOLDER/$DEPLOY_TIME/g" table/client/Menu.gs
+          
+          echo "✅ Timestamps updated: $DEPLOY_TIMESTAMP (time: $DEPLOY_TIME)"
+          echo ""
+          echo "Updated version.json:"
+          grep -A 2 "updateTimestamp" version.json
+          echo ""
+          echo "Updated Menu.gs:"
+          grep "var deployTimestamp" table/client/Menu.gs
+
+      - name: Deploy Server Project
+        run: |
+          echo "📦 Deploying Server project..."
+          
+          cp .clasp-server.json .clasp.json
+          
+          echo "=== PREPARING SERVER DEPLOYMENT ==="
+          echo "Copying shared files into server directory..."
+          
+          # Copy shared files directly into server directory (no subdirectory)
+          cp table/shared/*.gs table/server/
+          echo "✅ Copied shared files to table/server/"
+          
+          # Verify appsscript.json exists in server
+          if [ ! -f table/server/appsscript.json ]; then
+            echo "❌ ERROR: table/server/appsscript.json not found!"
+            exit 1
+          fi
+          echo "✅ Found table/server/appsscript.json"
+          
+          echo ""
+          echo "=== Files ready for upload ==="
+          ls -lh table/server/*.gs table/server/appsscript.json
+          echo ""
+          echo "Total files: $(find table/server -type f \( -name "*.gs" -o -name "appsscript.json" \) | wc -l)"
+          echo ""
+          
+          echo "Pushing to Script ID: 1ncX8FGqT7QP-LxqrRJu0_z_FmUTGsbqmbWDCRePLfHgW8x85bX_Yu9uP"
+          echo ""
+          echo "⚠️  Trying DIRECT API upload instead of clasp (clasp push was not working)"
+          echo ""
+          
+          # Get access token
+          echo "DEBUG: Extracting access token from ~/.clasprc.json..."
+          if [ ! -f ~/.clasprc.json ]; then
+            echo "❌ ERROR: ~/.clasprc.json does not exist!"
+            exit 1
+          fi
+          
+          echo "DEBUG: .clasprc.json file size: $(wc -c < ~/.clasprc.json) bytes"
+          echo "DEBUG: .clasprc.json structure: $(cat ~/.clasprc.json | jq -c 'keys' 2>/dev/null || echo 'INVALID JSON')"
+          
+          ACCESS_TOKEN=$(cat ~/.clasprc.json | jq -r '.token.access_token')
+          
+          if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" == "null" ]; then
+            echo "❌ ERROR: access_token is empty or null!"
+            echo "DEBUG: Trying to extract token from different path..."
+            ACCESS_TOKEN=$(cat ~/.clasprc.json | jq -r '.token.access_token // empty')
+            if [ -z "$ACCESS_TOKEN" ]; then
+              echo "❌ FATAL: Cannot extract access token!"
+              echo "File structure:"
+              cat ~/.clasprc.json | jq . 2>/dev/null || cat ~/.clasprc.json
+              exit 1
+            fi
+          fi
+          
+          echo "✅ Access token extracted (length: ${#ACCESS_TOKEN} chars)"
+          echo "Token starts with: ${ACCESS_TOKEN:0:10}..."
+          
+          # Build files JSON for API
+          echo "Building file list for API upload..."
+          FILES_JSON='{"files": ['
+          FIRST=true
+          
+          for file in $(find table/server -type f \( -name "*.gs" -o -name "appsscript.json" \)); do
+            if [ "$FIRST" = false ]; then
+              FILES_JSON+=','
+            fi
+            FIRST=false
+            
+            # Remove table/server/ prefix to get just the filename
+            REL_PATH=${file#table/server/}
+            
+            # Determine file type and REMOVE extension for API
+            if [[ "$file" == *.gs ]]; then
+              FILE_TYPE="SERVER_JS"
+              REL_PATH="${REL_PATH%.gs}"  # Remove .gs extension!
+            elif [[ "$file" == *.html ]]; then
+              FILE_TYPE="HTML"
+              REL_PATH="${REL_PATH%.html}"  # Remove .html extension!
+            elif [[ "$file" == *appsscript.json ]]; then
+              FILE_TYPE="JSON"
+              REL_PATH="appsscript"
+            fi
+            
+            # Read and escape content (use -s NOT -Rs to preserve actual newlines)
+            CONTENT=$(cat "$file" | jq -R -s .)
+            
+            FILES_JSON+="{\"name\": \"$REL_PATH\", \"type\": \"$FILE_TYPE\", \"source\": $CONTENT}"
+            echo "  Added: $REL_PATH ($FILE_TYPE)"
+          done
+          
+          FILES_JSON+=']}'
+          
+          echo ""
+          echo "Saving payload to file..."
+          echo "$FILES_JSON" > /tmp/api-payload.json
+          echo "Payload size: $(wc -c < /tmp/api-payload.json) bytes"
+          echo ""
+          echo "Total files: $(echo "$FILES_JSON" | jq '.files | length')"
+          echo ""
+          echo "Uploading via Apps Script API..."
+          
+          RESPONSE=$(curl -s -X PUT \
+            "https://script.googleapis.com/v1/projects/1ncX8FGqT7QP-LxqrRJu0_z_FmUTGsbqmbWDCRePLfHgW8x85bX_Yu9uP/content" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d @/tmp/api-payload.json)
+          
+          if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+            echo "❌ API Upload failed:"
+            echo "$RESPONSE" | jq .
+            echo ""
+            echo "Falling back to clasp push..."
+            clasp push -f 2>&1 | tee /tmp/clasp-push.log || {
+              echo ""
+              echo "❌ CLASP PUSH FAILED!"
+              echo "Error output:"
+              cat /tmp/clasp-push.log
+              echo ""
+              echo "Checking what clasp tried to upload:"
+              echo "Files in rootDir:"
+              find table -type f -name "*.gs" -o -name "*.json" -o -name "*.html" | sort
+              exit 1
+            }
+          else
+            echo "✅ API Upload successful!"
+            echo "$RESPONSE" | jq .
+          fi
+          
+          echo ""
+          echo "=== POST-PUSH VERIFICATION ==="
+          echo "✅ Server push complete! Files should be at:"
+          echo "https://script.google.com/home/projects/1ncX8FGqT7QP-LxqrRJu0_z_FmUTGsbqmbWDCRePLfHgW8x85bX_Yu9uP/edit"
+          echo ""
+          echo "⚠️  Hard refresh (Ctrl+F5 / Cmd+Shift+R) to see changes!"
+          echo ""
+          echo "✅ Server deployment complete!"
+
+      - name: Deploy Client Project
+        run: |
+          echo "📦 Deploying Client project (Container-bound to Google Sheets)..."
+          cp .clasp-client.json .clasp.json
+          
+          echo "=== PREPARING CLIENT DEPLOYMENT ==="
+          
+          # 🚨 CRITICAL: Copy appsscript.json to client directory FIRST
+          echo "Copying appsscript.json to client directory..."
+          if [ ! -f table/appsscript.json ]; then
+            echo "❌ ERROR: table/appsscript.json not found!"
+            exit 1
+          fi
+          cp table/appsscript.json table/client/
+          echo "✅ Copied appsscript.json to table/client/"
+          
+          echo "Copying shared files into client directory..."
+          # Copy shared files directly into client directory
+          for file in table/shared/*.gs; do
+            if [ -f "$file" ]; then
+              # Skip server-related shared files (they shouldn't exist but just in case)
+              filename=$(basename "$file")
+              if [[ "$filename" =~ ^.*Server.*\.gs$ ]] && [[ ! "$filename" =~ ^ClientUtilities\.gs$ ]]; then
+                echo "⚠️ Skipping server-related shared file: $filename"
+                continue
+              fi
+              cp "$file" table/client/
+              echo "  ✅ Copied $filename"
+            fi
+          done
+          echo "✅ Shared files copied to table/client/"
+          
+          # 🔄 COPY web files for deployment (Apps Script needs them!)
+          echo "📂 Copying web files to client directory..."
+          echo "⚠️  Apps Script rootDir=table/client, must copy web files here"
+          
+          # 🗑️ First, remove any old web files from client to avoid conflicts
+          echo "🗑️  Removing old web files from client..."
+          rm -f table/client/CollectConfigUI.* table/client/WebInterface.* table/client/WebApp.* table/client/RealisticWebApp.*
+          echo "✅ Old web files removed"
+          
+          # 📋 Smart copy of web files with detailed logging
+          echo "📋 Copying web files with detailed logging..."
+          WEB_GS_COUNT=0
+          WEB_HTML_COUNT=0
+          
+          if [ -d table/web ]; then
+            for file in table/web/*; do
+              if [ -f "$file" ]; then
+                filename=$(basename "$file")
+                cp "$file" table/client/
+                case "$filename" in
+                  *.gs)
+                    WEB_GS_COUNT=$((WEB_GS_COUNT + 1))
+                    echo "  ✅ Copied JS: $filename"
+                    ;;
+                  *.html)
+                    WEB_HTML_COUNT=$((WEB_HTML_COUNT + 1))
+                    echo "  ✅ Copied HTML: $filename"
+                    ;;
+                  *)
+                    echo "  ✅ Copied other: $filename"
+                    ;;
+                esac
+              fi
+            done
+            echo "📊 Web files copied: $WEB_GS_COUNT GS files, $WEB_HTML_COUNT HTML files"
+          else
+            echo "⚠️ No table/web/ directory found"
+          fi
+          
+          # ⚠️  WORKAROUND: Rename CollectConfigUI.gs to avoid name conflict with existing HTML
+          if [ -f table/client/CollectConfigUI.gs ]; then
+            mv table/client/CollectConfigUI.gs table/client/CollectConfigUIScript.gs
+            echo "✅ Renamed CollectConfigUI.gs to CollectConfigUIScript.gs"
+          fi
+          
+          echo "✅ Web files copied to table/client/ for Apps Script sync"
+          
+          # 🔒 ENHANCED SECURITY CHECK: Ensure NO server files in client!
+          echo "🔍 Enhanced security check: verifying NO server files in client..."
+          
+          FOUND_SERVER_FILES=false
+          
+          # Check for files starting with "server" or "Server" (case insensitive)
+          for file in table/client/*; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              # Skip ClientUtilities.gs as it's allowed
+              if [[ "$filename" == "ClientUtilities.gs" ]]; then
+                continue
+              fi
+              # Check for server-related patterns
+              if [[ "$filename" =~ ^[Ss]erver.*\.(gs|html)$ ]] || [[ "$filename" =~ ^.*Server.*\.(gs|html)$ ]]; then
+                echo "❌ SECURITY VIOLATION: Server file found in client: $filename"
+                FOUND_SERVER_FILES=true
+              fi
+            fi
+          done
+          
+          if [ "$FOUND_SERVER_FILES" = true ]; then
+            echo "❌ SECURITY ERROR: Server files found in client directory!"
+            echo "Current client directory contents:"
+            ls -la table/client/
+            exit 1
+          fi
+          echo "✅ Enhanced security check passed: no server files in client"
+          
+          echo ""
+          echo "=== DETAILED CLIENT DEPLOYMENT SUMMARY ==="
+          echo "📁 Files in CLIENT directory ready for upload:"
+          
+          CLIENT_GS_COUNT=0
+          CLIENT_HTML_COUNT=0
+          CLIENT_JSON_COUNT=0
+          
+          for file in table/client/*; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              case "$filename" in
+                *.gs)
+                  CLIENT_GS_COUNT=$((CLIENT_GS_COUNT + 1))
+                  echo "  📜 JavaScript: $filename ($(wc -l < "$file") lines)"
+                  ;;
+                *.html)
+                  CLIENT_HTML_COUNT=$((CLIENT_HTML_COUNT + 1))
+                  echo "  🌐 HTML: $filename ($(wc -l < "$file") lines)"
+                  ;;
+                *.json)
+                  CLIENT_JSON_COUNT=$((CLIENT_JSON_COUNT + 1))
+                  echo "  ⚙️ JSON: $filename"
+                  ;;
+                *)
+                  echo "  ❓ Other: $filename"
+                  ;;
+              esac
+            fi
+          done
+          
+          echo "📊 Summary: $CLIENT_GS_COUNT GS files, $CLIENT_HTML_COUNT HTML files, $CLIENT_JSON_COUNT JSON files"
+          echo "📦 Total files to upload: $(find table/client -type f \( -name "*.gs" -o -name "*.html" -o -name "*.json" \) | wc -l)"
+          echo ""
+          
+          # 🔍 CRITICAL FILES VERIFICATION
+          echo "🔍 CRITICAL FILES VERIFICATION:"
+          CRITICAL_FILES=("Menu.gs" "GeminiClient.gs" "CredentialsManager.gs" "appsscript.json")
+          for critical_file in "${CRITICAL_FILES[@]}"; do
+            if [ -f "table/client/$critical_file" ]; then
+              echo "  ✅ $critical_file present"
+            else
+              echo "  ❌ $critical_file MISSING!"
+            fi
+          done
+          echo ""
+          
+          echo "Pushing to Script ID: 1DdlYfvo0EfEA1O1nb5DRI0o-WJoIivtfIPNSE1C1bt3IvvWC91sGE6Xs"
+          echo "Using clasp push for container-bound script..."
+          clasp push -f 2>&1 | tee /tmp/clasp-client-push.log || {
+            echo ""
+            echo "❌ CLIENT CLASP PUSH FAILED!"
+            echo "Error output:"
+            cat /tmp/clasp-client-push.log
+            echo ""
+            echo "📁 Files that clasp tried to push:"
+            find table/client -type f \( -name "*.gs" -o -name "*.html" -o -name "*.json" \) | sort
+            exit 1
+          }
+          
+          echo "📋 AFTER PUSH - Success! Uploaded files:"
+          grep -i "Pushed\|Updated\|Created" /tmp/clasp-client-push.log || echo "No specific file info in clasp output"
+          
+          # 🧹 SMART CLEANUP: Remove only deployment-copied files
+          echo "🧹 Smart cleanup: removing only deployment-copied files..."
+          
+          # Remove shared files (known to be copied during deployment)
+          SHARED_FILES=("Constants.gs" "LoggingService.gs" "Utils.gs" "ClientUtilities.gs")
+          for shared_file in "${SHARED_FILES[@]}"; do
+            if [ -f "table/client/$shared_file" ]; then
+              rm -f "table/client/$shared_file"
+              echo "  🗑️ Removed shared file: $shared_file"
+            fi
+          done
+          
+          # Remove deployment-specific files
+          if [ -f "table/client/appsscript.json" ]; then
+            rm -f table/client/appsscript.json
+            echo "  🗑️ Removed deployment appsscript.json"
+          fi
+          
+          echo "✅ Smart cleanup completed - all web files preserved"
+          
+          # Verification: Check what remains
+          echo "📁 Files remaining in client directory:"
+          ls -la table/client/ | grep -E '\.(gs|html)$' || echo "No .gs or .html files found"
+          
+          echo "✅ Client deployment complete!"
+
+      - name: Summary
+        run: |
+          echo "🎉 All deployments completed successfully!"
+          echo "📋 Server: table/server/ + table/shared/ → Script ID 1ncX8FGqT7QP-LxqrRJu0_z_FmUTGsbqmbWDCRePLfHgW8x85bX_Yu9uP"
+          echo "📋 Client: table/client/ + table/shared/ + table/web/ → Script ID 1DdlYfvo0EfEA1O1nb5DRI0o-WJoIivtfIPNSE1C1bt3IvvWC91sGE6Xs"
