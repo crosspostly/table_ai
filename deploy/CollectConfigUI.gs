@@ -758,6 +758,16 @@ function collectDataFromRange(sheetName, cellAddress) {
     throw new Error(`Лист \"${sheetName}\" не найден.`);
   }
   
+  // ✅ КРИТИЧНО: Получаем размеры листа ОДИН РАЗ в начале
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  
+  // Проверяем что лист не пустой
+  if (lastRow === 0 || lastCol === 0) {
+    addLog(`⚠️ Лист \"${sheetName}\" пуст (lastRow=${lastRow}, lastCol=${lastCol})`, 'WARN');
+    return ''; // Возвращаем пустую строку вместо ошибки
+  }
+  
   // Нормализация адреса для обработки
   const normalizedAddress = cellAddress.trim().toUpperCase();
   
@@ -767,12 +777,6 @@ function collectDataFromRange(sheetName, cellAddress) {
       const cols = normalizedAddress.split(':');
       const startCol = cols[0];
       const endCol = cols[1];
-      const lastRow = sheet.getLastRow();
-      
-      if (lastRow === 0) {
-        addLog(`⚠️ Лист "${sheetName}" пуст, возвращаем пустую строку`, 'WARN');
-        return ''; // Пустой лист
-      }
       
       // Преобразуем в конкретный диапазон: C:C → C1:C[lastRow]
       const fullRangeAddress = `${startCol}1:${endCol}${lastRow}`;
@@ -789,7 +793,45 @@ function collectDataFromRange(sheetName, cellAddress) {
     }
     
     // Случай 2: Конкретный диапазон (A1, A1:B10, C1:C100)
+    // ✅ ИСПРАВЛЕНО: Проверяем что диапазон не выходит за границы данных
     addLog(`📋 Читаем диапазон: ${normalizedAddress} с листа "${sheetName}"`, 'INFO');
+    
+    // Проверка для диапазонов типа C1:C100
+    const rangeRegex = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/;
+    const match = normalizedAddress.match(rangeRegex);
+    
+    if (match) {
+      // Это диапазон типа C1:C100
+      const startCol = match[1];
+      const startRow = parseInt(match[2]);
+      const endCol = match[3];
+      const endRow = parseInt(match[4]);
+      
+      // Обрезаем диапазон до реальных данных
+      const actualEndRow = Math.min(endRow, lastRow);
+      
+      if (startRow > lastRow) {
+        addLog(`⚠️ Диапазон "${normalizedAddress}" начинается за границами данных (startRow=${startRow} > lastRow=${lastRow})`, 'WARN');
+        return ''; // Диапазон вне данных
+      }
+      
+      const adjustedAddress = `${startCol}${startRow}:${endCol}${actualEndRow}`;
+      if (adjustedAddress !== normalizedAddress) {
+        addLog(`📋 Скорректированный диапазон: ${adjustedAddress} (было ${normalizedAddress})`, 'INFO');
+      }
+      
+      const values = sheet.getRange(adjustedAddress).getValues();
+      
+      // Flatten 2D array и фильтруем пустые значения
+      return values
+        .flat()
+        .filter(function(val) { 
+          return val !== null && val !== undefined && val.toString().trim() !== '';
+        })
+        .join('\n');
+    }
+    
+    // Случай 3: Одна ячейка (A1) или другой простой формат
     const range = sheet.getRange(normalizedAddress);
     const values = range.getValues();
     
