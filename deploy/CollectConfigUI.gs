@@ -18,8 +18,8 @@ function openCollectConfigUI() {
       .setWidth(700)
       .setTitle('🎯 Настройка AI запроса');
     
-    // Используем sidebar вместо dialog - он может требовать меньше разрешений
-    SpreadsheetApp.getUi().showSidebar(html);
+    // ФИШКА: Используем красивый modal dialog (требует UI разрешения в appsscript.json)
+    SpreadsheetApp.getUi().showModalDialog(html, 'AI Конструктор');
     
   } catch (error) {
     // Fallback: если sidebar тоже не работает, используем простой prompt-based интерфейс
@@ -759,10 +759,697 @@ function collectDataFromRange(sheetName, cellAddress) {
   if (!sheet) throw new Error(`Лист \"${sheetName}\" не найден.`);
   
   if (/^[A-Z]+:[A-Z]+$/.test(cellAddress)) {
+    // Обработка диапазона типа A:A, B:B и т.д.
     var col = cellAddress.split(':')[0];
-    var fullRangeAddress = `${col}1:${col}${sheet.getLastRow()}`;
+    var lastRow = sheet.getLastRow();
+    
+    // ИСПРАВЛЕНИЕ: проверяем что лист не пустой
+    if (lastRow === 0) {
+      addLog(`⚠️ Лист "${sheetName}" пуст, возвращаем пустую строку`, 'WARN');
+      return '';
+    }
+    
+    var fullRangeAddress = `${col}1:${col}${lastRow}`;
+    addLog(`📊 Читаем диапазон: ${fullRangeAddress} с листа "${sheetName}"`, 'INFO');
     return sheet.getRange(fullRangeAddress).getValues().flat().filter(String).join('\n');
   } else {
+    // Обработка конкретной ячейки или диапазона
+    addLog(`📋 Читаем ячейку: ${cellAddress} с листа "${sheetName}"`, 'INFO');
     return sheet.getRange(cellAddress).getValues().flat().filter(String).join('\n');
+  }
+}
+
+// ============================================================================
+// НОВЫЕ КРУТЫЕ ФУНКЦИИ для меню AI Конструктора
+// ============================================================================
+
+/**
+ * 👁️ Просмотр конфигурации текущей ячейки
+ */
+function previewCurrentCellConfig() {
+  var ui = SpreadsheetApp.getUi();
+  
+  try {
+    var sheet = SpreadsheetApp.getActiveSheet();
+    var range = sheet.getActiveRange();
+    
+    if (!range) {
+      ui.alert('⚠️ Внимание', 'Выберите ячейку!', ui.ButtonSet.OK);
+      return;
+    }
+    
+    var sheetName = sheet.getName();
+    var cellAddress = range.getA1Notation();
+    var config = loadCollectConfig(sheetName, cellAddress);
+    
+    if (!config) {
+      ui.alert(
+        '❌ Конфигурация не найдена',
+        `Для ячейки ${sheetName}!${cellAddress} нет сохранённой конфигурации.`,
+        ui.ButtonSet.OK
+      );
+      return;
+    }
+    
+    // Формируем информацию о конфигурации
+    var preview = `🎯 КОНФИГУРАЦИЯ ЯЧЕЙКИ: ${sheetName}!${cellAddress}\n\n`;
+    
+    // System Prompt
+    if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
+      preview += `📝 SYSTEM PROMPT:\n`;
+      preview += `   Источник: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}\n`;
+      
+      try {
+        var systemContent = collectDataFromRange(config.systemPrompt.sheet, config.systemPrompt.cell);
+        var systemPreview = systemContent.length > 200 ? systemContent.substring(0, 200) + '...' : systemContent;
+        preview += `   Содержимое: ${systemPreview || '(пусто)'}\n\n`;
+      } catch (e) {
+        preview += `   Содержимое: ❌ Ошибка чтения: ${e.message}\n\n`;
+      }
+    } else {
+      preview += `📝 SYSTEM PROMPT: не задан\n\n`;
+    }
+    
+    // User Data
+    if (config.userData && config.userData.length > 0) {
+      preview += `📊 ДАННЫЕ ДЛЯ АНАЛИЗА (${config.userData.length} источник${config.userData.length > 1 ? 'ов' : ''}):\n`;
+      
+      for (var i = 0; i < Math.min(config.userData.length, 5); i++) { // Показываем максимум 5 источников
+        var source = config.userData[i];
+        preview += `   ${i + 1}. ${source.sheet}!${source.cell}`;
+        
+        try {
+          var sourceData = collectDataFromRange(source.sheet, source.cell);
+          var sourcePreview = sourceData.length > 100 ? sourceData.substring(0, 100) + '...' : sourceData;
+          preview += ` → ${sourcePreview || '(пусто)'}\n`;
+        } catch (e) {
+          preview += ` → ❌ Ошибка: ${e.message}\n`;
+        }
+      }
+      
+      if (config.userData.length > 5) {
+        preview += `   ... и ещё ${config.userData.length - 5} источник${config.userData.length - 5 > 1 ? 'ов' : ''}\n`;
+      }
+    } else {
+      preview += `📊 ДАННЫЕ ДЛЯ АНАЛИЗА: не заданы\n`;
+    }
+    
+    // Статистика
+    preview += `\n📈 СТАТИСТИКА:\n`;
+    
+    var configSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ConfigData');
+    if (configSheet) {
+      var rowIndex = findExistingConfig(configSheet, sheetName, cellAddress);
+      if (rowIndex > 0) {
+        var rowData = configSheet.getRange(rowIndex, 1, 1, 8).getValues()[0];
+        var createdAt = rowData[5] ? new Date(rowData[5]).toLocaleString('ru-RU') : 'неизвестно';
+        var lastRun = rowData[6] ? new Date(rowData[6]).toLocaleString('ru-RU') : 'никогда';
+        
+        preview += `   Создано: ${createdAt}\n`;
+        preview += `   Последний запуск: ${lastRun}\n`;
+      }
+    }
+    
+    ui.alert('👁️ Просмотр конфигурации', preview, ui.ButtonSet.OK);
+    
+  } catch (error) {
+    ui.alert('❌ Ошибка просмотра', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * 📋 Скопировать конфигурацию текущей ячейки в буфер
+ */
+function copyCurrentCellConfig() {
+  var ui = SpreadsheetApp.getUi();
+  
+  try {
+    var sheet = SpreadsheetApp.getActiveSheet();
+    var range = sheet.getActiveRange();
+    
+    if (!range) {
+      ui.alert('⚠️ Внимание', 'Выберите ячейку!', ui.ButtonSet.OK);
+      return;
+    }
+    
+    var sheetName = sheet.getName();
+    var cellAddress = range.getA1Notation();
+    var config = loadCollectConfig(sheetName, cellAddress);
+    
+    if (!config) {
+      ui.alert(
+        '❌ Конфигурация не найдена',
+        `Для ячейки ${sheetName}!${cellAddress} нет сохранённой конфигурации.`,
+        ui.ButtonSet.OK
+      );
+      return;
+    }
+    
+    // Сохраняем конфигурацию в буфер (Properties)
+    var configJson = JSON.stringify(config);
+    PropertiesService.getScriptProperties().setProperty('COPIED_CONFIG', configJson);
+    PropertiesService.getScriptProperties().setProperty('COPIED_CONFIG_SOURCE', `${sheetName}!${cellAddress}`);
+    
+    ui.alert(
+      '📋 Конфигурация скопирована!',
+      `Конфигурация из ${sheetName}!${cellAddress} скопирована в буфер.\n\n` +
+      'Теперь выберите другую ячейку и используйте:\n' +
+      '"📥 Вставить конфигурацию"',
+      ui.ButtonSet.OK
+    );
+    
+  } catch (error) {
+    ui.alert('❌ Ошибка копирования', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * 📥 Вставить конфигурацию в текущую ячейку из буфера
+ */
+function pasteConfigToCurrentCell() {
+  var ui = SpreadsheetApp.getUi();
+  
+  try {
+    var sheet = SpreadsheetApp.getActiveSheet();
+    var range = sheet.getActiveRange();
+    
+    if (!range) {
+      ui.alert('⚠️ Внимание', 'Выберите ячейку!', ui.ButtonSet.OK);
+      return;
+    }
+    
+    var sheetName = sheet.getName();
+    var cellAddress = range.getA1Notation();
+    
+    // Получаем конфигурацию из буфера
+    var configJson = PropertiesService.getScriptProperties().getProperty('COPIED_CONFIG');
+    var configSource = PropertiesService.getScriptProperties().getProperty('COPIED_CONFIG_SOURCE');
+    
+    if (!configJson) {
+      ui.alert(
+        '❌ Буфер пуст',
+        'Сначала скопируйте конфигурацию из другой ячейки:\n' +
+        '"📋 Скопировать конфигурацию"',
+        ui.ButtonSet.OK
+      );
+      return;
+    }
+    
+    var config;
+    try {
+      config = JSON.parse(configJson);
+    } catch (e) {
+      ui.alert('❌ Ошибка буфера', 'Повреждённая конфигурация в буфере', ui.ButtonSet.OK);
+      return;
+    }
+    
+    // Проверяем, есть ли уже конфигурация в этой ячейке
+    var existingConfig = loadCollectConfig(sheetName, cellAddress);
+    if (existingConfig) {
+      var overwrite = ui.alert(
+        '⚠️ Перезаписать конфигурацию?',
+        `В ячейке ${sheetName}!${cellAddress} уже есть конфигурация.\n\n` +
+        'Перезаписать её конфигурацией из:\n' +
+        (configSource || 'неизвестного источника') + '?',
+        ui.ButtonSet.YES_NO
+      );
+      
+      if (overwrite !== ui.Button.YES) {
+        return;
+      }
+    }
+    
+    // Сохраняем конфигурацию
+    var saved = saveCollectConfig(sheetName, cellAddress, config);
+    
+    if (saved) {
+      ui.alert(
+        '✅ Конфигурация вставлена!',
+        `Конфигурация из ${configSource || 'буфера'} вставлена в ${sheetName}!${cellAddress}.\n\n` +
+        'Можете сразу запустить:\n"🔄 Обновить ячейку"',
+        ui.ButtonSet.OK
+      );
+    } else {
+      ui.alert('❌ Ошибка сохранения', 'Не удалось сохранить конфигурацию', ui.ButtonSet.OK);
+    }
+    
+  } catch (error) {
+    ui.alert('❌ Ошибка вставки', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * 🗂️ Управление шаблонами
+ */
+function showTemplateManager() {
+  var ui = SpreadsheetApp.getUi();
+  
+  try {
+    var user = Session.getActiveUser().getEmail() || 'anonymous';
+    var templates = getAllTemplates(user);
+    var templateNames = Object.keys(templates);
+    
+    if (templateNames.length === 0) {
+      var createNew = ui.alert(
+        '🗂️ Шаблоны не найдены',
+        'У вас пока нет сохранённых шаблонов.\n\n' +
+        'Хотите создать шаблон из текущей ячейки?',
+        ui.ButtonSet.YES_NO
+      );
+      
+      if (createNew === ui.Button.YES) {
+        createTemplateFromCurrentCell();
+      }
+      return;
+    }
+    
+    // Показываем список шаблонов
+    var templateList = `🗂️ УПРАВЛЕНИЕ ШАБЛОНАМИ\n\n`;
+    templateList += `Найдено шаблонов: ${templateNames.length}\n\n`;
+    
+    for (var i = 0; i < Math.min(templateNames.length, 10); i++) { // Показываем до 10 шаблонов
+      var name = templateNames[i];
+      var template = templates[name];
+      var created = template.created ? new Date(template.created).toLocaleDateString('ru-RU') : 'неизвестно';
+      templateList += `${i + 1}. ${name} (создан: ${created})\n`;
+    }
+    
+    if (templateNames.length > 10) {
+      templateList += `... и ещё ${templateNames.length - 10} шаблон${templateNames.length - 10 > 1 ? 'ов' : ''}\n`;
+    }
+    
+    templateList += '\nВыберите действие:';
+    
+    var action = ui.prompt(
+      '🗂️ Управление шаблонами',
+      templateList + '\n\n' +
+      '1 - Применить шаблон к текущей ячейке\n' +
+      '2 - Удалить шаблон\n' +
+      '3 - Создать новый шаблон\n' +
+      '4 - Просмотр содержимого шаблона\n\n' +
+      'Введите номер действия:',
+      ui.ButtonSet.OK_CANCEL
+    );
+    
+    if (action.getSelectedButton() !== ui.Button.OK) return;
+    
+    var choice = action.getResponseText().trim();
+    
+    switch (choice) {
+      case '1':
+        applyTemplateToCurrentCell(templateNames);
+        break;
+      case '2':
+        deleteTemplateDialog(templateNames);
+        break;
+      case '3':
+        createTemplateFromCurrentCell();
+        break;
+      case '4':
+        previewTemplateDialog(templateNames, templates);
+        break;
+      default:
+        ui.alert('❌ Неверный выбор', 'Введите номер от 1 до 4', ui.ButtonSet.OK);
+    }
+    
+  } catch (error) {
+    ui.alert('❌ Ошибка управления шаблонами', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Применить шаблон к текущей ячейке
+ */
+function applyTemplateToCurrentCell(templateNames) {
+  var ui = SpreadsheetApp.getUi();
+  
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var range = sheet.getActiveRange();
+  
+  if (!range) {
+    ui.alert('⚠️ Внимание', 'Выберите ячейку!', ui.ButtonSet.OK);
+    return;
+  }
+  
+  var templateChoice = ui.prompt(
+    '🎯 Применить шаблон',
+    'Доступные шаблоны:\n\n' +
+    templateNames.map((name, i) => `${i + 1}. ${name}`).join('\n') +
+    '\n\nВведите номер или имя шаблона:',
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (templateChoice.getSelectedButton() !== ui.Button.OK) return;
+  
+  var input = templateChoice.getResponseText().trim();
+  var templateName;
+  
+  if (/^\d+$/.test(input)) {
+    var index = parseInt(input, 10) - 1;
+    if (index >= 0 && index < templateNames.length) {
+      templateName = templateNames[index];
+    }
+  } else {
+    templateName = input;
+  }
+  
+  if (!templateName || templateNames.indexOf(templateName) === -1) {
+    ui.alert('❌ Шаблон не найден', 'Указанный шаблон не существует', ui.ButtonSet.OK);
+    return;
+  }
+  
+  var user = Session.getActiveUser().getEmail() || 'anonymous';
+  var template = getTemplate(user, templateName);
+  
+  if (!template) {
+    ui.alert('❌ Ошибка загрузки', 'Не удалось загрузить шаблон', ui.ButtonSet.OK);
+    return;
+  }
+  
+  var sheetName = sheet.getName();
+  var cellAddress = range.getA1Notation();
+  
+  var config = template.config || template;
+  var saved = saveCollectConfig(sheetName, cellAddress, config);
+  
+  if (saved) {
+    ui.alert(
+      '✅ Шаблон применён!',
+      `Шаблон "${templateName}" применён к ячейке ${sheetName}!${cellAddress}.\n\n` +
+      'Можете сразу запустить:\n"🔄 Обновить ячейку"',
+      ui.ButtonSet.OK
+    );
+  } else {
+    ui.alert('❌ Ошибка применения', 'Не удалось применить шаблон', ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Создать шаблон из текущей ячейки
+ */
+function createTemplateFromCurrentCell() {
+  var ui = SpreadsheetApp.getUi();
+  
+  var sheet = SpreadsheetApp.getActiveSheet();
+  var range = sheet.getActiveRange();
+  
+  if (!range) {
+    ui.alert('⚠️ Внимание', 'Выберите ячейку с настроенной конфигурацией!', ui.ButtonSet.OK);
+    return;
+  }
+  
+  var sheetName = sheet.getName();
+  var cellAddress = range.getA1Notation();
+  var config = loadCollectConfig(sheetName, cellAddress);
+  
+  if (!config) {
+    ui.alert(
+      '❌ Конфигурация не найдена',
+      `Для ячейки ${sheetName}!${cellAddress} нет конфигурации.\n\n` +
+      'Сначала настройте ячейку через:\n"🎯 Настроить запрос"',
+      ui.ButtonSet.OK
+    );
+    return;
+  }
+  
+  var templateName = ui.prompt(
+    '💾 Сохранить как шаблон',
+    'Введите имя для нового шаблона:\n\n' +
+    '(Используйте понятные названия, например:\n' +
+    '"Анализ отзывов", "Сводка продаж", "Извлечение данных")',
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (templateName.getSelectedButton() !== ui.Button.OK) return;
+  
+  var name = templateName.getResponseText().trim();
+  if (!name) {
+    ui.alert('❌ Пустое имя', 'Имя шаблона не может быть пустым', ui.ButtonSet.OK);
+    return;
+  }
+  
+  var user = Session.getActiveUser().getEmail() || 'anonymous';
+  var result = saveTemplate(user, name, config);
+  
+  if (result.success) {
+    ui.alert(
+      '✅ Шаблон создан!',
+      `Шаблон "${name}" успешно сохранён.\n\n` +
+      'Теперь его можно применить к любой ячейке через:\n' +
+      '"🗂️ Управление шаблонами"',
+      ui.ButtonSet.OK
+    );
+  } else {
+    ui.alert('❌ Ошибка создания', result.message || 'Не удалось создать шаблон', ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Удалить шаблон
+ */
+function deleteTemplateDialog(templateNames) {
+  var ui = SpreadsheetApp.getUi();
+  
+  var templateChoice = ui.prompt(
+    '🗑️ Удалить шаблон',
+    'ВНИМАНИЕ: Это действие необратимо!\n\n' +
+    'Доступные шаблоны:\n\n' +
+    templateNames.map((name, i) => `${i + 1}. ${name}`).join('\n') +
+    '\n\nВведите номер или имя шаблона для удаления:',
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (templateChoice.getSelectedButton() !== ui.Button.OK) return;
+  
+  var input = templateChoice.getResponseText().trim();
+  var templateName;
+  
+  if (/^\d+$/.test(input)) {
+    var index = parseInt(input, 10) - 1;
+    if (index >= 0 && index < templateNames.length) {
+      templateName = templateNames[index];
+    }
+  } else {
+    templateName = input;
+  }
+  
+  if (!templateName || templateNames.indexOf(templateName) === -1) {
+    ui.alert('❌ Шаблон не найден', 'Указанный шаблон не существует', ui.ButtonSet.OK);
+    return;
+  }
+  
+  var confirm = ui.alert(
+    '⚠️ Подтверждение удаления',
+    `Удалить шаблон "${templateName}"?\n\nЭто действие нельзя отменить!`,
+    ui.ButtonSet.YES_NO
+  );
+  
+  if (confirm !== ui.Button.YES) return;
+  
+  var user = Session.getActiveUser().getEmail() || 'anonymous';
+  var result = deleteTemplate(user, templateName);
+  
+  if (result.success) {
+    ui.alert('✅ Шаблон удалён', `Шаблон "${templateName}" успешно удалён.`, ui.ButtonSet.OK);
+  } else {
+    ui.alert('❌ Ошибка удаления', result.message || 'Не удалось удалить шаблон', ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Просмотр содержимого шаблона
+ */
+function previewTemplateDialog(templateNames, templates) {
+  var ui = SpreadsheetApp.getUi();
+  
+  var templateChoice = ui.prompt(
+    '👁️ Просмотр шаблона',
+    'Доступные шаблоны:\n\n' +
+    templateNames.map((name, i) => `${i + 1}. ${name}`).join('\n') +
+    '\n\nВведите номер или имя шаблона:',
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (templateChoice.getSelectedButton() !== ui.Button.OK) return;
+  
+  var input = templateChoice.getResponseText().trim();
+  var templateName;
+  
+  if (/^\d+$/.test(input)) {
+    var index = parseInt(input, 10) - 1;
+    if (index >= 0 && index < templateNames.length) {
+      templateName = templateNames[index];
+    }
+  } else {
+    templateName = input;
+  }
+  
+  if (!templateName || templateNames.indexOf(templateName) === -1) {
+    ui.alert('❌ Шаблон не найден', 'Указанный шаблон не существует', ui.ButtonSet.OK);
+    return;
+  }
+  
+  var template = templates[templateName];
+  var config = template.config || template;
+  
+  var preview = `🗂️ ШАБЛОН: ${templateName}\n\n`;
+  
+  // System Prompt
+  if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
+    preview += `📝 System Prompt: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}\n`;
+  } else {
+    preview += `📝 System Prompt: не задан\n`;
+  }
+  
+  // User Data
+  if (config.userData && config.userData.length > 0) {
+    preview += `📊 Данные (${config.userData.length} источник${config.userData.length > 1 ? 'ов' : ''}):\n`;
+    for (var i = 0; i < Math.min(config.userData.length, 5); i++) {
+      var source = config.userData[i];
+      preview += `   ${i + 1}. ${source.sheet}!${source.cell}\n`;
+    }
+    if (config.userData.length > 5) {
+      preview += `   ... и ещё ${config.userData.length - 5}\n`;
+    }
+  } else {
+    preview += `📊 Данные: не заданы\n`;
+  }
+  
+  // Метаданные
+  if (template.created) {
+    preview += `\n🕒 Создан: ${new Date(template.created).toLocaleString('ru-RU')}`;
+  }
+  if (template.updated) {
+    preview += `\n🔄 Обновлён: ${new Date(template.updated).toLocaleString('ru-RU')}`;
+  }
+  
+  ui.alert('👁️ Просмотр шаблона', preview, ui.ButtonSet.OK);
+}
+
+/**
+ * 📊 Статистика использования AI Конструктора
+ */
+function showConfigStats() {
+  var ui = SpreadsheetApp.getUi();
+  
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var configSheet = ss.getSheetByName('ConfigData');
+    
+    var stats = `📊 СТАТИСТИКА AI КОНСТРУКТОРА\n\n`;
+    
+    if (!configSheet || configSheet.getLastRow() <= 1) {
+      stats += '❌ Нет данных\n';
+      stats += 'Конфигурации не найдены.\n\n';
+      stats += '💡 Создайте первую конфигурацию:\n';
+      stats += '🎯 AI Конструктор → Настроить запрос';
+    } else {
+      var data = configSheet.getRange(2, 1, configSheet.getLastRow() - 1, 8).getValues();
+      var totalConfigs = data.length;
+      var sheetsUsed = new Set();
+      var runCounts = 0;
+      var oldestConfig = null;
+      var newestConfig = null;
+      var mostRecentRun = null;
+      
+      for (var i = 0; i < data.length; i++) {
+        var row = data[i];
+        var sheetName = row[0];
+        var createdAt = row[5];
+        var lastRun = row[6];
+        
+        if (sheetName) sheetsUsed.add(sheetName);
+        if (lastRun) runCounts++;
+        
+        if (createdAt) {
+          var created = new Date(createdAt);
+          if (!oldestConfig || created < oldestConfig) {
+            oldestConfig = created;
+          }
+          if (!newestConfig || created > newestConfig) {
+            newestConfig = created;
+          }
+        }
+        
+        if (lastRun) {
+          var run = new Date(lastRun);
+          if (!mostRecentRun || run > mostRecentRun) {
+            mostRecentRun = run;
+          }
+        }
+      }
+      
+      stats += `📈 ОБЩАЯ СТАТИСТИКА:\n`;
+      stats += `   Всего конфигураций: ${totalConfigs}\n`;
+      stats += `   Активных (запускались): ${runCounts}\n`;
+      stats += `   Неиспользованных: ${totalConfigs - runCounts}\n`;
+      stats += `   Задействовано листов: ${sheetsUsed.size}\n\n`;
+      
+      if (oldestConfig) {
+        stats += `📅 ВРЕМЕННЫЕ ДАННЫЕ:\n`;
+        stats += `   Первая конфигурация: ${oldestConfig.toLocaleString('ru-RU')}\n`;
+      }
+      if (newestConfig) {
+        stats += `   Последняя конфигурация: ${newestConfig.toLocaleString('ru-RU')}\n`;
+      }
+      if (mostRecentRun) {
+        stats += `   Последний запуск: ${mostRecentRun.toLocaleString('ru-RU')}\n\n`;
+      }
+      
+      // Статистика по листам
+      var sheetStats = {};
+      for (var i = 0; i < data.length; i++) {
+        var sheetName = data[i][0];
+        if (sheetName) {
+          sheetStats[sheetName] = (sheetStats[sheetName] || 0) + 1;
+        }
+      }
+      
+      if (Object.keys(sheetStats).length > 0) {
+        stats += `📋 ПО ЛИСТАМ:\n`;
+        var sortedSheets = Object.keys(sheetStats).sort((a, b) => sheetStats[b] - sheetStats[a]);
+        for (var i = 0; i < Math.min(sortedSheets.length, 5); i++) {
+          var sheet = sortedSheets[i];
+          stats += `   ${sheet}: ${sheetStats[sheet]} конфигураций\n`;
+        }
+        if (sortedSheets.length > 5) {
+          stats += `   ... и ещё ${sortedSheets.length - 5} лист${sortedSheets.length - 5 > 1 ? 'ов' : ''}\n`;
+        }
+      }
+    }
+    
+    // Статистика по шаблонам
+    var user = Session.getActiveUser().getEmail() || 'anonymous';
+    var templates = getAllTemplates(user);
+    var templateCount = Object.keys(templates).length;
+    
+    stats += `\n🗂️ ШАБЛОНЫ:\n`;
+    stats += `   Сохранённых шаблонов: ${templateCount}\n`;
+    
+    if (templateCount > 0) {
+      var templateNames = Object.keys(templates).slice(0, 3);
+      stats += `   Последние: ${templateNames.join(', ')}`;
+      if (templateCount > 3) {
+        stats += ` и ещё ${templateCount - 3}`;
+      }
+      stats += `\n`;
+    }
+    
+    stats += `\n💡 РЕКОМЕНДАЦИИ:\n`;
+    if (totalConfigs === 0) {
+      stats += `   • Создайте первую конфигурацию\n`;
+      stats += `   • Попробуйте простую настройку\n`;
+    } else if (runCounts === 0) {
+      stats += `   • Запустите созданные конфигурации\n`;
+      stats += `   • Используйте "🔄 Обновить ячейку"\n`;
+    } else {
+      stats += `   • Создавайте шаблоны из удачных конфигураций\n`;
+      stats += `   • Копируйте настройки между ячейками\n`;
+    }
+    
+    ui.alert('📊 Статистика использования', stats, ui.ButtonSet.OK);
+    
+  } catch (error) {
+    ui.alert('❌ Ошибка статистики', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
   }
 }
