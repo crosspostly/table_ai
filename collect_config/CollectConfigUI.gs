@@ -248,3 +248,225 @@ function showCollectConfigHelp() {
   
   ui.alert('🎯 AI Конструктор', helpText, ui.ButtonSet.OK);
 }
+
+// ============================================================================
+// НОВЫЕ ФУНКЦИИ ДЛЯ TEMPLATE SYSTEM v2.0
+// Endpoints для работы с шаблонами через TemplateService
+// ============================================================================
+
+/**
+ * Получить контекст активной ячейки для UI
+ * @return {{sheetName: string, a1Notation: string}}
+ */
+function getActiveCellContext() {
+  try {
+    var sheet = SpreadsheetApp.getActiveSheet();
+    var range = sheet.getActiveRange();
+    
+    if (!range) {
+      return {
+        sheetName: null,
+        a1Notation: null
+      };
+    }
+    
+    return {
+      sheetName: sheet.getName(),
+      a1Notation: range.getA1Notation()
+    };
+    
+  } catch (e) {
+    Logger.log('getActiveCellContext error: ' + e.message);
+    return {
+      sheetName: null,
+      a1Notation: null
+    };
+  }
+}
+
+/**
+ * Получить все шаблоны текущего пользователя
+ * @return {Object} Объект с шаблонами {templateName: {config, created, updated}}
+ */
+function serverGetAllTemplates() {
+  try {
+    var user = Session.getActiveUser().getEmail() || 'anonymous';
+    var templates = getAllTemplates(user); // Из TemplateService.gs
+    
+    // Преобразуем в формат для UI (только конфигурации)
+    var result = {};
+    for (var name in templates) {
+      var template = templates[name];
+      result[name] = template.config || template; // Совместимость с обоими форматами
+    }
+    
+    return result;
+    
+  } catch (e) {
+    Logger.log('serverGetAllTemplates error: ' + e.message);
+    return {};
+  }
+}
+
+/**
+ * Получить конкретный шаблон по имени
+ * @param {string} templateName - Имя шаблона
+ * @return {Object|null} Конфигурация шаблона или null
+ */
+function serverGetTemplate(templateName) {
+  try {
+    if (!templateName) {
+      throw new Error('Не указано имя шаблона');
+    }
+    
+    var user = Session.getActiveUser().getEmail() || 'anonymous';
+    var template = getTemplate(user, templateName); // Из TemplateService.gs
+    
+    if (!template) {
+      return null;
+    }
+    
+    // Возвращаем только конфигурацию (без метаданных)
+    return template.config || template;
+    
+  } catch (e) {
+    Logger.log('serverGetTemplate error: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * Сохранить шаблон
+ * @param {string} templateName - Имя шаблона
+ * @param {Object} config - Конфигурация {systemPrompt: {sheet, cell}, userData: [{sheet, cell}]}
+ * @return {{success: boolean, message: string}}
+ */
+function serverSaveTemplate(templateName, config) {
+  try {
+    if (!templateName || !config) {
+      return {
+        success: false,
+        message: 'Не указано имя шаблона или конфигурация'
+      };
+    }
+    
+    var user = Session.getActiveUser().getEmail() || 'anonymous';
+    var result = saveTemplate(user, templateName, config); // Из TemplateService.gs
+    
+    return result;
+    
+  } catch (e) {
+    Logger.log('serverSaveTemplate error: ' + e.message);
+    return {
+      success: false,
+      message: 'Ошибка сохранения: ' + e.message
+    };
+  }
+}
+
+/**
+ * Удалить шаблон
+ * @param {string} templateName - Имя шаблона для удаления
+ * @return {{success: boolean, message: string}}
+ */
+function serverDeleteTemplate(templateName) {
+  try {
+    if (!templateName) {
+      return {
+        success: false,
+        message: 'Не указано имя шаблона'
+      };
+    }
+    
+    var user = Session.getActiveUser().getEmail() || 'anonymous';
+    var result = deleteTemplate(user, templateName); // Из TemplateService.gs
+    
+    return result;
+    
+  } catch (e) {
+    Logger.log('serverDeleteTemplate error: ' + e.message);
+    return {
+      success: false,
+      message: 'Ошибка удаления: ' + e.message
+    };
+  }
+}
+
+/**
+ * Выполнить конфигурацию и записать результат в ячейку
+ * @param {Object} config - Конфигурация {systemPrompt: {sheet, cell}, userData: [{sheet, cell}]}
+ * @param {Object} cellInfo - Информация о целевой ячейке {sheetName, a1Notation}
+ * @return {{success: boolean, result?: string, error?: string}}
+ */
+function serverExecuteConfig(config, cellInfo) {
+  try {
+    if (!cellInfo || !cellInfo.sheetName || !cellInfo.a1Notation) {
+      return {
+        success: false,
+        error: 'Не указана целевая ячейка'
+      };
+    }
+    
+    if (!config) {
+      return {
+        success: false,
+        error: 'Не указана конфигурация'
+      };
+    }
+    
+    var sheetName = cellInfo.sheetName;
+    var cellAddress = cellInfo.a1Notation;
+    
+    // Временно сохраняем конфигурацию для этой ячейки (используем старый механизм)
+    saveCollectConfig(sheetName, cellAddress, config);
+    
+    // Выполняем через существующую функцию
+    var result = executeCollectConfig(sheetName, cellAddress);
+    
+    if (result.success) {
+      // Записываем результат в ячейку
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = ss.getSheetByName(sheetName);
+      
+      if (sheet) {
+        var range = sheet.getRange(cellAddress);
+        range.setValue(result.result);
+      }
+      
+      return {
+        success: true,
+        result: result.result
+      };
+    } else {
+      return {
+        success: false,
+        error: result.error || 'Неизвестная ошибка'
+      };
+    }
+    
+  } catch (e) {
+    Logger.log('serverExecuteConfig error: ' + e.message);
+    return {
+      success: false,
+      error: 'Ошибка выполнения: ' + e.message
+    };
+  }
+}
+
+/**
+ * Получить статистику по шаблонам текущего пользователя
+ * @return {Object} Статистика {count, totalSize, templates[]}
+ */
+function serverGetTemplatesStats() {
+  try {
+    var user = Session.getActiveUser().getEmail() || 'anonymous';
+    return getTemplatesStats(user); // Из TemplateService.gs
+  } catch (e) {
+    Logger.log('serverGetTemplatesStats error: ' + e.message);
+    return {
+      count: 0,
+      totalSize: 0,
+      templates: []
+    };
+  }
+}
