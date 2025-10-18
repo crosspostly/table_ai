@@ -18,7 +18,7 @@ function openCollectConfigUI() {
       .setHeight(600)
       .setTitle('🎯 Настройка AI запроса');
     
-    SpreadsheetApp.getUi().showModalDialog(html, 'Настройка запроса');
+    SpreadsheetApp.getUi().showModelessDialog(html, 'Настройка запроса');
     
   } catch (error) {
     SpreadsheetApp.getUi().alert('❌ Ошибка открытия интерфейса: ' + error.message);
@@ -468,5 +468,177 @@ function serverGetTemplatesStats() {
       totalSize: 0,
       templates: []
     };
+  }
+}
+
+// === CollectConfig Core Functions ===
+// Добавлены из collect_config/ConfigurationManager.gs для автономности deploy/
+
+/**
+ * Выполнение AI запроса по сохраненной конфигурации.
+ * @param {string} sheetName - Имя листа с результатом.
+ * @param {string} cellAddress - Адрес ячейки с результатом.
+ * @return {{success: boolean, result?: string, error?: string}}
+ */
+function executeCollectConfig(sheetName, cellAddress) {
+  var logCtx = { traceId: Utilities.getUuid(), target: `'${sheetName}'!${cellAddress}` };
+  addLog('executeCollectConfig START', 'INFO');
+
+  try {
+    var config = loadCollectConfig(sheetName, cellAddress);
+    if (!config) throw new Error('Конфигурация не найдена. Настройте и сохраните запрос.');
+    addLog('Config loaded successfully', 'DEBUG');
+
+    var systemPrompt = '';
+    if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
+      systemPrompt = collectDataFromRange(config.systemPrompt.sheet, config.systemPrompt.cell);
+    }
+
+    var userDataContent = [];
+    if (config.userData) {
+      config.userData.forEach(function(source) {
+        if (source.sheet && source.cell) {
+          try {
+            var data = collectDataFromRange(source.sheet, source.cell);
+            userDataContent.push(`Источник (${source.sheet}!${source.cell}):\n${data}`);
+          } catch (e) {
+            userDataContent.push(`Источник (${source.sheet}!${source.cell}):\n[ОШИБКА СБОРА ДАННЫХ: ${e.message}]`);
+          }
+        }
+      });
+    }
+    
+    var fullPrompt = (systemPrompt ? systemPrompt + '\n\n---\n\n' : '') + 
+                     (userDataContent.length > 0 ? 'ДАННЫЕ ДЛЯ АНАЛИЗА:\n' + userDataContent.join('\n\n') : '');
+
+    if (!fullPrompt.trim()) throw new Error('Нет данных для обработки. Настройте System Prompt или User Data.');
+
+    // Используем GM() для совместимости с Main.gs (адаптация от GM_RAW)
+    var geminiResult = GM(fullPrompt);
+
+    if (!geminiResult || geminiResult.startsWith('Error:')) throw new Error('API Error: ' + geminiResult);
+
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName).getRange(cellAddress).setValue(geminiResult);
+    updateLastRun(sheetName, cellAddress);
+    addLog('executeCollectConfig END', 'INFO');
+    return { success: true, result: geminiResult };
+
+  } catch (error) {
+    addLog(`executeCollectConfig FAILED: ${error.message}`, 'ERROR');
+    try {
+      SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName).getRange(cellAddress).setValue(`ОШИБКА: ${error.message}`);
+    } catch(e) { /* ignore */ }
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Сохранение конфигурации в скрытый лист ConfigData
+ * @param {string} sheetName - Имя листа
+ * @param {string} cellAddress - Адрес ячейки
+ * @param {Object} config - Конфигурация
+ * @return {boolean} - успех сохранения
+ */
+function saveCollectConfig(sheetName, cellAddress, config) {
+  try {
+    if (!sheetName || !cellAddress || !config) throw new Error('Требуются sheetName, cellAddress и config');
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var configSheet = ss.getSheetByName('ConfigData') || ss.insertSheet('ConfigData').hideSheet();
+    if (configSheet.getLastRow() === 0) {
+        var headers = ['Sheet', 'Cell', 'SystemPromptSheet', 'SystemPromptCell', 'UserDataJSON', 'CreatedAt', 'LastRun', 'ConfigName'];
+        configSheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#4285f4').setFontColor('white');
+    }
+    
+    var existingRowIndex = findExistingConfig(configSheet, sheetName, cellAddress);
+    var rowData = [
+      sheetName, cellAddress,
+      config.systemPrompt ? config.systemPrompt.sheet : '',
+      config.systemPrompt ? config.systemPrompt.cell : '',
+      JSON.stringify(config.userData || [])
+    ];
+
+    if (existingRowIndex > 0) {
+      configSheet.getRange(existingRowIndex, 1, 1, 5).setValues([rowData]);
+    } else {
+      rowData.push(new Date().toISOString(), null, '');
+      configSheet.appendRow(rowData);
+    }
+    return true;
+  } catch (error) {
+    addLog(`Ошибка сохранения конфигурации: ${error.message}`, 'ERROR');
+    return false;
+  }
+}
+
+/**
+ * Загрузка конфигурации из скрытого листа ConfigData
+ * @param {string} sheetName - Имя листа
+ * @param {string} cellAddress - Адрес ячейки
+ * @return {Object|null} - конфигурация или null если не найдена
+ */
+function loadCollectConfig(sheetName, cellAddress) {
+  var configSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ConfigData');
+  if (!configSheet) return null;
+  var rowIndex = findExistingConfig(configSheet, sheetName, cellAddress);
+  if (rowIndex <= 0) return null;
+
+  var rowData = configSheet.getRange(rowIndex, 1, 1, 8).getValues()[0];
+  var userData = [];
+  try {
+    if (rowData[4]) userData = JSON.parse(rowData[4]);
+  } catch (e) { /* ignore malformed JSON */ }
+
+  return {
+    systemPrompt: (rowData[2] && rowData[3]) ? { sheet: rowData[2], cell: rowData[3] } : null,
+    userData: userData,
+    name: rowData[7] || ''
+  };
+}
+
+/**
+ * Найти существующую конфигурацию в таблице ConfigData
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} configSheet - Лист с конфигурациями
+ * @param {string} sheetName - Имя листа
+ * @param {string} cellAddress - Адрес ячейки
+ * @return {number} - номер строки или -1 если не найдено
+ */
+function findExistingConfig(configSheet, sheetName, cellAddress) {
+  var data = configSheet.getRange(2, 1, configSheet.getLastRow() - 1, 2).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (data[i][0] === sheetName && data[i][1] === cellAddress) return i + 2;
+  }
+  return -1;
+}
+
+/**
+ * Обновить время последнего запуска для конфигурации
+ * @param {string} sheetName - Имя листа
+ * @param {string} cellAddress - Адрес ячейки
+ */
+function updateLastRun(sheetName, cellAddress) {
+  var configSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ConfigData');
+  if (!configSheet) return;
+  var rowIndex = findExistingConfig(configSheet, sheetName, cellAddress);
+  if (rowIndex > 0) {
+    configSheet.getRange(rowIndex, 7).setValue(new Date().toISOString());
+  }
+}
+
+/**
+ * Сбор данных из диапазона ячеек
+ * @param {string} sheetName - Имя листа
+ * @param {string} cellAddress - Адрес ячейки или диапазона
+ * @return {string} - данные из ячеек, объединенные через \n
+ */
+function collectDataFromRange(sheetName, cellAddress) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) throw new Error(`Лист \"${sheetName}\" не найден.`);
+  
+  if (/^[A-Z]+:[A-Z]+$/.test(cellAddress)) {
+    var col = cellAddress.split(':')[0];
+    var fullRangeAddress = `${col}1:${col}${sheet.getLastRow()}`;
+    return sheet.getRange(fullRangeAddress).getValues().flat().filter(String).join('\n');
+  } else {
+    return sheet.getRange(cellAddress).getValues().flat().filter(String).join('\n');
   }
 }
