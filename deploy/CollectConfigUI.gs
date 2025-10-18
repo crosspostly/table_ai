@@ -2,9 +2,12 @@
  * Collect Config UI Functions
  * Функции для работы с веб-интерфейсом настройки
  *
- * Version: 1.0.0
- * Last updated: 2024-10-14
+ * Version: 2.1.0
+ * Last updated: 2025-01-18 13:30:00
  */
+
+const COLLECT_CONFIG_VERSION = '2.1.0';
+const COLLECT_CONFIG_UPDATED = new Date('2025-01-18T13:30:00');
 
 /**
  * Открыть интерфейс настройки для текущей ячейки
@@ -163,6 +166,9 @@ function getCollectConfigInitData() {
     const sheetName = sheet.getName();
     const cellAddress = range.getA1Notation();
     const sheets = getAllSheetNames();
+
+    // ✅ Создаём базовый пресет при первом открытии
+    createDefaultPreset();
 
     return {
       sheetName: sheetName,
@@ -614,6 +620,7 @@ function serverGetTemplatesStats() {
  */
 function executeCollectConfig(sheetName, cellAddress) {
   const logCtx = {traceId: Utilities.getUuid(), target: `'${sheetName}'!${cellAddress}`};
+  addLog(`🔧 Collect Config v${COLLECT_CONFIG_VERSION} (обновлено: ${COLLECT_CONFIG_UPDATED.toLocaleString('ru-RU')})`, 'INFO');
   addLog('executeCollectConfig START', 'INFO');
 
   try {
@@ -795,7 +802,17 @@ function collectDataFromRange(sheetName, cellAddress) {
   }
 
   // Нормализация адреса для обработки
-  const normalizedAddress = cellAddress.trim().toUpperCase();
+  let normalizedAddress = cellAddress.trim().toUpperCase();
+
+  // ✅ ИСПРАВЛЕНИЕ: B1:B → B:B (частичный столбец преобразуем в полный)
+  const partialColumnRegex = /^([A-Z]+)1:([A-Z]+)$/;
+  const partialMatch = normalizedAddress.match(partialColumnRegex);
+  if (partialMatch && partialMatch[1] === partialMatch[2]) {
+    // B1:B → B:B
+    const col = partialMatch[1];
+    normalizedAddress = `${col}:${col}`;
+    addLog(`🔄 Автокоррекция: ${cellAddress} → ${normalizedAddress} (полный столбец)`, 'INFO');
+  }
 
   try {
     // Случай 1: Полный столбец (C:C, A:B)
@@ -1575,5 +1592,41 @@ function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
       success: false,
       error: error.message,
     };
+  }
+}
+
+/**
+ * Создать базовый пресет с часто используемыми настройками
+ * ВЫЗЫВАЕТСЯ АВТОМАТИЧЕСКИ при первом открытии UI
+ */
+function createDefaultPreset() {
+  try {
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const templates = getAllTemplates(user);
+    
+    // Если уже есть пресет "По умолчанию", не создаём
+    if (templates['По умолчанию']) {
+      return;
+    }
+    
+    // Создаём базовую конфигурацию
+    const defaultConfig = {
+      systemPrompt: {
+        sheet: 'Prompt_box',
+        cell: 'E2'
+      },
+      userData: [
+        {
+          sheet: 'отзывы',
+          cell: 'B:B' // Автоматически конвертируется из B1:B
+        }
+      ]
+    };
+    
+    // Сохраняем как шаблон
+    saveTemplate(user, 'По умолчанию', defaultConfig);
+    addLog('✅ Создан базовый пресет "По умолчанию"', 'INFO');
+  } catch (error) {
+    addLog(`Ошибка создания базового пресета: ${error.message}`, 'WARN');
   }
 }
