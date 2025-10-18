@@ -296,14 +296,25 @@ function getAllSheetNames() {
  */
 function getCellPreview(sheetName, cellAddress) {
   try {
+    // Валидация входных параметров
+    if (!sheetName || !cellAddress) {
+      return '⚠️ Укажите лист и ячейку';
+    }
+    
+    // Проверка что cellAddress не пустой после trim
+    const cleanAddress = cellAddress.trim();
+    if (cleanAddress === '') {
+      return '⚠️ Укажите адрес ячейки (например A1 или C)';
+    }
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(sheetName);
 
     if (!sheet) {
-      return '❌ Лист не найден';
+      return `❌ Лист "${sheetName}" не найден`;
     }
 
-    const cell = sheet.getRange(cellAddress);
+    const cell = sheet.getRange(cleanAddress);
     const value = cell.getValue();
 
     if (!value || value.toString().trim() === '') {
@@ -318,7 +329,7 @@ function getCellPreview(sheetName, cellAddress) {
 
     return text.substring(0, 100) + '...';
   } catch (error) {
-    return '❌ Ошибка: ' + error.message;
+    return `❌ Ошибка: ${error.message}`;
   }
 }
 
