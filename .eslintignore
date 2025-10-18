@@ -1,0 +1,6 @@
+node_modules/
+coverage/
+system_integrations/
+*.txt
+*.md
+.git/

@@ -516,8 +516,8 @@ function prepareChainFromPromptBox() {
     addLog('📝 Формула установлена → Распаковка!' + m.targetA1 + ' из Prompt_box!F' + m.promptRow, 'INFO');
   }
 
-  SpreadsheetApp.getUi().alert('✅ Готово: формулы расставлены по целям из Prompt_box!B.
-Первая ячейка запустится при заполнении соответствующего A-столбца, далее — по фразе готовности.');
+  SpreadsheetApp.getUi().alert('✅ Готово: формулы расставлены по целям из Prompt_box!B.\\n' +
+    'Первая ячейка запустится при заполнении соответствующего A-столбца, далее — по фразе готовности.');
 }
 function prepareChainForA3() {
   var ss = SpreadsheetApp.getActive();
@@ -1107,7 +1107,8 @@ function GM(prompt, maxTokens, temperature) {
  */
 function openCollectConfigUI() {
   try {
-    var html = HtmlService.createHtmlOutputFromFile('CollectConfigUI_v2')
+    // ВАЖНО: В Apps Script HTML файл должен называться 'CollectConfigUI' (без _v2)
+    var html = HtmlService.createHtmlOutputFromFile('CollectConfigUI')
       .setWidth(800)
       .setHeight(600)
       .setTitle('🎯 AI Конструктор - Template System v2.0');

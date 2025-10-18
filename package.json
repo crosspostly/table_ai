@@ -1,0 +1,48 @@
+{
+  "name": "table-ai",
+  "version": "2.0.0",
+  "description": "Table AI - Google Sheets AI Integration with Template System",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "lint": "eslint '**/*.{js,gs}' --ignore-pattern 'node_modules/'",
+    "lint:fix": "eslint '**/*.{js,gs}' --fix --ignore-pattern 'node_modules/'",
+    "validate": "npm run lint && npm run test",
+    "clasp:push": "cd system_integrations && clasp push",
+    "clasp:pull": "cd system_integrations && clasp pull"
+  },
+  "keywords": [
+    "google-apps-script",
+    "google-sheets",
+    "ai",
+    "gemini",
+    "template-system"
+  ],
+  "author": "crosspostly",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/google-apps-script": "^1.0.83",
+    "@types/jest": "^29.5.11",
+    "eslint": "^8.56.0",
+    "eslint-config-google": "^0.14.0",
+    "jest": "^29.7.0"
+  },
+  "dependencies": {
+    "@google/clasp": "^2.4.2"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageDirectory": "coverage",
+    "collectCoverageFrom": [
+      "deploy/**/*.gs",
+      "collect_config/**/*.gs",
+      "!**/node_modules/**"
+    ],
+    "testMatch": [
+      "**/__tests__/**/*.test.js",
+      "**/?(*.)+(spec|test).js"
+    ],
+    "transform": {}
+  }
+}
