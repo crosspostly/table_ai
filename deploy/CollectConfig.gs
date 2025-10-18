@@ -530,6 +530,25 @@ function serverGetAllTemplates() {
   }
 }
 
+function serverGetTemplate(templateName) {
+  try {
+    if (!templateName) {
+      return null;
+    }
+    
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const template = getTemplate(user, templateName);
+    
+    if (!template) {
+      return null;
+    }
+    
+    return template.config || template;
+  } catch (e) {
+    return null;
+  }
+}
+
 function serverGetTemplatesStats() {
   try {
     const user = Session.getActiveUser().getEmail() || 'anonymous';
@@ -554,6 +573,32 @@ function serverDeleteTemplate(templateName) {
     return deleteTemplate(user, templateName);
   } catch (e) {
     return {success: false, message: e.message};
+  }
+}
+
+// ============================================================================
+// УДАЛЕНИЕ КОНФИГУРАЦИИ
+// ============================================================================
+function deleteCollectConfig(sheetName, cellAddress) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ConfigData');
+    
+    if (!configSheet) {
+      return {success: false, message: 'Нет сохранённых конфигураций'};
+    }
+    
+    const data = configSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
+        configSheet.deleteRow(i + 1);
+        return {success: true, message: 'Конфигурация удалена'};
+      }
+    }
+    
+    return {success: false, message: 'Конфигурация не найдена'};
+  } catch (error) {
+    return {success: false, message: error.message};
   }
 }
 
