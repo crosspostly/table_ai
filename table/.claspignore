@@ -1,0 +1,12 @@
+# Client Project: client/, shared/, web/
+
+# Игнорировать ВСЁ по умолчанию
+**/*
+
+# Включить только client, shared, web
+!client/**
+!shared/**
+!web/**
+
+# Включить только корневой appsscript.json (НЕ server/appsscript.json)
+!appsscript.json
