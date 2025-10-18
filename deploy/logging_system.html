@@ -1,0 +1,98 @@
+<!-- 
+  СИСТЕМА ЛОГИРОВАНИЯ для CollectConfigUI
+  Этот код нужно ИНЖЕКТИРОВАТЬ в CollectConfigUI.html
+-->
+
+<style>
+.log-panel {
+  margin-top: 20px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dadce0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.log-panel h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #5f6368;
+}
+
+.log-entry {
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  background: white;
+  border-left: 3px solid #dadce0;
+}
+
+.log-entry.info {
+  border-left-color: #1a73e8;
+  color: #1967d2;
+}
+
+.log-entry.success {
+  border-left-color: #34a853;
+  color: #137333;
+}
+
+.log-entry.warn {
+  border-left-color: #fbbc04;
+  color: #ea8600;
+}
+
+.log-entry.error {
+  border-left-color: #ea4335;
+  color: #c5221f;
+}
+</style>
+
+<!-- LOG PANEL HTML -->
+<div class="log-panel" id="logPanel" style="display:none;">
+  <h3>📋 Детальное логирование</h3>
+  <div id="logEntries"></div>
+</div>
+
+<script>
+// ============================================================================
+// СИСТЕМА ЛОГИРОВАНИЯ
+// ============================================================================
+
+function addLogEntry(message, level) {
+  level = level || 'info';
+  const panel = document.getElementById('logPanel');
+  const entries = document.getElementById('logEntries');
+  
+  // Показываем панель
+  panel.style.display = 'block';
+  
+  // Создаём запись
+  const entry = document.createElement('div');
+  entry.className = 'log-entry ' + level.toLowerCase();
+  const timestamp = new Date().toLocaleTimeString('ru-RU');
+  entry.textContent = '[' + timestamp + '] ' + message;
+  
+  // Добавляем в начало списка
+  entries.insertBefore(entry, entries.firstChild);
+  
+  // Ограничиваем количество логов (последние 50)
+  while (entries.children.length > 50) {
+    entries.removeChild(entries.lastChild);
+  }
+  
+  // Автопрокрутка вверх к новым логам
+  panel.scrollTop = 0;
+}
+
+function clearLogs() {
+  document.getElementById('logEntries').innerHTML = '';
+}
+
+// Добавляем начальный лог при загрузке
+addLogEntry('✅ Система логирования инициализирована', 'success');
+</script>

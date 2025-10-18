@@ -3,19 +3,19 @@
  * Защищает от XSS, SQL injection, и других атак
  */
 
-var SecurityValidator = {
-  
+const SecurityValidator = {
+
   /**
    * Типы валидации
    */
   ValidationTypes: {
     EMAIL: 'email',
-    API_KEY: 'api_key', 
+    API_KEY: 'api_key',
     PROMPT: 'prompt',
     URL: 'url',
-    GENERAL: 'general'
+    GENERAL: 'general',
   },
-  
+
   /**
    * Стандартные типы ошибок
    */
@@ -26,9 +26,9 @@ var SecurityValidator = {
     INVALID_EMAIL: 'INVALID_EMAIL',
     INVALID_API_KEY: 'INVALID_API_KEY',
     TOO_LONG: 'TOO_LONG',
-    EMPTY_INPUT: 'EMPTY_INPUT'
+    EMPTY_INPUT: 'EMPTY_INPUT',
   },
-  
+
   /**
    * Основная функция валидации
    * @param {string} input - входные данные
@@ -36,230 +36,230 @@ var SecurityValidator = {
    * @return {Object} результат валидации {isValid: boolean, sanitized: string, errors: Array}
    */
   validateInput: function(input, type) {
-    var result = {
+    const result = {
       isValid: false,
       sanitized: '',
-      errors: []
+      errors: [],
     };
-    
+
     if (!input || typeof input !== 'string') {
       result.errors.push(this.ErrorTypes.EMPTY_INPUT);
       return result;
     }
-    
+
     try {
       switch (type) {
-        case this.ValidationTypes.EMAIL:
-          return this.validateEmail(input);
-        case this.ValidationTypes.API_KEY:
-          return this.validateApiKey(input);
-        case this.ValidationTypes.PROMPT:
-          return this.validatePrompt(input);
-        case this.ValidationTypes.URL:
-          return this.validateUrl(input);
-        default:
-          return this.validateGeneral(input);
+      case this.ValidationTypes.EMAIL:
+        return this.validateEmail(input);
+      case this.ValidationTypes.API_KEY:
+        return this.validateApiKey(input);
+      case this.ValidationTypes.PROMPT:
+        return this.validatePrompt(input);
+      case this.ValidationTypes.URL:
+        return this.validateUrl(input);
+      default:
+        return this.validateGeneral(input);
       }
     } catch (error) {
       result.errors.push('VALIDATION_ERROR: ' + error.message);
       return result;
     }
   },
-  
+
   /**
    * Валидация email адресов
    */
   validateEmail: function(email) {
-    var result = {
+    const result = {
       isValid: false,
       sanitized: '',
-      errors: []
+      errors: [],
     };
-    
+
     // Базовая очистка
-    var cleaned = email.trim().toLowerCase();
-    
+    const cleaned = email.trim().toLowerCase();
+
     // Проверка длины
     if (cleaned.length > 254) {
       result.errors.push(this.ErrorTypes.TOO_LONG);
       return result;
     }
-    
+
     // Регулярное выражение для email
-    var emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    
+    const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
     if (!emailPattern.test(cleaned)) {
       result.errors.push(this.ErrorTypes.INVALID_EMAIL);
       return result;
     }
-    
+
     result.isValid = true;
     result.sanitized = cleaned;
     return result;
   },
-  
+
   /**
    * Валидация API ключей
    */
   validateApiKey: function(apiKey) {
-    var result = {
+    const result = {
       isValid: false,
       sanitized: '',
-      errors: []
+      errors: [],
     };
-    
-    var cleaned = apiKey.trim();
-    
+
+    const cleaned = apiKey.trim();
+
     // Проверка длины
     if (cleaned.length < 10) {
       result.errors.push(this.ErrorTypes.INVALID_API_KEY);
       return result;
     }
-    
+
     if (cleaned.length > 500) {
       result.errors.push(this.ErrorTypes.TOO_LONG);
       return result;
     }
-    
+
     // Проверка на допустимые символы (буквы, цифры, дефисы, подчеркивания)
-    var apiKeyPattern = /^[a-zA-Z0-9_-]+$/;
-    
+    const apiKeyPattern = /^[a-zA-Z0-9_-]+$/;
+
     if (!apiKeyPattern.test(cleaned)) {
       result.errors.push(this.ErrorTypes.INVALID_API_KEY);
       return result;
     }
-    
+
     result.isValid = true;
     result.sanitized = cleaned;
     return result;
   },
-  
+
   /**
    * Валидация промптов для Gemini
    */
   validatePrompt: function(prompt) {
-    var result = {
+    const result = {
       isValid: false,
       sanitized: '',
-      errors: []
+      errors: [],
     };
-    
+
     // Проверка длины
     if (prompt.length > 100000) { // 100KB лимит
       result.errors.push(this.ErrorTypes.TOO_LONG);
       return result;
     }
-    
+
     // XSS защита - удаляем потенциально опасные теги
-    var sanitized = prompt
+    const sanitized = prompt
       .replace(/<script[^>]*>.*?<\/script>/gi, '[SCRIPT_REMOVED]') // XSS защита
-      .replace(/javascript:/gi, 'js-removed:') // JavaScript URL защита  
+      .replace(/javascript:/gi, 'js-removed:') // JavaScript URL защита
       .replace(/data:text\/html/gi, 'data-removed') // Data URL защита
       .replace(/vbscript:/gi, 'vbs-removed:'); // VBScript защита
-    
+
     // SQL injection защита
-    var sqlPatterns = [
+    const sqlPatterns = [
       /union\s+select/gi,
       /drop\s+table/gi,
       /delete\s+from/gi,
       /insert\s+into/gi,
-      /update\s+set/gi
+      /update\s+set/gi,
     ];
-    
-    for (var i = 0; i < sqlPatterns.length; i++) {
+
+    for (let i = 0; i < sqlPatterns.length; i++) {
       if (sqlPatterns[i].test(sanitized)) {
         result.errors.push(this.ErrorTypes.SQL_INJECTION);
         return result;
       }
     }
-    
+
     result.isValid = true;
     result.sanitized = sanitized;
     return result;
   },
-  
+
   /**
    * Валидация URL
    */
   validateUrl: function(url) {
-    var result = {
+    const result = {
       isValid: false,
       sanitized: '',
-      errors: []
+      errors: [],
     };
-    
-    var cleaned = url.trim();
-    
+
+    const cleaned = url.trim();
+
     // Проверка длины
     if (cleaned.length > 2048) {
       result.errors.push(this.ErrorTypes.TOO_LONG);
       return result;
     }
-    
+
     // Проверка на допустимые протоколы
-    var allowedProtocols = /^https?:\/\//i;
-    
+    const allowedProtocols = /^https?:\/\//i;
+
     if (!allowedProtocols.test(cleaned)) {
       result.errors.push(this.ErrorTypes.DANGEROUS_URL);
       return result;
     }
-    
+
     // Проверка на опасные домены
-    var dangerousPatterns = [
+    const dangerousPatterns = [
       /localhost/i,
       /127\.0\.0\.1/i,
       /0\.0\.0\.0/i,
       /file:\/\//i,
-      /ftp:\/\//i
+      /ftp:\/\//i,
     ];
-    
-    for (var i = 0; i < dangerousPatterns.length; i++) {
+
+    for (let i = 0; i < dangerousPatterns.length; i++) {
       if (dangerousPatterns[i].test(cleaned)) {
         result.errors.push(this.ErrorTypes.DANGEROUS_URL);
         return result;
       }
     }
-    
+
     result.isValid = true;
     result.sanitized = cleaned;
     return result;
   },
-  
+
   /**
    * Общая валидация
    */
   validateGeneral: function(input) {
-    var result = {
+    const result = {
       isValid: false,
       sanitized: '',
-      errors: []
+      errors: [],
     };
-    
+
     // Проверка длины
     if (input.length > 10000) {
       result.errors.push(this.ErrorTypes.TOO_LONG);
       return result;
     }
-    
+
     // Базовая санитизация
-    var sanitized = input
+    const sanitized = input
       .replace(/<script[^>]*>.*?<\/script>/gi, '[SCRIPT_REMOVED]')
       .replace(/javascript:/gi, 'js-removed:');
-    
+
     result.isValid = true;
     result.sanitized = sanitized;
     return result;
   },
-  
+
   /**
    * 🔒 ВАЛИДАЦИЯ ПАРАМЕТРОВ GM функций
    * Восстановлена из коммита a3dae18
    */
   validateGMParams: function(maxTokens, temperature) {
-    var result = {
+    const result = {
       isValid: false,
       sanitized: {},
-      errors: []
+      errors: [],
     };
 
     // Валидация maxTokens
@@ -296,18 +296,18 @@ var SecurityValidator = {
     result.isValid = result.errors.length === 0;
     return result;
   },
-  
+
   /**
    * Безопасное логирование (маскирует sensitive данные)
    */
   safeLog: function(message, data) {
-    var safeData = {};
-    
+    const safeData = {};
+
     if (data && typeof data === 'object') {
-      for (var key in data) {
+      for (const key in data) {
         if (data.hasOwnProperty(key)) {
-          var value = data[key];
-          
+          const value = data[key];
+
           // Маскируем sensitive поля
           if (typeof value === 'string' && (
             key.toLowerCase().includes('password') ||
@@ -322,10 +322,10 @@ var SecurityValidator = {
         }
       }
     }
-    
+
     Logger.log('[SECURITY] ' + message + ': ' + JSON.stringify(safeData));
   },
-  
+
   /**
    * Безопасное логирование для строк - маскирует чувствительные данные
    */
@@ -333,21 +333,21 @@ var SecurityValidator = {
     if (typeof data !== 'string') {
       data = JSON.stringify(data);
     }
-    
+
     // Маскируем email
     data = data.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '***@***.***');
-    
+
     // Маскируем длинные токены (20+ символов)
     data = data.replace(/[A-Za-z0-9\-_]{20,}/g, function(match) {
       return match.substring(0, 4) + '***' + match.substring(match.length - 4);
     });
-    
+
     // Маскируем Bearer токены
     data = data.replace(/Bearer\s+[A-Za-z0-9\-_]+/gi, 'Bearer ***');
-    
+
     // Маскируем token: value паттерны
     data = data.replace(/token["\s]*[:=]["\s]*[^"\s]+/gi, 'token: ***');
-    
+
     return data;
   },
 
@@ -356,45 +356,44 @@ var SecurityValidator = {
    * Проверяет что VK токены остаются на сервере, а Gemini ключи на клиенте
    */
   testCredentialBoundaries: function() {
-    var results = [];
-    
+    const results = [];
+
     try {
       // Проверяем что клиентский код НЕ имеет доступа к VK токенам
-      var props = PropertiesService.getScriptProperties();
-      var vkToken = props.getProperty('VK_ACCESS_TOKEN');
-      
+      const props = PropertiesService.getScriptProperties();
+      const vkToken = props.getProperty('VK_ACCESS_TOKEN');
+
       if (vkToken) {
         results.push({
           test: 'VK Token Boundary Violation',
           passed: false,
-          details: 'VK token found in client properties - should be server-only'
+          details: 'VK token found in client properties - should be server-only',
         });
       } else {
         results.push({
           test: 'VK Token Boundary',
           passed: true,
-          details: 'VK tokens correctly isolated to server'
+          details: 'VK tokens correctly isolated to server',
         });
       }
-      
+
       // Проверяем что Gemini ключи доступны клиенту (это нормально)
-      var geminiKey = props.getProperty('GEMINI_API_KEY');
+      const geminiKey = props.getProperty('GEMINI_API_KEY');
       results.push({
         test: 'Gemini API Key Access',
         passed: true,
-        details: 'Gemini keys correctly accessible to client for direct API calls'
+        details: 'Gemini keys correctly accessible to client for direct API calls',
       });
-      
     } catch (error) {
       results.push({
         test: 'Credential Boundary Test',
         passed: false,
-        error: error.message
+        error: error.message,
       });
     }
-    
+
     return results;
-  }
+  },
 };
 
 /**
@@ -404,11 +403,11 @@ var SecurityValidator = {
 function handleSecureError(error, context) {
   try {
     // Безопасное логирование контекста
-    var safeContext = {};
+    const safeContext = {};
     if (context && typeof context === 'object') {
-      for (var key in context) {
+      for (const key in context) {
         if (context.hasOwnProperty(key)) {
-          var value = context[key];
+          const value = context[key];
           // Маскируем sensitive данные
           if (typeof value === 'string' && (
             key.toLowerCase().includes('token') ||
@@ -422,16 +421,16 @@ function handleSecureError(error, context) {
         }
       }
     }
-    
+
     // Безопасное сообщение об ошибке
-    var errorMessage = error && error.message ? error.message : String(error);
-    var safeErrorMessage = errorMessage.replace(/[A-Za-z0-9_-]{20,}/g, function(match) {
+    const errorMessage = error && error.message ? error.message : String(error);
+    const safeErrorMessage = errorMessage.replace(/[A-Za-z0-9_-]{20,}/g, function(match) {
       return match.substring(0, 4) + '***';
     });
-    
+
     // Логируем с маскировкой
     addSystemLog('🚨 SECURE ERROR: ' + safeErrorMessage + ' | Context: ' + JSON.stringify(safeContext), 'ERROR', 'SECURITY');
-    
+
     // Возвращаем безопасное сообщение для пользователя
     if (errorMessage.includes('API')) {
       return 'Ошибка API. Проверьте настройки ключей.';
@@ -442,7 +441,6 @@ function handleSecureError(error, context) {
     } else {
       return 'Произошла ошибка при выполнении операции. Проверьте настройки.';
     }
-    
   } catch (handlingError) {
     // Если даже обработка ошибки провалилась
     addSystemLog('🚨 CRITICAL: Error handling failed: ' + handlingError.message, 'ERROR', 'CRITICAL');

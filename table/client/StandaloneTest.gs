@@ -5,38 +5,37 @@
 function testStandaloneProject() {
   try {
     // Проверим базовые API
-    var result = "✅ ТЕСТЫ:\n\n";
-    
+    let result = '✅ ТЕСТЫ:\n\n';
+
     // 1. Utilities API
-    result += "1. Utilities.getUuid(): " + Utilities.getUuid().substring(0, 8) + "...\n";
-    
-    // 2. Properties Service  
+    result += '1. Utilities.getUuid(): ' + Utilities.getUuid().substring(0, 8) + '...\n';
+
+    // 2. Properties Service
     PropertiesService.getScriptProperties().setProperty('test', 'ok');
-    var prop = PropertiesService.getScriptProperties().getProperty('test');
-    result += "2. PropertiesService: " + prop + "\n";
-    
+    const prop = PropertiesService.getScriptProperties().getProperty('test');
+    result += '2. PropertiesService: ' + prop + '\n';
+
     // 3. Cache Service
     CacheService.getScriptCache().put('test', 'cached', 60);
-    var cached = CacheService.getScriptCache().get('test');
-    result += "3. CacheService: " + cached + "\n";
-    
+    const cached = CacheService.getScriptCache().get('test');
+    result += '3. CacheService: ' + cached + '\n';
+
     // 4. Lock Service
-    var lock = LockService.getScriptLock();
-    result += "4. LockService: готов\n";
-    
+    const lock = LockService.getScriptLock();
+    result += '4. LockService: готов\n';
+
     // 5. HTML Service (БЕЗ UI)
-    var html = HtmlService.createHtmlOutput('<h1>HTML сервис работает</h1>');
-    result += "5. HtmlService: готов\n";
-    
-    result += "\n🎯 ПРОЕКТ РАБОТАЕТ В STANDALONE РЕЖИМЕ!\n";
-    result += "❌ НО UI НЕДОСТУПЕН в standalone проектах\n";
-    result += "✅ НУЖНО СОЗДАТЬ ПРОЕКТ ЧЕРЕЗ GOOGLE SHEETS";
-    
+    const html = HtmlService.createHtmlOutput('<h1>HTML сервис работает</h1>');
+    result += '5. HtmlService: готов\n';
+
+    result += '\n🎯 ПРОЕКТ РАБОТАЕТ В STANDALONE РЕЖИМЕ!\n';
+    result += '❌ НО UI НЕДОСТУПЕН в standalone проектах\n';
+    result += '✅ НУЖНО СОЗДАТЬ ПРОЕКТ ЧЕРЕЗ GOOGLE SHEETS';
+
     console.log(result);
     return result;
-    
   } catch (error) {
-    var errorMsg = "❌ ОШИБКА: " + error.message;
+    const errorMsg = '❌ ОШИБКА: ' + error.message;
     console.log(errorMsg);
     return errorMsg;
   }
@@ -49,7 +48,7 @@ function testStandaloneProject() {
 function createExternalInterface() {
   try {
     // Создаем HTML страницу
-    var html = `
+    const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -100,17 +99,16 @@ function createExternalInterface() {
 
     // Сохраняем HTML в Properties для доступа
     PropertiesService.getScriptProperties().setProperty('EXTERNAL_UI_HTML', html);
-    
+
     // Создаем ссылку для доступа
-    var result = "✅ ВНЕШНИЙ ИНТЕРФЕЙС СОЗДАН!\n\n";
-    result += "📋 HTML код сохранен в Properties\n";
-    result += "🔗 Скопируйте HTML из Properties и откройте в браузере\n";
-    result += "⚡ Или используйте HtmlService.createHtmlOutput() в связанном с Sheets проекте";
-    
+    let result = '✅ ВНЕШНИЙ ИНТЕРФЕЙС СОЗДАН!\n\n';
+    result += '📋 HTML код сохранен в Properties\n';
+    result += '🔗 Скопируйте HTML из Properties и откройте в браузере\n';
+    result += '⚡ Или используйте HtmlService.createHtmlOutput() в связанном с Sheets проекте';
+
     return result;
-    
   } catch (error) {
-    return "❌ Ошибка создания интерфейса: " + error.message;
+    return '❌ Ошибка создания интерфейса: ' + error.message;
   }
 }
 
