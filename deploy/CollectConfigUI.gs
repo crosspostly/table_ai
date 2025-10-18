@@ -804,16 +804,6 @@ function collectDataFromRange(sheetName, cellAddress) {
   // Нормализация адреса для обработки
   let normalizedAddress = cellAddress.trim().toUpperCase();
 
-  // ✅ ИСПРАВЛЕНИЕ: B1:B → B:B (частичный столбец преобразуем в полный)
-  const partialColumnRegex = /^([A-Z]+)1:([A-Z]+)$/;
-  const partialMatch = normalizedAddress.match(partialColumnRegex);
-  if (partialMatch && partialMatch[1] === partialMatch[2]) {
-    // B1:B → B:B
-    const col = partialMatch[1];
-    normalizedAddress = `${col}:${col}`;
-    addLog(`🔄 Автокоррекция: ${cellAddress} → ${normalizedAddress} (полный столбец)`, 'INFO');
-  }
-
   try {
     // Случай 1: Полный столбец (C:C, A:B)
     if (/^[A-Z]+:[A-Z]+$/.test(normalizedAddress)) {
