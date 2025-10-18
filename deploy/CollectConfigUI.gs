@@ -1479,3 +1479,35 @@ function showConfigStats() {
     ui.alert('❌ Ошибка статистики', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
   }
 }
+
+/**
+ * КРИТИЧНО: Функция которая вызывается из HTML UI
+ * Сохраняет конфигурацию и сразу выполняет её
+ * @param {string} sheetName - имя листа где находится целевая ячейка
+ * @param {string} cellAddress - адрес целевой ячейки (куда писать результат)
+ * @param {Object} config - конфигурация с systemPrompt и userData
+ * @return {Object} - {success: boolean, result?: string, error?: string}
+ */
+function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
+  try {
+    addLog(`saveAndExecuteCollectConfig START: sheet="${sheetName}", cell="${cellAddress}"`, 'INFO');
+    
+    // 1. Сначала СОХРАНЯЕМ конфигурацию
+    saveCollectConfig(sheetName, cellAddress, config);
+    addLog('Configuration saved successfully', 'INFO');
+    
+    // 2. Затем ВЫПОЛНЯЕМ её
+    const result = executeCollectConfig(sheetName, cellAddress);
+    addLog(`saveAndExecuteCollectConfig END: success=${result.success}`, 'INFO');
+    
+    return result;
+    
+  } catch (error) {
+    const errorMsg = `saveAndExecuteCollectConfig FAILED: ${error.message}`;
+    addLog(errorMsg, 'ERROR');
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
