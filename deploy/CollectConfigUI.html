@@ -12,7 +12,7 @@
     }
     
     .container {
-      max-width: 650px;
+      max-width: 600px;
       margin: 0 auto;
       background: white;
       padding: 24px;
@@ -31,42 +31,77 @@
       background: #e8f0fe;
       padding: 12px;
       border-radius: 4px;
-      margin-bottom: 20px;
+      margin-bottom: 24px;
       color: #1967d2;
       font-weight: 500;
-      font-size: 14px;
     }
     
     .section {
-      margin-bottom: 20px;
+      margin-bottom: 24px;
     }
     
     .section-title {
       font-weight: 500;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
       color: #5f6368;
-      font-size: 13px;
+      font-size: 14px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
     
-    .templates-section {
-      background: #f1f3f4;
-      padding: 16px;
-      border-radius: 8px;
-      margin-bottom: 20px;
+    .cell-preview {
+      margin-top: 4px;
+      padding: 8px;
+      background: #f8f9fa;
+      border-left: 3px solid #1a73e8;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #5f6368;
+      font-family: 'Courier New', monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 60px;
+      overflow-y: auto;
+    }
+    
+    .cell-preview.empty {
+      color: #9aa0a6;
+      font-style: italic;
+    }
+    
+    .cell-preview.error {
+      border-left-color: #ea4335;
+      color: #d93025;
     }
     
     .input-group {
       display: flex;
       gap: 8px;
-      margin-bottom: 8px;
-      align-items: center;
+      margin-bottom: 4px;
     }
     
-    input[type="text"],
-    select {
-      flex: 1;
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: #5f6368;
+    }
+    
+    .checkbox-group input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+    
+    .checkbox-group label {
+      cursor: pointer;
+      user-select: none;
+    }
+    
+    select, input[type="text"] {
       padding: 10px 12px;
       border: 1px solid #dadce0;
       border-radius: 4px;
@@ -75,104 +110,114 @@
       transition: border-color 0.2s;
     }
     
-    input[type="text"]:focus,
-    select:focus {
+    select:focus, input[type="text"]:focus {
       outline: none;
       border-color: #1a73e8;
-      box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.1);
     }
     
-    .btn {
-      padding: 10px 16px;
-      border: none;
-      border-radius: 4px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-      text-align: center;
-      white-space: nowrap;
-    }
-    
-    .btn-primary {
-      background: #1a73e8;
-      color: white;
-      flex: 2;
-    }
-    
-    .btn-primary:hover {
-      background: #1557b0;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-    }
-    
-    .btn-secondary {
-      background: #fff;
-      color: #5f6368;
-      border: 1px solid #dadce0;
+    select {
       flex: 1;
     }
     
-    .btn-secondary:hover {
-      background: #f8f9fa;
-      border-color: #bdc1c6;
+    input[type="text"] {
+      flex: 0 0 120px;
     }
     
-    .btn-danger {
+    .data-item {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: center;
+    }
+    
+    .data-item select {
+      flex: 1;
+    }
+    
+    .data-item input {
+      flex: 0 0 120px;
+    }
+    
+    .remove-btn {
       background: #fff;
+      border: 1px solid #dadce0;
+      color: #5f6368;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    
+    .remove-btn:hover {
+      background: #f8f9fa;
+      border-color: #d93025;
       color: #d93025;
-      border: 1px solid #d93025;
-      padding: 10px 14px;
-    }
-    
-    .btn-danger:hover {
-      background: #fce8e6;
-    }
-    
-    .btn-small {
-      padding: 6px 10px;
-      font-size: 12px;
     }
     
     .add-btn {
-      padding: 8px 12px;
-      border: 1px dashed #5f6368;
-      background: transparent;
-      color: #5f6368;
+      background: #fff;
+      border: 1px solid #1a73e8;
+      color: #1a73e8;
+      padding: 10px 16px;
       border-radius: 4px;
       cursor: pointer;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 500;
       transition: all 0.2s;
       width: 100%;
     }
     
     .add-btn:hover {
-      border-color: #1a73e8;
-      color: #1a73e8;
-      background: #f8fbff;
-    }
-    
-    .remove-btn {
-      background: transparent;
-      border: none;
-      color: #d93025;
-      cursor: pointer;
-      font-size: 18px;
-      padding: 8px;
-      line-height: 1;
-      border-radius: 4px;
-      transition: all 0.2s;
-    }
-    
-    .remove-btn:hover {
-      background: #fce8e6;
+      background: #e8f0fe;
     }
     
     .actions {
       display: flex;
       gap: 12px;
       margin-top: 24px;
-      flex-wrap: wrap;
+    }
+    
+    .btn {
+      flex: 1;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background: #1a73e8;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #1765cc;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+    }
+    
+    .btn-secondary {
+      background: #fff;
+      color: #5f6368;
+      border: 1px solid #dadce0;
+    }
+    
+    .btn-secondary:hover {
+      background: #f8f9fa;
+    }
+    
+    .btn-danger {
+      background: #fff;
+      color: #d93025;
+      border: 1px solid #dadce0;
+    }
+    
+    .btn-danger:hover {
+      background: #fce8e6;
+      border-color: #d93025;
     }
     
     .status {
@@ -180,492 +225,386 @@
       border-radius: 4px;
       margin-top: 16px;
       display: none;
-      font-size: 14px;
-    }
-    
-    .status.info {
-      display: block;
-      background: #e8f0fe;
-      color: #1967d2;
-      border-left: 4px solid #1a73e8;
     }
     
     .status.success {
-      display: block;
       background: #e6f4ea;
       color: #137333;
-      border-left: 4px solid #34a853;
     }
     
     .status.error {
-      display: block;
       background: #fce8e6;
       color: #c5221f;
-      border-left: 4px solid #ea4335;
     }
     
-    #userDataList .input-group {
-      padding: 8px;
-      background: white;
-      border-radius: 4px;
-      border: 1px solid #dadce0;
-      margin-bottom: 8px;
-    }
-    
-    hr {
-      border: none;
-      border-top: 1px solid #dadce0;
-      margin: 14px 0;
-    }
-    
-    .stats {
-      font-size: 11px;
+    .loading {
+      text-align: center;
       color: #5f6368;
-      margin-top: 8px;
-      padding: 6px 8px;
-      background: white;
-      border-radius: 4px;
+      padding: 20px;
+    }
+    
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid #dadce0;
+      border-top-color: #1a73e8;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>🎯 AI Конструктор v2.0</h2>
+    <h2>🎯 Настройка AI запроса</h2>
     <div class="cell-info" id="cellInfo">Загрузка...</div>
-
-    <!-- TEMPLATES SECTION -->
-    <div class="section templates-section">
-      <div class="section-title">📋 Шаблоны конфигураций</div>
-      
-      <div class="input-group">
-        <select id="templateSelect">
-          <option value="">-- Выберите шаблон --</option>
-        </select>
-        <button class="btn btn-secondary btn-small" onclick="loadSelectedTemplate()">📂 Загрузить</button>
-      </div>
-      
-      <hr>
-      
-      <div class="input-group">
-        <input type="text" id="templateNameInput" placeholder="Имя нового или обновленного шаблона..." />
-        <button class="btn btn-secondary btn-small" onclick="saveAsTemplate()">💾 Сохранить</button>
-        <button class="btn btn-danger btn-small" onclick="deleteSelectedTemplate()">❌</button>
-      </div>
-      
-      <div class="stats" id="templateStats">Шаблонов: 0</div>
-    </div>
-
-    <!-- SYSTEM PROMPT SECTION -->
+    
+    <!-- System Prompt -->
     <div class="section">
       <div class="section-title">📍 System Prompt (инструкция для AI)</div>
       <div class="input-group">
-        <select id="systemPromptSheet">
-          <option value="">-- Выберите лист --</option>
+        <select id="systemSheet" onchange="updateSystemPreview()">
+          <option value="">Выберите лист...</option>
         </select>
-        <input type="text" id="systemPromptCell" placeholder="Ячейка (например A1)" />
+        <input type="text" id="systemCell" placeholder="A1 или C" onblur="updateSystemPreview()" />
       </div>
+      <div class="checkbox-group">
+        <input type="checkbox" id="systemWholeColumn" onchange="handleColumnCheckbox('system')" />
+        <label for="systemWholeColumn">📊 Выбрать весь столбец (C → C1:C)</label>
+      </div>
+      <div id="systemPreview" class="cell-preview" style="display:none;"></div>
     </div>
-
-    <!-- USER DATA SECTION -->
+    
+    <!-- User Data -->
     <div class="section">
       <div class="section-title">📦 User Data (данные для обработки)</div>
       <div id="userDataList"></div>
       <button class="add-btn" onclick="addUserDataRow()">+ Добавить данные</button>
     </div>
-
-    <!-- ACTIONS -->
+    
+    <!-- Actions -->
     <div class="actions">
       <button class="btn btn-primary" onclick="runConfig()">🚀 Запустить</button>
-      <button class="btn btn-secondary" onclick="clearConfig()">🔄 Очистить</button>
+      <button class="btn btn-secondary" onclick="saveOnly()">💾 Сохранить</button>
+      <button class="btn btn-danger" onclick="resetConfig()">🔄 Сбросить</button>
     </div>
-
+    
     <div class="status" id="status"></div>
   </div>
 
   <script>
-    // ============================================================================
-    // GLOBAL STATE
-    // ============================================================================
+    let sheetName = '';
+    let cellAddress = '';
+    let sheets = [];
     
-    let activeCellInfo = null;
-
-    // ============================================================================
-    // INITIALIZATION
-    // ============================================================================
+    // Инициализация
+    google.script.run
+      .withSuccessHandler(initialize)
+      .withFailureHandler(showError)
+      .getCollectConfigInitData();
     
-    /**
-     * Runs when the dialog is opened
-     */
-    function onOpen() {
-      showStatus('Загрузка...', 'info');
+    function initialize(data) {
+      sheetName = data.sheetName;
+      cellAddress = data.cellAddress;
+      sheets = data.sheets;
       
-      // Get active cell context
-      google.script.run
-        .withSuccessHandler(context => {
-          activeCellInfo = context;
-          updateCellInfo(context);
-          loadSheetsList();
-          loadTemplatesList();
-          loadTemplatesStats();
-        })
-        .withFailureHandler(showError)
-        .getActiveCellContext();
-    }
-    
-    /**
-     * Updates the cell info display
-     */
-    function updateCellInfo(context) {
-      const cellInfoDiv = document.getElementById('cellInfo');
-      if (context.sheetName && context.a1Notation) {
-        cellInfoDiv.textContent = `📌 Целевая ячейка: ${context.sheetName}!${context.a1Notation}`;
-      } else {
-        cellInfoDiv.textContent = '⚠️ Не удалось определить активную ячейку. Результат не будет вставлен.';
-        cellInfoDiv.style.background = '#fce8e6';
-        cellInfoDiv.style.color = '#d93025';
-      }
-    }
-
-    /**
-     * Loads list of all sheets in the spreadsheet
-     */
-    function loadSheetsList() {
-      google.script.run
-        .withSuccessHandler(sheets => {
-          // Update System Prompt sheet select
-          const systemPromptSheet = document.getElementById('systemPromptSheet');
-          const currentValue = systemPromptSheet.value;
-          systemPromptSheet.options.length = 1; // Keep first option
-          
-          sheets.forEach(sheetName => {
-            const option = document.createElement('option');
-            option.value = sheetName;
-            option.textContent = sheetName;
-            systemPromptSheet.appendChild(option);
-          });
-          
-          // Restore selection if it was set
-          if (currentValue) systemPromptSheet.value = currentValue;
-          
-          // Update all user data sheet selects
-          updateUserDataSheetSelects(sheets);
-        })
-        .withFailureHandler(showError)
-        .getAllSheetNames();
-    }
-    
-    /**
-     * Updates all user data sheet select elements
-     */
-    function updateUserDataSheetSelects(sheets) {
-      const selects = document.querySelectorAll('.user-data-sheet-select');
-      selects.forEach(select => {
-        const currentValue = select.value;
-        select.options.length = 1; // Keep first option
-        
-        sheets.forEach(sheetName => {
-          const option = document.createElement('option');
-          option.value = sheetName;
-          option.textContent = sheetName;
-          select.appendChild(option);
-        });
-        
-        // Restore selection if it was set
-        if (currentValue) select.value = currentValue;
+      // Обновляем информацию о ячейке
+      document.getElementById('cellInfo').textContent = 
+        '📌 Ячейка: ' + sheetName + ' → ' + cellAddress;
+      
+      // Заполняем выпадающие списки листов
+      const systemSheet = document.getElementById('systemSheet');
+      sheets.forEach(function(sheet) {
+        const option = document.createElement('option');
+        option.value = sheet;
+        option.textContent = sheet;
+        systemSheet.appendChild(option);
       });
-    }
-
-    // ============================================================================
-    // TEMPLATE MANAGEMENT
-    // ============================================================================
-    
-    /**
-     * Loads list of available templates
-     */
-    function loadTemplatesList() {
-      google.script.run
-        .withSuccessHandler(templates => {
-          const select = document.getElementById('templateSelect');
-          select.options.length = 1; // Keep first option
-          
-          for (const templateName in templates) {
-            const option = document.createElement('option');
-            option.value = templateName;
-            option.textContent = templateName;
-            select.appendChild(option);
-          }
-        })
-        .withFailureHandler(showError)
-        .serverGetAllTemplates();
+      
+      // Загружаем существующую конфигурацию
+      loadExistingConfig();
     }
     
-    /**
-     * Loads selected template into UI
-     */
-    function loadSelectedTemplate() {
-      const select = document.getElementById('templateSelect');
-      const templateName = select.value;
-      
-      if (!templateName) {
-        showError(new Error('Выберите шаблон из списка'));
-        return;
-      }
-      
-      showStatus(`Загрузка шаблона "${templateName}"...`, 'info');
-      
+    function loadExistingConfig() {
       google.script.run
-        .withSuccessHandler(config => {
-          if (!config) {
-            showError(new Error(`Шаблон "${templateName}" не найден`));
-            return;
-          }
-          
-          // Populate UI
-          document.getElementById('systemPromptSheet').value = config.systemPrompt?.sheet || '';
-          document.getElementById('systemPromptCell').value = config.systemPrompt?.cell || '';
-          
-          const userDataList = document.getElementById('userDataList');
-          userDataList.innerHTML = '';
-          
-          if (config.userData && config.userData.length > 0) {
-            config.userData.forEach(ud => addUserDataRow(ud.sheet, ud.cell));
-          }
-          
-          document.getElementById('templateNameInput').value = templateName;
-          
-          showStatus(`Шаблон "${templateName}" загружен`, 'success');
-        })
-        .withFailureHandler(showError)
-        .serverGetTemplate(templateName);
-    }
-    
-    /**
-     * Saves current config as template
-     */
-    function saveAsTemplate() {
-      const templateName = document.getElementById('templateNameInput').value.trim();
-      
-      if (!templateName) {
-        showError(new Error('Введите имя шаблона'));
-        return;
-      }
-      
-      const config = getCurrentConfig();
-      
-      if (!config.systemPrompt.sheet || !config.systemPrompt.cell) {
-        showError(new Error('Укажите System Prompt (лист и ячейку)'));
-        return;
-      }
-      
-      showStatus(`Сохранение шаблона "${templateName}"...`, 'info');
-      
-      google.script.run
-        .withSuccessHandler(response => {
-          if (response.success) {
-            showStatus(response.message + (response.size ? ` (${response.size} байт)` : ''), 'success');
-            loadTemplatesList();
-            loadTemplatesStats();
+        .withSuccessHandler(function(config) {
+          if (config) {
+            // Заполняем System Prompt
+            if (config.systemPrompt) {
+              document.getElementById('systemSheet').value = config.systemPrompt.sheet;
+              document.getElementById('systemCell').value = config.systemPrompt.cell;
+            }
+            
+            // Заполняем User Data
+            if (config.userData && config.userData.length > 0) {
+              config.userData.forEach(function(data) {
+                addUserDataRow(data.sheet, data.cell);
+              });
+            } else {
+              addUserDataRow(); // Добавляем пустую строку
+            }
           } else {
-            showError(new Error(response.message));
+            addUserDataRow(); // Добавляем пустую строку
           }
         })
-        .withFailureHandler(showError)
-        .serverSaveTemplate(templateName, config);
+        .withFailureHandler(function() {
+          addUserDataRow(); // Добавляем пустую строку при ошибке
+        })
+        .loadCollectConfig(sheetName, cellAddress);
     }
     
-    /**
-     * Deletes selected template
-     */
-    function deleteSelectedTemplate() {
-      const select = document.getElementById('templateSelect');
-      const templateName = select.value;
+    function addUserDataRow(sheet, cell) {
+      const container = document.getElementById('userDataList');
+      const wrapper = document.createElement('div');
+      wrapper.style.marginBottom = '12px';
       
-      if (!templateName) {
-        showError(new Error('Выберите шаблон для удаления'));
-        return;
-      }
+      const item = document.createElement('div');
+      item.className = 'data-item';
       
-      if (!confirm(`Вы уверены, что хотите удалить шаблон "${templateName}"?`)) {
-        return;
-      }
+      const select = document.createElement('select');
+      sheets.forEach(function(s) {
+        const option = document.createElement('option');
+        option.value = s;
+        option.textContent = s;
+        if (s === sheet) option.selected = true;
+        select.appendChild(option);
+      });
       
-      showStatus(`Удаление шаблона "${templateName}"...`, 'info');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = 'A1 или C';
+      input.value = cell || '';
       
-      google.script.run
-        .withSuccessHandler(response => {
-          if (response.success) {
-            showStatus(response.message, 'success');
-            document.getElementById('templateNameInput').value = '';
-            clearConfig();
-            loadTemplatesList();
-            loadTemplatesStats();
-          } else {
-            showError(new Error(response.message));
+      // Чекбокс для выбора всего столбца
+      const checkboxWrapper = document.createElement('div');
+      checkboxWrapper.className = 'checkbox-group';
+      
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = 'wholeColumn_' + Date.now();
+      
+      const checkboxLabel = document.createElement('label');
+      checkboxLabel.setAttribute('for', checkbox.id);
+      checkboxLabel.textContent = '📊 Весь столбец';
+      
+      checkboxWrapper.appendChild(checkbox);
+      checkboxWrapper.appendChild(checkboxLabel);
+      
+      const preview = document.createElement('div');
+      preview.className = 'cell-preview';
+      preview.style.display = 'none';
+      
+      // Обновление превью при изменении
+      const updatePreview = function() {
+        const s = select.value;
+        const c = input.value.trim();
+        
+        if (s && c) {
+          google.script.run
+            .withSuccessHandler(function(text) {
+              preview.textContent = text;
+              preview.style.display = 'block';
+              
+              if (text.startsWith('(пусто)')) {
+                preview.className = 'cell-preview empty';
+              } else if (text.startsWith('❌')) {
+                preview.className = 'cell-preview error';
+              } else {
+                preview.className = 'cell-preview';
+              }
+            })
+            .getCellPreview(s, c);
+        } else {
+          preview.style.display = 'none';
+        }
+      };
+      
+      select.onchange = updatePreview;
+      input.onblur = updatePreview;
+      
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'remove-btn';
+      removeBtn.textContent = '✕';
+      removeBtn.onclick = function() {
+        container.removeChild(wrapper);
+      };
+      
+      // Обработка чекбокса для преобразования в полный столбец
+      checkbox.onchange = function() {
+        if (checkbox.checked) {
+          const currentValue = input.value.trim();
+          if (currentValue) {
+            const columnLetter = extractColumnLetter(currentValue);
+            if (columnLetter) {
+              input.value = columnLetter + '1:' + columnLetter;
+              updatePreview();
+            }
           }
-        })
-        .withFailureHandler(showError)
-        .serverDeleteTemplate(templateName);
+        }
+      };
+      
+      item.appendChild(select);
+      item.appendChild(input);
+      item.appendChild(removeBtn);
+      
+      wrapper.appendChild(item);
+      wrapper.appendChild(checkboxWrapper);
+      wrapper.appendChild(preview);
+      container.appendChild(wrapper);
+      
+      // Загрузим превью если есть значения
+      if (sheet && cell) {
+        updatePreview();
+      }
     }
     
-    /**
-     * Loads template statistics
-     */
-    function loadTemplatesStats() {
-      google.script.run
-        .withSuccessHandler(stats => {
-          const statsDiv = document.getElementById('templateStats');
-          statsDiv.textContent = `Шаблонов: ${stats.count}/${stats.maxCount} | Размер: ${stats.totalSize} байт`;
-        })
-        .withFailureHandler(() => {
-          // Silently fail
-        })
-        .serverGetTemplatesStats();
+    function extractColumnLetter(cellRef) {
+      // Извлекает букву столбца из C, C1, C40 и т.д.
+      const match = cellRef.match(/^([A-Z]+)\d*$/i);
+      return match ? match[1].toUpperCase() : null;
     }
-
-    // ============================================================================
-    // CONFIG EXECUTION
-    // ============================================================================
     
-    /**
-     * Runs the configuration
-     */
-    function runConfig() {
-      if (!activeCellInfo?.sheetName || !activeCellInfo?.a1Notation) {
-        showError(new Error('Не определена целевая ячейка'));
-        return;
-      }
+    function handleColumnCheckbox(type) {
+      const checkbox = document.getElementById(type + 'WholeColumn');
+      const input = document.getElementById(type + 'Cell');
       
-      const config = getCurrentConfig();
-      
-      if (!config.systemPrompt.sheet || !config.systemPrompt.cell) {
-        showError(new Error('Укажите System Prompt (лист и ячейку)'));
-        return;
-      }
-      
-      if (config.userData.length === 0) {
-        if (!confirm('User Data не указаны. Продолжить?')) {
-          return;
+      if (checkbox.checked) {
+        const currentValue = input.value.trim();
+        if (currentValue) {
+          const columnLetter = extractColumnLetter(currentValue);
+          if (columnLetter) {
+            input.value = columnLetter + '1:' + columnLetter;
+            updateSystemPreview();
+          }
         }
       }
-      
-      showStatus('Выполнение запроса к AI... Это может занять время.', 'info');
-      
-      google.script.run
-        .withSuccessHandler(result => {
-          if (result.success) {
-            showStatus('✅ Результат записан в ячейку ' + activeCellInfo.a1Notation, 'success');
-          } else {
-            showError(new Error(result.error));
-          }
-        })
-        .withFailureHandler(showError)
-        .serverExecuteConfig(config, activeCellInfo);
     }
-
-    // ============================================================================
-    // UI HELPERS
-    // ============================================================================
     
-    /**
-     * Gets current configuration from UI
-     */
-    function getCurrentConfig() {
-      const systemPromptSheet = document.getElementById('systemPromptSheet').value.trim();
-      const systemPromptCell = document.getElementById('systemPromptCell').value.trim();
+    function updateSystemPreview() {
+      const sheet = document.getElementById('systemSheet').value;
+      const cell = document.getElementById('systemCell').value.trim();
+      const preview = document.getElementById('systemPreview');
+      
+      if (sheet && cell) {
+        google.script.run
+          .withSuccessHandler(function(text) {
+            preview.textContent = text;
+            preview.style.display = 'block';
+            
+            if (text.startsWith('(пусто)')) {
+              preview.className = 'cell-preview empty';
+            } else if (text.startsWith('❌')) {
+              preview.className = 'cell-preview error';
+            } else {
+              preview.className = 'cell-preview';
+            }
+          })
+          .getCellPreview(sheet, cell);
+      } else {
+        preview.style.display = 'none';
+      }
+    }
+    
+    function collectConfig() {
+      const systemSheet = document.getElementById('systemSheet').value;
+      const systemCell = document.getElementById('systemCell').value;
       
       const config = {
-        systemPrompt: { 
-          sheet: systemPromptSheet, 
-          cell: systemPromptCell 
-        },
+        systemPrompt: systemSheet && systemCell ? {
+          sheet: systemSheet,
+          cell: systemCell
+        } : null,
         userData: []
       };
       
-      const userDataRows = document.querySelectorAll('#userDataList .input-group');
-      userDataRows.forEach(row => {
-        const sheetSelect = row.querySelector('.user-data-sheet-select');
-        const cellInput = row.querySelector('input[placeholder*="Cell"]');
-        const sheet = sheetSelect ? sheetSelect.value.trim() : '';
-        const cell = cellInput ? cellInput.value.trim() : '';
+      const dataItems = document.querySelectorAll('.data-item');
+      dataItems.forEach(function(item) {
+        const sheet = item.querySelector('select').value;
+        const cell = item.querySelector('input').value;
         if (sheet && cell) {
-          config.userData.push({ sheet, cell });
+          config.userData.push({ sheet: sheet, cell: cell });
         }
       });
       
       return config;
     }
     
-    /**
-     * Clears all configuration fields
-     */
-    function clearConfig() {
-      document.getElementById('systemPromptSheet').value = '';
-      document.getElementById('systemPromptCell').value = '';
-      document.getElementById('userDataList').innerHTML = '';
-      document.getElementById('templateNameInput').value = '';
-      document.getElementById('templateSelect').selectedIndex = 0;
-      showStatus('Поля очищены', 'info');
-    }
-    
-    /**
-     * Adds a user data row
-     */
-    function addUserDataRow(sheet = '', cell = '') {
-      const userDataList = document.getElementById('userDataList');
+    function saveOnly() {
+      const config = collectConfig();
+      showStatus('Сохранение...', 'info');
       
-      const div = document.createElement('div');
-      div.className = 'input-group';
-      div.innerHTML = `
-        <select class="user-data-sheet-select">
-          <option value="">-- Выберите лист --</option>
-        </select>
-        <input type="text" placeholder="Cell/Range (A1, A1:B10)" value="${cell}" />
-        <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
-      `;
-      
-      userDataList.appendChild(div);
-      
-      // Load sheets for the new select element
-      const newSelect = div.querySelector('.user-data-sheet-select');
       google.script.run
-        .withSuccessHandler(sheets => {
-          sheets.forEach(sheetName => {
-            const option = document.createElement('option');
-            option.value = sheetName;
-            option.textContent = sheetName;
-            newSelect.appendChild(option);
-          });
+        .withSuccessHandler(function() {
+          showStatus('✅ Конфигурация сохранена!', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showStatus('❌ Ошибка: ' + error, 'error');
+        })
+        .saveCollectConfig(sheetName, cellAddress, config);
+    }
+    
+    function runConfig() {
+      const config = collectConfig();
+      
+      if (!config.systemPrompt && config.userData.length === 0) {
+        showStatus('⚠️ Заполните хотя бы одно поле!', 'error');
+        return;
+      }
+      
+      console.log('Запуск конфигурации с помощью новой функции:', config);
+      showStatus('🚀 Сохранение и выполнение...', 'info');
+      
+      // ИСПРАВЛЕНО: Один вызов новой серверной функции
+      google.script.run
+        .withSuccessHandler(function(result) {
+          console.log('Результат выполнения:', result);
           
-          // Set the pre-selected value if provided
-          if (sheet) newSelect.value = sheet;
+          if (result.success) {
+            showStatus('✅ Готово! Результат записан в ' + cellAddress, 'success');
+            setTimeout(function() {
+              google.script.host.close();
+            }, 2000);
+          } else {
+            showStatus('❌ Ошибка выполнения: ' + (result.error || 'Неизвестная ошибка'), 'error');
+          }
         })
-        .withFailureHandler(() => {
-          // Silently fail
+        .withFailureHandler(function(error) {
+          console.error('Критическая ошибка:', error);
+          showStatus('❌ Критическая ошибка: ' + error.message, 'error');
         })
-        .getAllSheetNames();
+        .saveAndExecuteCollectConfig(sheetName, cellAddress, config); // <--- ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ
     }
     
-    /**
-     * Shows status message
-     */
+    function resetConfig() {
+      if (confirm('Удалить сохранённую конфигурацию?')) {
+        google.script.run
+          .withSuccessHandler(function() {
+            showStatus('✅ Конфигурация сброшена!', 'success');
+            setTimeout(function() {
+              google.script.host.close();
+            }, 1000);
+          })
+          .withFailureHandler(function(error) {
+            showStatus('❌ Ошибка: ' + error, 'error');
+          })
+          .deleteCollectConfig(sheetName, cellAddress);
+      }
+    }
+    
     function showStatus(message, type) {
-      const statusDiv = document.getElementById('status');
-      statusDiv.textContent = message;
-      statusDiv.className = 'status ' + type;
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.className = 'status ' + type;
+      status.style.display = 'block';
     }
     
-    /**
-     * Shows error
-     */
     function showError(error) {
-      showStatus('❌ Ошибка: ' + error.message, 'error');
+      showStatus('❌ Ошибка: ' + error, 'error');
     }
-
-    // ============================================================================
-    // AUTO-INITIALIZE
-    // ============================================================================
-    
-    document.addEventListener('DOMContentLoaded', onOpen);
   </script>
 </body>
 </html>

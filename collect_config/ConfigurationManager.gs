@@ -186,15 +186,63 @@ function updateLastRun(sheetName, cellAddress) {
   }
 }
 
+/**
+ * Собирает данные из указанного диапазона ячеек.
+ * Поддерживает все форматы: A1, A1:B10, C:C, C1:C100
+ * @param {string} sheetName - Имя листа
+ * @param {string} cellAddress - Адрес ячейки или диапазона (A1 notation)
+ * @return {string} Собранные данные через перенос строки
+ */
 function collectDataFromRange(sheetName, cellAddress) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) throw new Error(`Лист \"${sheetName}\" не найден.`);
+  if (!sheet) {
+    throw new Error(`Лист \"${sheetName}\" не найден.`);
+  }
   
-  if (/^[A-Z]+:[A-Z]+$/.test(cellAddress)) {
-    var col = cellAddress.split(':')[0];
-    var fullRangeAddress = `${col}1:${col}${sheet.getLastRow()}`;
-    return sheet.getRange(fullRangeAddress).getValues().flat().filter(String).join('\n');
-  } else {
-    return sheet.getRange(cellAddress).getValues().flat().filter(String).join('\n');
+  // Нормализация адреса для обработки
+  var normalizedAddress = cellAddress.trim().toUpperCase();
+  
+  try {
+    // Случай 1: Полный столбец (C:C, A:B)
+    if (/^[A-Z]+:[A-Z]+$/.test(normalizedAddress)) {
+      var cols = normalizedAddress.split(':');
+      var startCol = cols[0];
+      var endCol = cols[1];
+      var lastRow = sheet.getLastRow();
+      
+      if (lastRow === 0) {
+        return ''; // Пустой лист
+      }
+      
+      // Преобразуем в конкретный диапазон: C:C → C1:C[lastRow]
+      var fullRangeAddress = `${startCol}1:${endCol}${lastRow}`;
+      var values = sheet.getRange(fullRangeAddress).getValues();
+      
+      // Flatten 2D array и фильтруем пустые значения
+      return values
+        .flat()
+        .filter(function(val) { 
+          return val !== null && val !== undefined && val.toString().trim() !== '';
+        })
+        .join('\n');
+    }
+    
+    // Случай 2: Конкретный диапазон (A1, A1:B10, C1:C100)
+    var range = sheet.getRange(normalizedAddress);
+    var values = range.getValues();
+    
+    // Flatten 2D array и фильтруем пустые значения
+    return values
+      .flat()
+      .filter(function(val) { 
+        return val !== null && val !== undefined && val.toString().trim() !== '';
+      })
+      .join('\n');
+      
+  } catch (rangeError) {
+    // Обработка ошибок при некорректном диапазоне
+    throw new Error(
+      `Некорректный диапазон \"${cellAddress}\" на листе \"${sheetName}\": ${rangeError.message}`
+    );
   }
 }

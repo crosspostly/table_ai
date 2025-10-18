@@ -735,47 +735,67 @@ function updateLastRun(sheetName, cellAddress) {
 }
 
 /**
- * Сбор данных из диапазона ячеек
+ * Сбор данных из диапазона ячеек - ИСПРАВЛЕННАЯ ВЕРСИЯ
+ * Поддерживает все форматы: A1, A1:B10, C:C, C1:C100
  * @param {string} sheetName - Имя листа
- * @param {string} cellAddress - Адрес ячейки или диапазона
+ * @param {string} cellAddress - Адрес ячейки или диапазона (A1 notation)
  * @return {string} - данные из ячеек, объединенные через \n
  */
 function collectDataFromRange(sheetName, cellAddress) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) throw new Error(`Лист \"${sheetName}\" не найден.`);
-
-  if (/^[A-Z]+:[A-Z]+$/.test(cellAddress)) {
-    // Обработка диапазона типа A:A, B:B и т.д.
-    const col = cellAddress.split(':')[0];
-    const lastRow = sheet.getLastRow();
-
-    // ИСПРАВЛЕНИЕ: проверяем что лист не пустой
-    if (lastRow === 0) {
-      addLog(`⚠️ Лист "${sheetName}" пуст, возвращаем пустую строку`, 'WARN');
-      return '';
-    }
-
-    const fullRangeAddress = `${col}1:${col}${lastRow}`;
-    addLog(`📊 Читаем диапазон: ${fullRangeAddress} с листа "${sheetName}"`, 'INFO');
-    return sheet.getRange(fullRangeAddress).getValues().flat().filter(String).join('\n');
-  } else {
-    // Обработка конкретной ячейки или диапазона
-    addLog(`📋 Читаем ячейку: ${cellAddress} с листа "${sheetName}"`, 'INFO');
-    
-    try {
-      return sheet.getRange(cellAddress).getValues().flat().filter(String).join('\n');
-    } catch (error) {
-      // Если ошибка связана с диапазоном (например, пустой лист или неверный адрес)
-      if (error.message.includes('Range must be within') || 
-          error.message.includes('must contain at least one row') ||
-          error.message.includes('Диапазон должен содержать как минимум одну строку')) {
-        addLog(`⚠️ Ячейка ${cellAddress} недоступна на листе "${sheetName}" (возможно лист пуст), возвращаем пустую строку`, 'WARN');
-        return '';
-      } else {
-        // Перебрасываем другие ошибки
-        throw error;
+  if (!sheet) {
+    throw new Error(`Лист \"${sheetName}\" не найден.`);
+  }
+  
+  // Нормализация адреса для обработки
+  const normalizedAddress = cellAddress.trim().toUpperCase();
+  
+  try {
+    // Случай 1: Полный столбец (C:C, A:B)
+    if (/^[A-Z]+:[A-Z]+$/.test(normalizedAddress)) {
+      const cols = normalizedAddress.split(':');
+      const startCol = cols[0];
+      const endCol = cols[1];
+      const lastRow = sheet.getLastRow();
+      
+      if (lastRow === 0) {
+        addLog(`⚠️ Лист "${sheetName}" пуст, возвращаем пустую строку`, 'WARN');
+        return ''; // Пустой лист
       }
+      
+      // Преобразуем в конкретный диапазон: C:C → C1:C[lastRow]
+      const fullRangeAddress = `${startCol}1:${endCol}${lastRow}`;
+      addLog(`📊 Читаем полный столбец: ${fullRangeAddress} с листа "${sheetName}"`, 'INFO');
+      const values = sheet.getRange(fullRangeAddress).getValues();
+      
+      // Flatten 2D array и фильтруем пустые значения
+      return values
+        .flat()
+        .filter(function(val) { 
+          return val !== null && val !== undefined && val.toString().trim() !== '';
+        })
+        .join('\n');
     }
+    
+    // Случай 2: Конкретный диапазон (A1, A1:B10, C1:C100)
+    addLog(`📋 Читаем диапазон: ${normalizedAddress} с листа "${sheetName}"`, 'INFO');
+    const range = sheet.getRange(normalizedAddress);
+    const values = range.getValues();
+    
+    // Flatten 2D array и фильтруем пустые значения
+    return values
+      .flat()
+      .filter(function(val) { 
+        return val !== null && val !== undefined && val.toString().trim() !== '';
+      })
+      .join('\n');
+      
+  } catch (rangeError) {
+    // Обработка ошибок при некорректном диапазоне
+    addLog(`❌ Ошибка чтения диапазона "${cellAddress}" на листе "${sheetName}": ${rangeError.message}`, 'ERROR');
+    throw new Error(
+      `Некорректный диапазон \"${cellAddress}\" на листе \"${sheetName}\": ${rangeError.message}`
+    );
   }
 }
 
