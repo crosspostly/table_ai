@@ -18,8 +18,8 @@ function openCollectConfigUI() {
       .setWidth(700)
       .setTitle('🎯 Настройка AI запроса');
     
-    // Используем sidebar вместо dialog - он может требовать меньше разрешений
-    SpreadsheetApp.getUi().showSidebar(html);
+    // Теперь у нас есть UI разрешения! Используем удобный modal dialog
+    SpreadsheetApp.getUi().showModalDialog(html, 'AI Конструктор');
     
   } catch (error) {
     // Fallback: если sidebar тоже не работает, используем простой prompt-based интерфейс
