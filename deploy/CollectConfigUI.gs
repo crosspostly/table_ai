@@ -8,20 +8,144 @@
 
 /**
  * Открыть интерфейс настройки для текущей ячейки
+ * ИСПРАВЛЕНИЕ: Используем sidebar вместо dialog - требует меньше разрешений
  */
 function openCollectConfigUI() {
   try {
     // ВАЖНО: Apps Script не поддерживает пути с папками!
     // Файл должен называться просто 'CollectConfigUI' в плоской структуре
     var html = HtmlService.createHtmlOutputFromFile('CollectConfigUI')
-      .setWidth(650)
-      .setHeight(600)
+      .setWidth(700)
       .setTitle('🎯 Настройка AI запроса');
     
-    SpreadsheetApp.getUi().showModelessDialog(html, 'Настройка запроса');
+    // Используем sidebar вместо dialog - он может требовать меньше разрешений
+    SpreadsheetApp.getUi().showSidebar(html);
     
   } catch (error) {
-    SpreadsheetApp.getUi().alert('❌ Ошибка открытия интерфейса: ' + error.message);
+    // Fallback: если sidebar тоже не работает, используем простой prompt-based интерфейс
+    SpreadsheetApp.getUi().alert(
+      '❌ HTML интерфейс недоступен (нет разрешений UI).\n\n' +
+      '💡 Альтернатива: используйте функцию quickCollectConfig() для быстрой настройки через prompts.'
+    );
+    
+    // Предлагаем простую альтернативу
+    var useSimple = SpreadsheetApp.getUi().alert(
+      'Простой интерфейс',
+      'Хотите настроить AI запрос через простые диалоги?',
+      SpreadsheetApp.getUi().ButtonSet.YES_NO
+    );
+    
+    if (useSimple === SpreadsheetApp.getUi().Button.YES) {
+      quickCollectConfig();
+    }
+  }
+}
+
+/**
+ * Простой интерфейс настройки через prompt диалоги
+ * АЛЬТЕРНАТИВА для случаев когда HTML UI недоступен из-за разрешений
+ */
+function quickCollectConfig() {
+  var ui = SpreadsheetApp.getUi();
+  
+  try {
+    var sheet = SpreadsheetApp.getActiveSheet();
+    var range = sheet.getActiveRange();
+    
+    if (!range) {
+      ui.alert('⚠️ Внимание', 'Сначала выделите ячейку где нужен результат!', ui.ButtonSet.OK);
+      return;
+    }
+    
+    var sheetName = sheet.getName();
+    var cellAddress = range.getA1Notation();
+    
+    // 1. System Prompt
+    var systemPromptInfo = ui.prompt(
+      'Шаг 1/3: System Prompt',
+      'Введите адрес ячейки с инструкцией для AI\\n' +
+      'Формат: ИмяЛиста!Адрес (например: Prompts!A1)\\n\\n' +
+      'Или оставьте пустым, если нет:',
+      ui.ButtonSet.OK_CANCEL
+    );
+    
+    if (systemPromptInfo.getSelectedButton() !== ui.Button.OK) return;
+    
+    var systemPrompt = null;
+    var systemPromptText = systemPromptInfo.getResponseText().trim();
+    if (systemPromptText && systemPromptText.includes('!')) {
+      var parts = systemPromptText.split('!');
+      systemPrompt = { sheet: parts[0], cell: parts[1] };
+    }
+    
+    // 2. User Data Sources
+    var userData = [];
+    var addMore = true;
+    var sourceIndex = 1;
+    
+    while (addMore && sourceIndex <= 5) { // Ограничиваем до 5 источников
+      var sourceInfo = ui.prompt(
+        'Шаг 2/3: Данные для анализа (источник ' + sourceIndex + ')',
+        'Введите адрес ячейки/диапазона с данными:\\n' +
+        'Формат: ИмяЛиста!Адрес (например: Data!A:A)\\n\\n' +
+        'Или оставьте пустым, если больше нет данных:',
+        ui.ButtonSet.OK_CANCEL
+      );
+      
+      if (sourceInfo.getSelectedButton() !== ui.Button.OK) return;
+      
+      var sourceText = sourceInfo.getResponseText().trim();
+      if (sourceText && sourceText.includes('!')) {
+        var parts = sourceText.split('!');
+        userData.push({ sheet: parts[0], cell: parts[1] });
+        sourceIndex++;
+      } else {
+        addMore = false;
+      }
+    }
+    
+    if (userData.length === 0 && !systemPrompt) {
+      ui.alert('⚠️ Ошибка', 'Нужно указать хотя бы System Prompt или источники данных!', ui.ButtonSet.OK);
+      return;
+    }
+    
+    // 3. Подтверждение и выполнение
+    var summary = 'ПРОВЕРЬТЕ НАСТРОЙКИ:\\n\\n';
+    summary += 'Результат будет записан в: ' + sheetName + '!' + cellAddress + '\\n\\n';
+    summary += 'System Prompt: ' + (systemPrompt ? systemPrompt.sheet + '!' + systemPrompt.cell : 'не задан') + '\\n';
+    summary += 'Источников данных: ' + userData.length + '\\n';
+    
+    for (var i = 0; i < userData.length; i++) {
+      summary += '  • ' + userData[i].sheet + '!' + userData[i].cell + '\\n';
+    }
+    
+    summary += '\\nНачать обработку?';
+    
+    var confirm = ui.alert('Шаг 3/3: Подтверждение', summary, ui.ButtonSet.YES_NO);
+    
+    if (confirm !== ui.Button.YES) return;
+    
+    // Создаем конфигурацию
+    var config = {
+      systemPrompt: systemPrompt,
+      userData: userData
+    };
+    
+    // Сохраняем и выполняем
+    saveCollectConfig(sheetName, cellAddress, config);
+    
+    ui.alert('🚀 Запуск...', 'Конфигурация сохранена.\\nНачинаю обработку данных...', ui.ButtonSet.OK);
+    
+    var result = executeCollectConfig(sheetName, cellAddress);
+    
+    if (result.success) {
+      ui.alert('✅ Готово!', 'Результат записан в ячейку ' + cellAddress, ui.ButtonSet.OK);
+    } else {
+      ui.alert('❌ Ошибка выполнения', result.error || 'Неизвестная ошибка', ui.ButtonSet.OK);
+    }
+    
+  } catch (error) {
+    ui.alert('❌ Ошибка', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
   }
 }
 

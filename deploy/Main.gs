@@ -781,6 +781,8 @@ function onOpen() {
     .addSeparator()
     .addSubMenu(ui.createMenu('🎯 AI Конструктор (Template System)')
       .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
+      .addItem('⚡ Простая настройка', 'quickCollectConfig')
+      .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
       .addItem('❓ Справка', 'showCollectConfigHelp')
     )
     .addSeparator()
