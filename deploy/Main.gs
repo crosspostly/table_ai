@@ -456,25 +456,46 @@ function importVkPosts() {
 }
 function createStopWordsFormulas(sheet, totalRows) {
   try {
-    addLog('→ Создание формул фильтрации', 'INFO');
+    addLog('→ Создание формул фильтрации (оптимизированная batch-версия)', 'INFO');
+    const startTime = new Date().getTime();
+    
     const stopWordsRange = '$E$2:$E$100';
-    for (var row = 2; row <= totalRows; row++) {
-      const formulaF = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + stopWordsRange + ', C' + row + ')))*(' + stopWordsRange + '<>"")) > 0, "", C' + row + ')';
-      sheet.getRange(row, 6).setFormula(formulaF); // F
-      const formulaG = '=IF(F' + row + '<>"", COUNTA(F$2:F' + row + '), "")';
-      sheet.getRange(row, 7).setFormula(formulaG); // G
-    }
     const positiveWordsRange = '$H$2:$H$100';
+    
+    // Собираем ВСЕ формулы в один массив для batch-операции
+    const formulas = [];
     for (var row = 2; row <= totalRows; row++) {
+      // F: Фильтрация стоп-слов
+      const formulaF = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + stopWordsRange + ', C' + row + ')))*(' + stopWordsRange + '<>"")) > 0, "", C' + row + ')';
+      
+      // G: Номер отфильтрованного поста
+      const formulaG = '=IF(F' + row + '<>"", COUNTA(F$2:F' + row + '), "")';
+      
+      // H: Пусто (колонка для позитивных слов - заполняется вручную)
+      
+      // I: Фильтрация позитивных слов
       const formulaI = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + positiveWordsRange + ', C' + row + ')))*(' + positiveWordsRange + '<>"")) > 0, C' + row + ', "")';
-      sheet.getRange(row, 9).setFormula(formulaI); // I
+      
+      // J: Номер поста с позитивными словами
       const formulaJ = '=IF(I' + row + '<>"", COUNTA(I$2:I' + row + '), "")';
-      sheet.getRange(row, 10).setFormula(formulaJ); // J
+      
+      // Формируем строку: F, G, H (пусто), I, J
+      formulas.push([formulaF, formulaG, '', formulaI, formulaJ]);
     }
-    sheet.getRange(1, 5, 1, 3).setFontWeight('bold').setBackground('#FFF2CC');
-    sheet.getRange(1, 8, 1, 3).setFontWeight('bold').setBackground('#D9EAD3');
+    
+    // ОДИН batch-запрос вместо 400 отдельных!
+    // Устанавливаем формулы для колонок F, G, H, I, J (с E:6 по J:10)
+    if (formulas.length > 0) {
+      sheet.getRange(2, 6, formulas.length, 5).setFormulas(formulas);
+    }
+    
+    // Форматирование заголовков
+    sheet.getRange(1, 5, 1, 3).setFontWeight('bold').setBackground('#FFF2CC'); // E, F, G - стоп-слова
+    sheet.getRange(1, 8, 1, 3).setFontWeight('bold').setBackground('#D9EAD3'); // H, I, J - позитивные
     sheet.autoResizeColumns(5, 6);
-    addLog('✅ Формулы фильтрации созданы', 'INFO');
+    
+    const elapsed = new Date().getTime() - startTime;
+    addLog('✅ Формулы фильтрации созданы за ' + elapsed + 'мс (batch-режим)', 'INFO');
   } catch (e) {
     addLog('❌ Ошибка создания формул: ' + e.message, 'ERROR');
     SpreadsheetApp.getUi().alert('Ошибка создания формул: ' + e.message);
