@@ -516,8 +516,8 @@ function prepareChainFromPromptBox() {
     addLog('📝 Формула установлена → Распаковка!' + m.targetA1 + ' из Prompt_box!F' + m.promptRow, 'INFO');
   }
 
-  SpreadsheetApp.getUi().alert('✅ Готово: формулы расставлены по целям из Prompt_box!B.
-Первая ячейка запустится при заполнении соответствующего A-столбца, далее — по фразе готовности.');
+  SpreadsheetApp.getUi().alert('✅ Готово: формулы расставлены по целям из Prompt_box!B.\\n' +
+    'Первая ячейка запустится при заполнении соответствующего A-столбца, далее — по фразе готовности.');
 }
 function prepareChainForA3() {
   var ss = SpreadsheetApp.getActive();
