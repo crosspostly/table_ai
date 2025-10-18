@@ -42,7 +42,7 @@ function getLog() {
 // ============================================================================
 function openCollectConfigUI() {
   try {
-    const html = HtmlService.createHtmlOutputFromFile('CollectConfig')
+    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi')
       .setWidth(700)
       .setTitle('🎯 AI Конструктор v3.0');
     
