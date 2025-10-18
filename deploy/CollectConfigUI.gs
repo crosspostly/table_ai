@@ -1564,20 +1564,86 @@ function showConfigStats() {
  */
 function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
   try {
-    addLog(`saveAndExecuteCollectConfig START: sheet="${sheetName}", cell="${cellAddress}"`, 'INFO');
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+    addLog(`🚀 saveAndExecuteCollectConfig START`, 'INFO');
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+    
+    // ✅ КРИТИЧНО: Валидация входных параметров
+    addLog(`📋 ВХОДНЫЕ ПАРАМЕТРЫ:`, 'INFO');
+    addLog(`  sheetName: "${sheetName}" (type: ${typeof sheetName}, length: ${sheetName ? sheetName.length : 0})`, 'INFO');
+    addLog(`  cellAddress: "${cellAddress}" (type: ${typeof cellAddress}, length: ${cellAddress ? cellAddress.length : 0})`, 'INFO');
+    addLog(`  config: ${JSON.stringify(config)}`, 'INFO');
+    
+    if (!sheetName || sheetName.trim() === '') {
+      throw new Error('❌ КРИТИЧЕСКАЯ ОШИБКА: sheetName пуст или undefined!');
+    }
+    if (!cellAddress || cellAddress.trim() === '') {
+      throw new Error('❌ КРИТИЧЕСКАЯ ОШИБКА: cellAddress пуст или undefined!');
+    }
+    if (!config) {
+      throw new Error('❌ КРИТИЧЕСКАЯ ОШИБКА: config is null или undefined!');
+    }
+    
+    addLog(`✅ Валидация входных параметров пройдена`, 'INFO');
+    
+    // Детальная валидация конфигурации
+    addLog(`📊 ДЕТАЛИ КОНФИГУРАЦИИ:`, 'INFO');
+    if (config.systemPrompt) {
+      addLog(`  System Prompt: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}`, 'INFO');
+      if (!config.systemPrompt.sheet || !config.systemPrompt.cell) {
+        addLog(`  ⚠️ WARNING: System Prompt имеет пустые поля!`, 'WARN');
+      }
+    } else {
+      addLog(`  System Prompt: НЕ УКАЗАН`, 'WARN');
+    }
+    
+    if (config.userData && config.userData.length > 0) {
+      addLog(`  User Data источников: ${config.userData.length}`, 'INFO');
+      config.userData.forEach(function(source, index) {
+        addLog(`    [${index + 1}] ${source.sheet}!${source.cell}`, 'INFO');
+        if (!source.sheet || !source.cell) {
+          addLog(`    ⚠️ WARNING: Источник [${index + 1}] имеет пустые поля!`, 'WARN');
+        }
+      });
+    } else {
+      addLog(`  User Data: ПУСТО (нет источников данных)`, 'WARN');
+    }
+    
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+    addLog(`💾 ШАГ 1: СОХРАНЕНИЕ КОНФИГУРАЦИИ`, 'INFO');
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
 
     // 1. Сначала СОХРАНЯЕМ конфигурацию
-    saveCollectConfig(sheetName, cellAddress, config);
-    addLog('Configuration saved successfully', 'INFO');
+    const saveSuccess = saveCollectConfig(sheetName, cellAddress, config);
+    if (saveSuccess) {
+      addLog('✅ Конфигурация успешно сохранена в ConfigData', 'SUCCESS');
+    } else {
+      addLog('⚠️ Конфигурация НЕ сохранена (saveCollectConfig вернул false)', 'WARN');
+    }
+
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+    addLog(`🔥 ШАГ 2: ВЫПОЛНЕНИЕ КОНФИГУРАЦИИ`, 'INFO');
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
 
     // 2. Затем ВЫПОЛНЯЕМ её
     const result = executeCollectConfig(sheetName, cellAddress);
-    addLog(`saveAndExecuteCollectConfig END: success=${result.success}`, 'INFO');
+    
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+    addLog(`🏁 saveAndExecuteCollectConfig END`, result.success ? 'SUCCESS' : 'ERROR');
+    addLog(`  success: ${result.success}`, result.success ? 'SUCCESS' : 'ERROR');
+    if (result.error) {
+      addLog(`  error: ${result.error}`, 'ERROR');
+    }
+    if (result.result) {
+      addLog(`  result length: ${result.result.length} символов`, 'INFO');
+    }
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
 
     return result;
   } catch (error) {
-    const errorMsg = `saveAndExecuteCollectConfig FAILED: ${error.message}`;
+    const errorMsg = `💥 saveAndExecuteCollectConfig CRASHED: ${error.message}`;
     addLog(errorMsg, 'ERROR');
+    addLog(`Stack trace: ${error.stack}`, 'ERROR');
     return {
       success: false,
       error: error.message,
