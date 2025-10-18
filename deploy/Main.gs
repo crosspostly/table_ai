@@ -849,12 +849,7 @@ function onOpen() {
     .addItem('📥 Импорт VK постов', 'importVkPosts')
     .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
     .addSeparator()
-    .addSubMenu(ui.createMenu('⚙️ Настройки')
-      .addItem('🔑 Установить API ключ Gemini', 'initGeminiKey')
-      .addSeparator()
-      .addItem('🔐 Ввести лицензию', 'setLicenseCredentialsUI')
-      .addItem('🔐 Проверить статус лицензии', 'checkLicenseStatusUI'),
-    )
+    .addItem('⚙️ Настройки', 'openSettingsUI')
     .addToUi();
 
   if (DEV_MODE) {
@@ -1097,6 +1092,71 @@ function checkLicenseStatusUI() {
     else SpreadsheetApp.getUi().alert('Лицензия', '❌ ' + (st.error || 'Неизвестная ошибка'), SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
     SpreadsheetApp.getUi().alert('Лицензия', 'Ошибка: ' + e.message, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+// ====== UNIFIED SETTINGS UI ======
+function openSettingsUI() {
+  try {
+    const html = HtmlService.createHtmlOutputFromFile('SettingsUI')
+      .setWidth(600)
+      .setHeight(700);
+    SpreadsheetApp.getUi().showModalDialog(html, '⚙️ Настройки Table AI');
+    addLog('✅ Открыто окно настроек', 'INFO');
+  } catch (e) {
+    addLog('❌ Ошибка открытия окна настроек: ' + e.message, 'ERROR');
+    SpreadsheetApp.getUi().alert('❌ Ошибка открытия настроек: ' + e.message);
+  }
+}
+
+function getSettingsData() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    return {
+      apiKey: props.getProperty('GEMINI_API_KEY') || '',
+      email: props.getProperty('LICENSE_EMAIL') || '',
+      token: props.getProperty('LICENSE_TOKEN') || ''
+    };
+  } catch (e) {
+    addLog('❌ Ошибка чтения настроек: ' + e.message, 'ERROR');
+    return {apiKey: '', email: '', token: ''};
+  }
+}
+
+function saveSettingsData(data) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const updated = [];
+    
+    if (data.apiKey) {
+      props.setProperty('GEMINI_API_KEY', data.apiKey);
+      updated.push('API ключ');
+      addLog('✅ API ключ Gemini обновлён', 'INFO');
+    }
+    
+    if (data.email) {
+      props.setProperty('LICENSE_EMAIL', data.email);
+      updated.push('Email');
+      addLog('✅ Email лицензии обновлён: ' + data.email, 'INFO');
+    }
+    
+    if (data.token) {
+      props.setProperty('LICENSE_TOKEN', data.token);
+      updated.push('Токен');
+      addLog('✅ Токен лицензии обновлён', 'INFO');
+    }
+    
+    if (updated.length === 0) {
+      return {success: false, message: 'Нет данных для сохранения'};
+    }
+    
+    return {
+      success: true,
+      message: 'Сохранено: ' + updated.join(', ')
+    };
+  } catch (e) {
+    addLog('❌ Ошибка сохранения настроек: ' + e.message, 'ERROR');
+    return {success: false, message: 'Ошибка: ' + e.message};
   }
 }
 function serverGM_(prompt, maxTokens, temperature) {
