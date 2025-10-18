@@ -198,8 +198,7 @@ Prompt_box!B3: "C3"  → Формула в C3
 table_ai/
 ├── 📄 Main.txt                      # Основной код (источник)
 ├── 📄 server.txt                    # Серверный код (источник)
-├── 📄 ocrRunV2_client.txt          # OCR клиент
-├── 📄 review_client.txt            # Review функции
+├── 📄 ocrRunV2_client.txt          # OCR клиент V2
 ├── 📄 VK_PARSER.txt                # VK парсер
 │
 ├── 📁 deploy/                       # 🎯 PRODUCTION-READY ПАКЕТ
