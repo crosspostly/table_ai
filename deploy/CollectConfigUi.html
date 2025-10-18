@@ -795,6 +795,16 @@
           console.log('Результат выполнения:', result);
           addLogEntry('✅ Ответ от сервера получен', 'success');
           
+          // 🔥 ПОКАЗЫВАЕМ ЛОГИ ОТ СЕРВЕРА
+          if (result.logs && result.logs.length > 0) {
+            addLogEntry('━━━ ЛОГИ СЕРВЕРА ━━━', 'info');
+            for (var i = 0; i < result.logs.length; i++) {
+              var log = result.logs[i];
+              addLogEntry('[' + log.timestamp + '] ' + log.message, log.level.toLowerCase());
+            }
+            addLogEntry('━━━━━━━━━━━━━━━━━━━', 'info');
+          }
+          
           if (result.success) {
             showStatus('✅ Готово! Результат записан в ' + cellAddress, 'success');
             addLogEntry('✅ УСПЕХ! Результат записан в ' + cellAddress, 'success');
