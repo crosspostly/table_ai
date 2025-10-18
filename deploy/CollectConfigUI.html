@@ -255,6 +255,53 @@
       font-size: 14px;
     }
     
+    .log-panel {
+      margin-top: 20px;
+      padding: 16px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      border: 1px solid #dadce0;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    
+    .log-panel h3 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: #5f6368;
+    }
+    
+    .log-entry {
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      padding: 6px 8px;
+      margin-bottom: 4px;
+      border-radius: 4px;
+      background: white;
+      border-left: 3px solid #dadce0;
+    }
+    
+    .log-entry.info {
+      border-left-color: #1a73e8;
+      color: #1967d2;
+    }
+    
+    .log-entry.success {
+      border-left-color: #34a853;
+      color: #137333;
+    }
+    
+    .log-entry.warn {
+      border-left-color: #fbbc04;
+      color: #ea8600;
+    }
+    
+    .log-entry.error {
+      border-left-color: #ea4335;
+      color: #c5221f;
+    }
+    
     .status.info {
       display: block;
       background: #e8f0fe;
@@ -275,6 +322,54 @@
       color: #c5221f;
       border-left: 4px solid #ea4335;
     }
+    
+    .log-panel {
+      margin-top: 20px;
+      padding: 16px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      border: 1px solid #dadce0;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    
+    .log-panel h3 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: #5f6368;
+    }
+    
+    .log-entry {
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      padding: 6px 8px;
+      margin-bottom: 4px;
+      border-radius: 4px;
+      background: white;
+      border-left: 3px solid #dadce0;
+    }
+    
+    .log-entry.info {
+      border-left-color: #1a73e8;
+      color: #1967d2;
+    }
+    
+    .log-entry.success {
+      border-left-color: #34a853;
+      color: #137333;
+    }
+    
+    .log-entry.warn {
+      border-left-color: #fbbc04;
+      color: #ea8600;
+    }
+    
+    .log-entry.error {
+      border-left-color: #ea4335;
+      color: #c5221f;
+    }
+
     
     .loading {
       text-align: center;
@@ -355,9 +450,53 @@
     </div>
     
     <div class="status" id="status"></div>
+    
+    <!-- LOG PANEL -->
+    <div class="log-panel" id="logPanel" style="display:none;">
+      <h3>📋 Детальное логирование</h3>
+      <div id="logEntries"></div>
+    </div>
   </div>
 
   <script>
+    // ============================================================================
+    // СИСТЕМА ЛОГИРОВАНИЯ
+    // ============================================================================
+    
+    function addLogEntry(message, level) {
+      level = level || 'info';
+      const panel = document.getElementById('logPanel');
+      const entries = document.getElementById('logEntries');
+      
+      if (!panel || !entries) return; // Защита
+      
+      // Показываем панель
+      panel.style.display = 'block';
+      
+      // Создаём запись
+      const entry = document.createElement('div');
+      entry.className = 'log-entry ' + level.toLowerCase();
+      const timestamp = new Date().toLocaleTimeString('ru-RU');
+      entry.textContent = '[' + timestamp + '] ' + message;
+      
+      // Добавляем в начало списка
+      entries.insertBefore(entry, entries.firstChild);
+      
+      // Ограничиваем количество логов (последние 50)
+      while (entries.children.length > 50) {
+        entries.removeChild(entries.lastChild);
+      }
+      
+      // Автопрокрутка вверх к новым логам
+      panel.scrollTop = 0;
+    }
+    
+    function clearLogs() {
+      const entries = document.getElementById('logEntries');
+      if (entries) entries.innerHTML = '';
+    }
+    
+
     let sheetName = '';
     let cellAddress = '';
     let sheets = [];
@@ -554,6 +693,14 @@
       const cell = document.getElementById('systemCell').value.trim();
       const preview = document.getElementById('systemPreview');
       
+      // ✅ КРИТИЧНО: НЕ вызываем getCellPreview если параметры пустые
+      if (!sheet || sheet.trim() === '' || !cell || cell === '') {
+        preview.style.display = 'none';
+        return;
+      }
+      
+      addLogEntry('Preview: запрос для "' + sheet + '"!"' + cell + '"', 'info');
+      
       if (sheet && cell) {
         google.script.run
           .withSuccessHandler(function(text) {
@@ -613,33 +760,57 @@
     }
     
     function runConfig() {
+      clearLogs(); // Очищаем старые логи
+      addLogEntry('🚀 Начало выполнения конфигурации', 'info');
+      
       const config = collectConfig();
+      addLogEntry('Конфигурация собрана: ' + JSON.stringify(config).substring(0, 100) + '...', 'info');
       
       if (!config.systemPrompt && config.userData.length === 0) {
         showStatus('⚠️ Заполните хотя бы одно поле!', 'error');
+        addLogEntry('❌ Валидация не прошла: нет данных', 'error');
         return;
       }
       
+      addLogEntry('Целевая ячейка: ' + sheetName + '!' + cellAddress, 'info');
+      
+      if (config.systemPrompt) {
+        addLogEntry('System Prompt: ' + config.systemPrompt.sheet + '!' + config.systemPrompt.cell, 'info');
+      } else {
+        addLogEntry('System Prompt: не указан', 'warn');
+      }
+      
+      addLogEntry('User Data источников: ' + config.userData.length, 'info');
+      config.userData.forEach(function(source, i) {
+        addLogEntry('  Источник ' + (i + 1) + ': ' + source.sheet + '!' + source.cell, 'info');
+      });
+      
       console.log('Запуск конфигурации с помощью новой функции:', config);
       showStatus('🚀 Сохранение и выполнение...', 'info');
+      addLogEntry('Отправка запроса на сервер...', 'info');
       
       // ИСПРАВЛЕНО: Один вызов новой серверной функции
       google.script.run
         .withSuccessHandler(function(result) {
           console.log('Результат выполнения:', result);
+          addLogEntry('✅ Ответ от сервера получен', 'success');
           
           if (result.success) {
             showStatus('✅ Готово! Результат записан в ' + cellAddress, 'success');
+            addLogEntry('✅ УСПЕХ! Результат записан в ' + cellAddress, 'success');
+            addLogEntry('Результат: ' + (result.result ? result.result.substring(0, 100) + '...' : 'пусто'), 'info');
             setTimeout(function() {
               google.script.host.close();
             }, 2000);
           } else {
             showStatus('❌ Ошибка выполнения: ' + (result.error || 'Неизвестная ошибка'), 'error');
+            addLogEntry('❌ ОШИБКА ВЫПОЛНЕНИЯ: ' + (result.error || 'Неизвестная ошибка'), 'error');
           }
         })
         .withFailureHandler(function(error) {
           console.error('Критическая ошибка:', error);
           showStatus('❌ Критическая ошибка: ' + error.message, 'error');
+          addLogEntry('❌ КРИТИЧЕСКАЯ ОШИБКА: ' + error.message, 'error');
         })
         .saveAndExecuteCollectConfig(sheetName, cellAddress, config); // <--- ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ
     }
