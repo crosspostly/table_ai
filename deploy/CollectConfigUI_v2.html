@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    body {
+      font-family: 'Google Sans', Arial, sans-serif;
+      padding: 20px;
+      margin: 0;
+      background: #f8f9fa;
+    }
+    
+    .container {
+      max-width: 650px;
+      margin: 0 auto;
+      background: white;
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    }
+    
+    h2 {
+      margin: 0 0 8px 0;
+      color: #202124;
+      font-size: 22px;
+      font-weight: 400;
+    }
+    
+    .cell-info {
+      background: #e8f0fe;
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      color: #1967d2;
+      font-weight: 500;
+      font-size: 14px;
+    }
+    
+    .section {
+      margin-bottom: 20px;
+    }
+    
+    .section-title {
+      font-weight: 500;
+      margin-bottom: 10px;
+      color: #5f6368;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .templates-section {
+      background: #f1f3f4;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .input-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: center;
+    }
+    
+    input[type="text"],
+    select {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+    
+    input[type="text"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #1a73e8;
+      box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.1);
+    }
+    
+    .btn {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+      white-space: nowrap;
+    }
+    
+    .btn-primary {
+      background: #1a73e8;
+      color: white;
+      flex: 2;
+    }
+    
+    .btn-primary:hover {
+      background: #1557b0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    
+    .btn-secondary {
+      background: #fff;
+      color: #5f6368;
+      border: 1px solid #dadce0;
+      flex: 1;
+    }
+    
+    .btn-secondary:hover {
+      background: #f8f9fa;
+      border-color: #bdc1c6;
+    }
+    
+    .btn-danger {
+      background: #fff;
+      color: #d93025;
+      border: 1px solid #d93025;
+      padding: 10px 14px;
+    }
+    
+    .btn-danger:hover {
+      background: #fce8e6;
+    }
+    
+    .btn-small {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+    
+    .add-btn {
+      padding: 8px 12px;
+      border: 1px dashed #5f6368;
+      background: transparent;
+      color: #5f6368;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+      width: 100%;
+    }
+    
+    .add-btn:hover {
+      border-color: #1a73e8;
+      color: #1a73e8;
+      background: #f8fbff;
+    }
+    
+    .remove-btn {
+      background: transparent;
+      border: none;
+      color: #d93025;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 8px;
+      line-height: 1;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    
+    .remove-btn:hover {
+      background: #fce8e6;
+    }
+    
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+    
+    .status {
+      padding: 12px;
+      border-radius: 4px;
+      margin-top: 16px;
+      display: none;
+      font-size: 14px;
+    }
+    
+    .status.info {
+      display: block;
+      background: #e8f0fe;
+      color: #1967d2;
+      border-left: 4px solid #1a73e8;
+    }
+    
+    .status.success {
+      display: block;
+      background: #e6f4ea;
+      color: #137333;
+      border-left: 4px solid #34a853;
+    }
+    
+    .status.error {
+      display: block;
+      background: #fce8e6;
+      color: #c5221f;
+      border-left: 4px solid #ea4335;
+    }
+    
+    #userDataList .input-group {
+      padding: 8px;
+      background: white;
+      border-radius: 4px;
+      border: 1px solid #dadce0;
+      margin-bottom: 8px;
+    }
+    
+    hr {
+      border: none;
+      border-top: 1px solid #dadce0;
+      margin: 14px 0;
+    }
+    
+    .stats {
+      font-size: 11px;
+      color: #5f6368;
+      margin-top: 8px;
+      padding: 6px 8px;
+      background: white;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>🎯 AI Конструктор v2.0</h2>
+    <div class="cell-info" id="cellInfo">Загрузка...</div>
+
+    <!-- TEMPLATES SECTION -->
+    <div class="section templates-section">
+      <div class="section-title">📋 Шаблоны конфигураций</div>
+      
+      <div class="input-group">
+        <select id="templateSelect">
+          <option value="">-- Выберите шаблон --</option>
+        </select>
+        <button class="btn btn-secondary btn-small" onclick="loadSelectedTemplate()">📂 Загрузить</button>
+      </div>
+      
+      <hr>
+      
+      <div class="input-group">
+        <input type="text" id="templateNameInput" placeholder="Имя нового или обновленного шаблона..." />
+        <button class="btn btn-secondary btn-small" onclick="saveAsTemplate()">💾 Сохранить</button>
+        <button class="btn btn-danger btn-small" onclick="deleteSelectedTemplate()">❌</button>
+      </div>
+      
+      <div class="stats" id="templateStats">Шаблонов: 0</div>
+    </div>
+
+    <!-- SYSTEM PROMPT SECTION -->
+    <div class="section">
+      <div class="section-title">📍 System Prompt (инструкция для AI)</div>
+      <div class="input-group">
+        <input type="text" id="systemPromptSheet" placeholder="Название листа" />
+        <input type="text" id="systemPromptCell" placeholder="Ячейка (например A1)" />
+      </div>
+    </div>
+
+    <!-- USER DATA SECTION -->
+    <div class="section">
+      <div class="section-title">📦 User Data (данные для обработки)</div>
+      <div id="userDataList"></div>
+      <button class="add-btn" onclick="addUserDataRow()">+ Добавить данные</button>
+    </div>
+
+    <!-- ACTIONS -->
+    <div class="actions">
+      <button class="btn btn-primary" onclick="runConfig()">🚀 Запустить</button>
+      <button class="btn btn-secondary" onclick="clearConfig()">🔄 Очистить</button>
+    </div>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // GLOBAL STATE
+    // ============================================================================
+    
+    let activeCellInfo = null;
+
+    // ============================================================================
+    // INITIALIZATION
+    // ============================================================================
+    
+    /**
+     * Runs when the dialog is opened
+     */
+    function onOpen() {
+      showStatus('Загрузка...', 'info');
+      
+      // Get active cell context
+      google.script.run
+        .withSuccessHandler(context => {
+          activeCellInfo = context;
+          updateCellInfo(context);
+          loadTemplatesList();
+          loadTemplatesStats();
+        })
+        .withFailureHandler(showError)
+        .getActiveCellContext();
+    }
+    
+    /**
+     * Updates the cell info display
+     */
+    function updateCellInfo(context) {
+      const cellInfoDiv = document.getElementById('cellInfo');
+      if (context.sheetName && context.a1Notation) {
+        cellInfoDiv.textContent = `📌 Целевая ячейка: ${context.sheetName}!${context.a1Notation}`;
+      } else {
+        cellInfoDiv.textContent = '⚠️ Не удалось определить активную ячейку. Результат не будет вставлен.';
+        cellInfoDiv.style.background = '#fce8e6';
+        cellInfoDiv.style.color = '#d93025';
+      }
+    }
+
+    // ============================================================================
+    // TEMPLATE MANAGEMENT
+    // ============================================================================
+    
+    /**
+     * Loads list of available templates
+     */
+    function loadTemplatesList() {
+      google.script.run
+        .withSuccessHandler(templates => {
+          const select = document.getElementById('templateSelect');
+          select.options.length = 1; // Keep first option
+          
+          for (const templateName in templates) {
+            const option = document.createElement('option');
+            option.value = templateName;
+            option.textContent = templateName;
+            select.appendChild(option);
+          }
+        })
+        .withFailureHandler(showError)
+        .serverGetAllTemplates();
+    }
+    
+    /**
+     * Loads selected template into UI
+     */
+    function loadSelectedTemplate() {
+      const select = document.getElementById('templateSelect');
+      const templateName = select.value;
+      
+      if (!templateName) {
+        showError(new Error('Выберите шаблон из списка'));
+        return;
+      }
+      
+      showStatus(`Загрузка шаблона "${templateName}"...`, 'info');
+      
+      google.script.run
+        .withSuccessHandler(config => {
+          if (!config) {
+            showError(new Error(`Шаблон "${templateName}" не найден`));
+            return;
+          }
+          
+          // Populate UI
+          document.getElementById('systemPromptSheet').value = config.systemPrompt?.sheet || '';
+          document.getElementById('systemPromptCell').value = config.systemPrompt?.cell || '';
+          
+          const userDataList = document.getElementById('userDataList');
+          userDataList.innerHTML = '';
+          
+          if (config.userData && config.userData.length > 0) {
+            config.userData.forEach(ud => addUserDataRow(ud.sheet, ud.cell));
+          }
+          
+          document.getElementById('templateNameInput').value = templateName;
+          
+          showStatus(`Шаблон "${templateName}" загружен`, 'success');
+        })
+        .withFailureHandler(showError)
+        .serverGetTemplate(templateName);
+    }
+    
+    /**
+     * Saves current config as template
+     */
+    function saveAsTemplate() {
+      const templateName = document.getElementById('templateNameInput').value.trim();
+      
+      if (!templateName) {
+        showError(new Error('Введите имя шаблона'));
+        return;
+      }
+      
+      const config = getCurrentConfig();
+      
+      if (!config.systemPrompt.sheet || !config.systemPrompt.cell) {
+        showError(new Error('Укажите System Prompt (лист и ячейку)'));
+        return;
+      }
+      
+      showStatus(`Сохранение шаблона "${templateName}"...`, 'info');
+      
+      google.script.run
+        .withSuccessHandler(response => {
+          if (response.success) {
+            showStatus(response.message + (response.size ? ` (${response.size} байт)` : ''), 'success');
+            loadTemplatesList();
+            loadTemplatesStats();
+          } else {
+            showError(new Error(response.message));
+          }
+        })
+        .withFailureHandler(showError)
+        .serverSaveTemplate(templateName, config);
+    }
+    
+    /**
+     * Deletes selected template
+     */
+    function deleteSelectedTemplate() {
+      const select = document.getElementById('templateSelect');
+      const templateName = select.value;
+      
+      if (!templateName) {
+        showError(new Error('Выберите шаблон для удаления'));
+        return;
+      }
+      
+      if (!confirm(`Вы уверены, что хотите удалить шаблон "${templateName}"?`)) {
+        return;
+      }
+      
+      showStatus(`Удаление шаблона "${templateName}"...`, 'info');
+      
+      google.script.run
+        .withSuccessHandler(response => {
+          if (response.success) {
+            showStatus(response.message, 'success');
+            document.getElementById('templateNameInput').value = '';
+            clearConfig();
+            loadTemplatesList();
+            loadTemplatesStats();
+          } else {
+            showError(new Error(response.message));
+          }
+        })
+        .withFailureHandler(showError)
+        .serverDeleteTemplate(templateName);
+    }
+    
+    /**
+     * Loads template statistics
+     */
+    function loadTemplatesStats() {
+      google.script.run
+        .withSuccessHandler(stats => {
+          const statsDiv = document.getElementById('templateStats');
+          statsDiv.textContent = `Шаблонов: ${stats.count}/${stats.maxCount} | Размер: ${stats.totalSize} байт`;
+        })
+        .withFailureHandler(() => {
+          // Silently fail
+        })
+        .serverGetTemplatesStats();
+    }
+
+    // ============================================================================
+    // CONFIG EXECUTION
+    // ============================================================================
+    
+    /**
+     * Runs the configuration
+     */
+    function runConfig() {
+      if (!activeCellInfo?.sheetName || !activeCellInfo?.a1Notation) {
+        showError(new Error('Не определена целевая ячейка'));
+        return;
+      }
+      
+      const config = getCurrentConfig();
+      
+      if (!config.systemPrompt.sheet || !config.systemPrompt.cell) {
+        showError(new Error('Укажите System Prompt (лист и ячейку)'));
+        return;
+      }
+      
+      if (config.userData.length === 0) {
+        if (!confirm('User Data не указаны. Продолжить?')) {
+          return;
+        }
+      }
+      
+      showStatus('Выполнение запроса к AI... Это может занять время.', 'info');
+      
+      google.script.run
+        .withSuccessHandler(result => {
+          if (result.success) {
+            showStatus('✅ Результат записан в ячейку ' + activeCellInfo.a1Notation, 'success');
+          } else {
+            showError(new Error(result.error));
+          }
+        })
+        .withFailureHandler(showError)
+        .serverExecuteConfig(config, activeCellInfo);
+    }
+
+    // ============================================================================
+    // UI HELPERS
+    // ============================================================================
+    
+    /**
+     * Gets current configuration from UI
+     */
+    function getCurrentConfig() {
+      const systemPromptSheet = document.getElementById('systemPromptSheet').value.trim();
+      const systemPromptCell = document.getElementById('systemPromptCell').value.trim();
+      
+      const config = {
+        systemPrompt: { 
+          sheet: systemPromptSheet, 
+          cell: systemPromptCell 
+        },
+        userData: []
+      };
+      
+      const userDataRows = document.querySelectorAll('#userDataList .input-group');
+      userDataRows.forEach(row => {
+        const sheet = row.querySelector('input[placeholder*="Название листа"]').value.trim();
+        const cell = row.querySelector('input[placeholder*="Cell"]').value.trim();
+        if (sheet && cell) {
+          config.userData.push({ sheet, cell });
+        }
+      });
+      
+      return config;
+    }
+    
+    /**
+     * Clears all configuration fields
+     */
+    function clearConfig() {
+      document.getElementById('systemPromptSheet').value = '';
+      document.getElementById('systemPromptCell').value = '';
+      document.getElementById('userDataList').innerHTML = '';
+      document.getElementById('templateNameInput').value = '';
+      document.getElementById('templateSelect').selectedIndex = 0;
+      showStatus('Поля очищены', 'info');
+    }
+    
+    /**
+     * Adds a user data row
+     */
+    function addUserDataRow(sheet = '', cell = '') {
+      const userDataList = document.getElementById('userDataList');
+      
+      const div = document.createElement('div');
+      div.className = 'input-group';
+      div.innerHTML = `
+        <input type="text" placeholder="Название листа" value="${sheet}" />
+        <input type="text" placeholder="Cell/Range (A1, A1:B10)" value="${cell}" />
+        <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
+      `;
+      
+      userDataList.appendChild(div);
+    }
+    
+    /**
+     * Shows status message
+     */
+    function showStatus(message, type) {
+      const statusDiv = document.getElementById('status');
+      statusDiv.textContent = message;
+      statusDiv.className = 'status ' + type;
+    }
+    
+    /**
+     * Shows error
+     */
+    function showError(error) {
+      showStatus('❌ Ошибка: ' + error.message, 'error');
+    }
+
+    // ============================================================================
+    // AUTO-INITIALIZE
+    // ============================================================================
+    
+    document.addEventListener('DOMContentLoaded', onOpen);
+  </script>
+</body>
+</html>
