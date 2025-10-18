@@ -516,8 +516,8 @@ function prepareChainFromPromptBox() {
     addLog('📝 Формула установлена → Распаковка!' + m.targetA1 + ' из Prompt_box!F' + m.promptRow, 'INFO');
   }
 
-  SpreadsheetApp.getUi().alert('✅ Готово: формулы расставлены по целям из Prompt_box!B.\\n' +
-    'Первая ячейка запустится при заполнении соответствующего A-столбца, далее — по фразе готовности.');
+  SpreadsheetApp.getUi().alert('✅ Готово: формулы расставлены по целям из Prompt_box!B.
+Первая ячейка запустится при заполнении соответствующего A-столбца, далее — по фразе готовности.');
 }
 function prepareChainForA3() {
   var ss = SpreadsheetApp.getActive();
@@ -779,12 +779,8 @@ function onOpen() {
     .addSeparator()
     .addItem('🧹 Очистить B3..G3', 'clearChainForA3')
     .addSeparator()
-    .addSubMenu(ui.createMenu('🎯 AI Конструктор (Template System v2.0)')
+    .addSubMenu(ui.createMenu('🎯 AI Конструктор (Template System)')
       .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
-      .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
-      .addSeparator()
-      .addItem('📦 Миграция данных (ConfigData → Templates)', 'showMigrationPreview')
-      .addItem('💾 Экспорт шаблонов в лист', 'exportTemplatesToSheet')
       .addItem('❓ Справка', 'showCollectConfigHelp')
     )
     .addSeparator()
@@ -804,8 +800,6 @@ function onOpen() {
       .addItem('📝 Показать логи', 'showLogsDialog')
       .addItem('⬇️ Экспорт логов', 'exportLogsToSheet')
       .addItem('🗑 Очистить логи', 'clearLogs')
-      .addSeparator()
-      .addItem('🧪 Откат миграции', 'rollbackMigration')
       .addToUi();
   }
 
@@ -1099,137 +1093,6 @@ function GM(prompt, maxTokens, temperature) {
       var txt = content && content.text ? content.text : '';
       var processed2 = processGeminiResponse(txt);
       gmCachePut_(key, processed2, 21600);
-
-// ====== COLLECT CONFIG INTEGRATION - MENU HANDLERS ======
-
-/**
- * Открывает диалоговое окно Collect Config для настройки AI запроса
- */
-function openCollectConfigUI() {
-  try {
-    // ВАЖНО: В Apps Script HTML файл должен называться 'CollectConfigUI' (без _v2)
-    var html = HtmlService.createHtmlOutputFromFile('CollectConfigUI')
-      .setWidth(800)
-      .setHeight(600)
-      .setTitle('🎯 AI Конструктор - Template System v2.0');
-    SpreadsheetApp.getUi().showModelessDialog(html, '🎯 AI Конструктор');
-    addLog('✅ Открыт Collect Config UI', 'INFO');
-  } catch (e) {
-    addLog('❌ Ошибка открытия Collect Config UI: ' + e.message, 'ERROR');
-    SpreadsheetApp.getUi().alert('Ошибка открытия интерфейса: ' + e.message);
-  }
-}
-
-/**
- * Обновляет активную ячейку с сохраненной конфигурацией
- */
-function refreshCellWithConfig() {
-  try {
-    var sheet = SpreadsheetApp.getActiveSheet();
-    var cell = sheet.getActiveCell();
-    var cellAddress = cell.getA1Notation();
-    
-    addLog('🔄 Обновление ячейки ' + cellAddress + ' с конфигурацией', 'INFO');
-    
-    // Вызов функции из CollectConfigUI.gs
-    if (typeof serverExecuteConfig !== 'undefined') {
-      var result = serverExecuteConfig(cellAddress);
-      SpreadsheetApp.getUi().alert('✅ Ячейка обновлена: ' + cellAddress);
-    } else {
-      throw new Error('Модуль CollectConfigUI не подключен');
-    }
-  } catch (e) {
-    addLog('❌ Ошибка обновления ячейки: ' + e.message, 'ERROR');
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-/**
- * Показывает предпросмотр миграции из старого ConfigData
- */
-function showMigrationPreview() {
-  try {
-    addLog('📦 Запуск превью миграции', 'INFO');
-    
-    // Вызов функции из MIGRATION.gs
-    if (typeof validateBeforeMigration !== 'undefined') {
-      var report = validateBeforeMigration();
-      SpreadsheetApp.getUi().alert(
-        '📦 Проверка перед миграцией',
-        report,
-        SpreadsheetApp.getUi().ButtonSet.OK
-      );
-      
-      // Предложить запустить миграцию
-      var response = SpreadsheetApp.getUi().alert(
-        '🔄 Начать миграцию?',
-        'Хотите запустить интерактивную миграцию данных?',
-        SpreadsheetApp.getUi().ButtonSet.YES_NO
-      );
-      
-      if (response === SpreadsheetApp.getUi().Button.YES && typeof interactiveMigration !== 'undefined') {
-        interactiveMigration();
-      }
-    } else {
-      throw new Error('Модуль MIGRATION не подключен');
-    }
-  } catch (e) {
-    addLog('❌ Ошибка миграции: ' + e.message, 'ERROR');
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-/**
- * Показывает справку по Template System
- */
-function showCollectConfigHelp() {
-  var helpText = `
-🎯 AI КОНСТРУКТОР - TEMPLATE SYSTEM V2.0
-
-═══════════════════════════════════════
-
-📖 ОСНОВНЫЕ ФУНКЦИИ:
-
-1️⃣ Настроить запрос
-   • Открывает интерфейс для создания AI промптов
-   • Поддержка шаблонов (сохранение/загрузка)
-   • Автоматическое заполнение параметров
-
-2️⃣ Обновить ячейку
-   • Применяет сохраненную конфигурацию
-   • Быстрое обновление AI запроса
-
-3️⃣ Миграция данных
-   • Перенос из старого ConfigData
-   • Проверка перед миграцией
-   • Откат при необходимости
-
-4️⃣ Экспорт шаблонов
-   • Создание backup в Google Sheets
-   • Просмотр всех шаблонов
-
-═══════════════════════════════════════
-
-🚀 БЫСТРЫЙ СТАРТ:
-
-1. Нажмите "Настроить запрос"
-2. Заполните промпт и параметры
-3. Сохраните как шаблон
-4. Выберите ячейку и примените!
-
-═══════════════════════════════════════
-
-📚 Документация: см. TEMPLATES_GUIDE.md
-`;
-  
-  SpreadsheetApp.getUi().alert(
-    '❓ Справка - AI Конструктор',
-    helpText,
-    SpreadsheetApp.getUi().ButtonSet.OK
-  );
-  
-  addLog('ℹ️ Показана справка Collect Config', 'INFO');
-}
       return processed2;
     } catch (e2) {
       var em = 'Error: ' + e2.message;
