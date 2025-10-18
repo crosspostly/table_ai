@@ -211,27 +211,7 @@ function getCompletionPhrase() {
   }
   return COMPLETION_PHRASE;
 }
-function setCompletionPhraseUI() {
-  const ui = SpreadsheetApp.getUi();
-  const current = getCompletionPhrase();
-  const res = ui.prompt('📝 Фраза готовности', 'Введите точную фразу, с которой ДОЛЖЕН начинаться готовый ответ (например: Отчёт готов). Текущая: ' + current, ui.ButtonSet.OK_CANCEL);
-  if (res.getSelectedButton() !== ui.Button.OK) return;
-  const val = (res.getResponseText() || '').trim();
-  if (!val) {
-    ui.alert('Фраза не изменена.'); return;
-  }
-  const ss = SpreadsheetApp.getActive();
-  const params = ss.getSheetByName('Параметры');
-  if (!params) {
-    // если нет листа Параметры — сохраним в Script Properties
-    PropertiesService.getScriptProperties().setProperty('COMPLETION_PHRASE', val);
-    ui.alert('✅ Фраза сохранена в настройках скрипта.');
-  } else {
-    params.getRange('B10').setValue(val);
-    ui.alert('✅ Фраза сохранена в Параметры!B10.');
-  }
-  addLog('🔧 Новая фраза готовности: ' + val, 'INFO');
-}
+// Функция setCompletionPhraseUI удалена - больше не используется
 
 // ====== УТИЛИТЫ ДЛЯ ПОСЛЕДОВАТЕЛЬНОСТИ ======
 function isCompletionReady(text) {
@@ -867,13 +847,13 @@ function onOpen() {
     )
     .addSeparator()
     .addItem('📥 Импорт VK постов', 'importVkPosts')
-    .addItem('🔑 Установить API ключ Gemini', 'initGeminiKey')
-    .addItem('📝 Фраза готовности (изменить)', 'setCompletionPhraseUI')
-    .addItem('🖼️ OCR отзывов (A→B)', 'ocrReviews')
-    .addItem('🖼️ OCR V2 (A→B)', 'ocrRun')
-    .addSubMenu(ui.createMenu('🔐 Лицензия')
-      .addItem('Ввести Email + Токен', 'setLicenseCredentialsUI')
-      .addItem('Проверить статус', 'checkLicenseStatusUI'),
+    .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
+    .addSeparator()
+    .addSubMenu(ui.createMenu('⚙️ Настройки')
+      .addItem('🔑 Установить API ключ Gemini', 'initGeminiKey')
+      .addSeparator()
+      .addItem('🔐 Ввести лицензию', 'setLicenseCredentialsUI')
+      .addItem('🔐 Проверить статус лицензии', 'checkLicenseStatusUI'),
     )
     .addToUi();
 
