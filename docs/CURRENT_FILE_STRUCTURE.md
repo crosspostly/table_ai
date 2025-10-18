@@ -51,7 +51,7 @@
 | **MissingFunctions.gs** | Функции для меню | OCR_functions(), Smart_chain_functions() | ✅ |
 | **SocialImportClient.gs** | Импорт из соцсетей | importSocialPostsClient(), detectPlatform() | ✅ |
 | **SuperMasterCheck.gs** | Комплексное тестирование | superMasterCheck(), 46 тестов | ✅ |
-| **ThinClient.gs** | HTTP клиент к серверу | callServer(), ocrReviewsThin() | ✅ |
+| **ThinClient.gs** | HTTP клиент к серверу | callServer() | ✅ |
 | **VkImportDiagnostics.gs** | Диагностика VK импорта | diagnoseVkImport(), testVkEndpoint() | ✅ |
 | **WebInterfaceExtensions.gs** | Расширения веб-интерфейса | openWebInterfaceWithAuth(), getProjectInfo() | ✅ |
 
