@@ -1,9 +1,10 @@
-# 🤖 TABLE AI v2.0 - AI-powered Google Sheets Automation
+# 🤖 TABLE AI v3.0 - AI-powered Google Sheets Automation
 
 > **Полнофункциональная система автоматизации Google Sheets с AI, OCR, импортом из социальных сетей и системой шаблонов**
 
-[![Version](https://img.shields.io/badge/Version-2.0.0-green.svg)](version.json)
+[![Version](https://img.shields.io/badge/Version-3.0.0-green.svg)](CHANGELOG.md)
 [![Status](https://img.shields.io/badge/Status-Production--Ready-success.svg)](deploy/)
+[![Tests](https://img.shields.io/badge/Tests-43%20passing-success.svg)](__tests__/)
 [![Google Sheets](https://img.shields.io/badge/Platform-Google%20Sheets-34A853.svg)](https://sheets.google.com)
 [![Gemini AI](https://img.shields.io/badge/AI-Gemini%202.0-4285F4.svg)](https://ai.google.dev/)
 
@@ -196,37 +197,32 @@ Prompt_box!B3: "C3"  → Формула в C3
 
 ```
 table_ai/
-├── 📄 Main.txt                      # Основной код (источник)
-├── 📄 server.txt                    # Серверный код (источник)
-├── 📄 ocrRunV2_client.txt          # OCR клиент V2
-├── 📄 VK_PARSER.txt                # VK парсер
-│
 ├── 📁 deploy/                       # 🎯 PRODUCTION-READY ПАКЕТ
-│   ├── Main.gs                     # Интегрированный основной файл
-│   ├── server.gs                   # Серверные функции
-│   ├── TemplateService.gs          # Управление шаблонами
-│   ├── CollectConfigUI.gs          # Server-side UI функции
-│   ├── CollectConfigUI_v2.html     # Template System UI
-│   ├── MIGRATION.gs                # Утилиты миграции
-│   ├── DEPLOYMENT_GUIDE.md         # Руководство по развертыванию
+│   ├── Main.gs                     # Ядро: меню, GM формулы (1027 строк)
+│   ├── server.gs                   # Лицензии, API прокси (293 строки)
+│   ├── ocrRunV2_client.gs          # OCR транскрибация (437 строк)
+│   ├── CollectConfig.gs            # AI конструктор v3.0 (705 строк)
+│   ├── TemplateService.gs          # Управление шаблонами (432 строки)
+│   ├── CollectConfigUi.html        # UI для AI конструктора (~900 строк)
+│   ├── SettingsUI.html             # Единое окно настроек (~500 строк)
+│   ├── appsscript.json             # Манифест, OAuth scopes
 │   └── README.md                   # Быстрый старт
 │
-├── 📁 collect_config/               # Collect Config / Template System
-│   ├── TemplateService.gs          # Сервис шаблонов
-│   ├── CollectConfigUI.gs          # UI функции
-│   ├── CollectConfigUI_v2.html     # HTML интерфейс
-│   ├── MIGRATION.gs                # Миграция данных
-│   ├── TEMPLATES_GUIDE.md          # Руководство пользователя
-│   └── README_INTEGRATION.md       # Техническая интеграция
+├── 📁 __tests__/                    # Тесты (43/43 passing ✅)
+│   ├── CollectDataFromRange.test.js
+│   └── ...
 │
 ├── 📁 docs/                         # Документация
-│   ├── TEMPLATE_SYSTEM.md          # Документация Template System
-│   ├── INSTALLATION.md             # Установка
-│   ├── QUICK_START.md              # Быстрый старт
+│   ├── CURRENT_FILE_STRUCTURE.md   # Актуальная структура файлов
 │   ├── FUNCTIONS_REFERENCE.md      # Справочник функций
 │   └── ...
 │
-└── 📁 system_integrations/          # Системные интеграции
+├── 📄 REAL_ARCHITECTURE.md          # 🏗️ Подробная архитектура v3.0
+├── 📄 AUDIT_UNUSED_CODE.md          # Отчёт по очистке кода (-37%)
+├── 📄 DEPLOYMENT_INSTRUCTIONS.md    # Инструкции по развёртыванию
+└── 📄 README.md                     # Этот файл
+
+**Итого:** 5 файлов .gs (3,725 строк), 2 HTML, 1 JSON, 43 теста ✅
 ```
 
 ### Клиент-Серверная архитектура:

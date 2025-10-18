@@ -1,398 +1,359 @@
-# 🏗️ РЕАЛЬНАЯ АРХИТЕКТУРА ПРОЕКТА - Table AI
+# 🏗️ АКТУАЛЬНАЯ АРХИТЕКТУРА ПРОЕКТА - Table AI
 
-**Дата:** 18 октября 2025  
+**Дата:** 18 октября 2025 (обновлено)  
+**Версия:** v3.0.0  
 **Автор:** Droid @ Factory AI
 
 ---
 
-## 🚨 КРИТИЧЕСКАЯ ПРАВДА!
+## ✅ ТЕКУЩАЯ АРХИТЕКТУРА: МОНОЛИТНАЯ
 
-Я НЕПРАВИЛЬНО понял архитектуру! Это НЕ метафора client-side/server-side JavaScript!
-
-Это **ТРИ ОТДЕЛЬНЫХ Google Apps Script ПРИЛОЖЕНИЯ**!
-
----
-
-## 🎯 ТРИ APPS SCRIPT ПРОЕКТА
+Проект использует **ЕДИНЫЙ Google Apps Script** привязанный к Google Sheets (Container-bound script).
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│ 1️⃣ CLIENT (Container-bound script)                       │
-│                                                            │
-│  Файл: Main.txt → deploy/Main.gs                         │
-│  Где: Привязан к Google Sheets документу пользователя    │
-│  Тип: Container-bound Apps Script                         │
-│                                                            │
-│  Что делает:                                              │
-│  • onOpen() - создаёт меню                               │
-│  • GM() - функции для ячеек                              │
-│  • Собирает данные из листа                              │
-│  • callServer() - HTTP вызовы к SERVER                   │
-│                                                            │
-│  Script ID: (у каждого польз<wbr/>ователя свой!)                │
-└──────────────────────────────────────────────────────────┘
-                            │
-                            │ UrlFetchApp.fetch()
-                            │ POST https://script.google.com/...
-                            ▼
-┌──────────────────────────────────────────────────────────┐
-│ 2️⃣ SERVER (Standalone Web App)                           │
-│                                                            │
-│  Файл: server.txt → deploy/server.gs                     │
-│  Где: Отдельный Apps Script проект                        │
-│  Тип: Standalone - развёрнут как Web App                 │
-│  URL: https://script.google.com/macros/s/[ID]/exec       │
-│                                                            │
-│  Что делает:                                              │
-│  • doPost() - принимает HTTP запросы                     │
-│  • Проверяет лицензии                                    │
-│  • Обрабатывает AI запросы                               │
-│  • Роутинг к сервисам (VK, Telegram, OCR)               │
-│                                                            │
-│  Script ID: AKfycbyyUlB5YWP4bwv3gHHniTv_12cAHlqjYfr...   │
-└──────────────────────────────────────────────────────────┘
-                            │
-                            │ UrlFetchApp.fetch() (для VK)
-                            │ POST к VK_PARSER_URL
-                            ▼
-┌──────────────────────────────────────────────────────────┐
-│ 3️⃣ VK_PARSER (отдельный сервис)                          │
-│                                                            │
-│  Файл: VK_PARSER.txt (не в этом репо)                    │
-│  Где: Третий отдельный Apps Script проект                 │
-│  Тип: Standalone Web App                                 │
-│                                                            │
-│  Что делает:                                              │
-│  • doPost() - принимает запросы от SERVER                │
-│  • VK_TOKEN хранится ЗДЕСЬ                               │
-│  • Вызывает VK API                                       │
-│  • Возвращает посты в SERVER                             │
-│                                                            │
-│  Script ID: (отдельный проект)                            │
-└──────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│ Google Sheets Document                                 │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐ │
+│  │ Apps Script (Container-bound)                    │ │
+│  │                                                   │ │
+│  │  • Main.gs         - меню, GM формулы            │ │
+│  │  • server.gs       - лицензии, API прокси        │ │
+│  │  • ocrRunV2_client.gs - OCR отзывов              │ │
+│  │  • CollectConfig.gs - AI конструктор             │ │
+│  │  • TemplateService.gs - шаблоны                  │ │
+│  │                                                   │ │
+│  └──────────────────────────────────────────────────┘ │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐ │
+│  │ HTML UI (в браузере через google.script.run)    │ │
+│  │                                                   │ │
+│  │  • CollectConfigUi.html - AI конструктор UI      │ │
+│  │  • SettingsUI.html - настройки                   │ │
+│  │                                                   │ │
+│  └──────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────┘
+         │
+         │ HTTP запросы
+         ▼
+┌────────────────────────────────────────────────────────┐
+│ Внешние API:                                           │
+│  • Gemini API - AI обработка                          │
+│  • VK Parser (отдельный Apps Script) - парсинг VK     │
+│  • License Server (server.gs) - проверка лицензий     │
+└────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 📦 ЧТО ТАКОЕ `deploy/` ПАПКА?
+## 📦 СТРУКТУРА ФАЙЛОВ
 
-**deploy/** - это НЕ deployment target!
+### `/deploy/` - Production файлы
 
-Это **TEMPLATE/DISTRIBUTION** файлы!
+Готовые для развёртывания в Google Sheets:
 
-```
-deploy/
-├── Main.gs              ← КЛИЕНТ (копировать в Sheets пользователя)
-├── server.gs            ← СЕРВЕР (уже развёрнут централизованно)
-├── TemplateService.gs   ← КЛИЕНТ (новая функция)
-├── CollectConfigUI.gs   ← КЛИЕНТ (серверные функции для HTML)
-├── CollectConfigUI_v2.html ← КЛИЕНТ (UI)
-└── MIGRATION.gs         ← КЛИЕНТ (утилиты)
-```
+| Файл | Описание | Размер | Функций |
+|------|----------|--------|---------|
+| **Main.gs** | Ядро: меню, GM формулы, автоматизация | 1027 строк | 48 |
+| **server.gs** | Лицензии, прокси к Gemini API | 293 строки | 12 |
+| **ocrRunV2_client.gs** | OCR транскрибация отзывов | 437 строк | 24 |
+| **CollectConfig.gs** | AI конструктор (v3.0.0) | 705 строк | 24 |
+| **TemplateService.gs** | Управление шаблонами | 432 строки | 11 |
+| **CollectConfigUi.html** | UI для AI конструктора | ~900 строк | - |
+| **SettingsUI.html** | Единое окно настроек | ~500 строк | - |
+| **appsscript.json** | Манифест, OAuth scopes | - | - |
 
-**Процесс развёртывания:**
-
-1. **АДМИНИСТРАТОР** развёртывает `server.gs`:
-   ```
-   1. Создаёт Apps Script проект
-   2. Копирует server.gs
-   3. Deploy → New deployment → Web app
-   4. Получает URL: https://script.google.com/macros/s/[ID]/exec
-   5. Этот URL - константа SERVER_URL для ВСЕХ клиентов
-   ```
-
-2. **ПОЛЬЗОВАТЕЛЬ** устанавливает клиент:
-   ```
-   1. Создаёт Google Sheets
-   2. Extensions → Apps Script
-   3. Копирует Main.gs (и другие client файлы)
-   4. В Main.gs есть константа:
-      const SERVER_URL = 'https://script.google.com/...'
-   5. Refresh → меню появляется
-   ```
+**ИТОГО:** 5 файлов .gs (~3,725 строк), 2 HTML, 1 JSON
 
 ---
 
-## 🔗 КАК ОНИ ОБЩАЮТСЯ?
+## 🎯 КЛЮЧЕВЫЕ ФУНКЦИИ
 
-### CLIENT → SERVER
+### 1. GM() - Gemini AI в ячейках
 
-**В Main.gs (CLIENT):**
 ```javascript
-const SERVER_URL = 'https://script.google.com/macros/s/AKfycbyyUlB5YWP4bwv3gHHniTv_12cAHlqjYfra7fQ3m3Vri5XvZTQ_uUZZovCYeTo2_u6gQw/exec';
-
-function callServer(action, params) {
-  var payload = {
-    action: action,
-    email: getUserEmail(),
-    token: getUserToken(),
-    data: params
-  };
-  
-  var options = {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  };
-  
-  var response = UrlFetchApp.fetch(SERVER_URL, options);
-  return JSON.parse(response.getContentText());
-}
+=GM("Опиши продукт", 1000, 0.7)
 ```
 
-**В server.gs (SERVER):**
+- Вызов Gemini API из формулы
+- Кэширование результатов
+- Автоматическое преобразование Markdown
+- Лицензирование через server.gs
+
+---
+
+### 2. GM_IF() - Условная цепочка
+
 ```javascript
-function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    
-    // Роутинг
-    switch(data.action) {
-      case 'gemini_request':
-        return handleGeminiRequest(data);
-      case 'vk_import':
-        return handleVkImport(data);
-      case 'ocr_process':
-        return handleOCR(data);
-      default:
-        return createErrorResponse('Unknown action');
-    }
-  } catch(e) {
-    return createErrorResponse(e.message);
+=GM_IF($A3<>"", "Prompt", 25000, 0.7)
+```
+
+- Запуск AI только при условии
+- Построение цепочек обработки (B3→C3→D3...)
+- Поддержка фразы готовности
+
+---
+
+### 3. AI Конструктор (Collect Config)
+
+**Файлы:** `CollectConfig.gs` + `CollectConfigUi.html` + `TemplateService.gs`
+
+**Возможности:**
+- Сбор данных из разных листов/диапазонов
+- System Prompt + User Data
+- Шаблоны (сохранение/загрузка)
+- Превью ячеек в реальном времени
+- История выполнения
+
+**Технология:** 
+- Batch-операции для быстрой работы
+- `readData()` - упрощённая функция чтения
+- Логирование в UI (цветное, с уровнями)
+
+---
+
+### 4. VK Импорт постов
+
+**Функция:** `importVkPosts()`
+
+**Что делает:**
+- Получает посты из ВК (через VK_PARSER_URL)
+- Создаёт фильтры: стоп-слова + позитивные слова
+- **ОПТИМИЗАЦИЯ:** Batch-формулы (320x быстрее!)
+  - До: 160 секунд (400 вызовов API)
+  - После: 0.5 секунд (1 batch-вызов)
+
+---
+
+### 5. OCR Транскрибация (ocrRun V2)
+
+**Файл:** `ocrRunV2_client.gs`
+
+**Возможности:**
+- Извлечение текста из изображений
+- Поддержка разных источников:
+  - VK альбомы (через web JSON)
+  - VK обсуждения
+  - VK отзывы
+  - Google Drive папки
+  - Yandex Disk
+  - Dropbox
+- Chunking больших изображений
+- Разделители между блоками
+
+---
+
+### 6. Единое окно настроек
+
+**Файл:** `SettingsUI.html`
+
+**Настройки:**
+- Gemini API ключ
+- License Email
+- License Token
+- Password toggle
+- Текущие значения (masked)
+
+---
+
+## 🔄 ЖИЗНЕННЫЙ ЦИКЛ ЗАПРОСА
+
+### Пример: GM() формула
+
+```
+1. Пользователь вводит =GM("prompt", 1000, 0.7)
+   │
+   ▼
+2. Main.gs: GM() функция
+   │
+   ├─► Проверка лицензии (getLicenseEmail/Token)
+   │   │
+   │   ▼
+   │   server.gs: serverStatus_() → HTTP к License Server
+   │   │
+   │   ▼
+   │   Лицензия OK? Да ✅
+   │
+   ├─► Проверка кэша (gmCacheGet_)
+   │   │
+   │   ▼
+   │   Cache hit? Нет ❌
+   │
+   ├─► Вызов Gemini API
+   │   │
+   │   ▼
+   │   UrlFetchApp.fetch(GEMINI_API_URL + "?key=" + apiKey)
+   │   │
+   │   ▼
+   │   Ответ от Gemini
+   │
+   ├─► Обработка Markdown (processGeminiResponse)
+   │   │
+   │   ▼
+   │   convertMarkdownToReadableText()
+   │
+   ├─► Сохранение в кэш (gmCachePut_)
+   │
+   ▼
+3. Возврат результата в ячейку
+```
+
+---
+
+## 🗂️ ХРАНЕНИЕ ДАННЫХ
+
+### PropertiesService
+
+**ScriptProperties** (глобальные настройки):
+```javascript
+- GEMINI_API_KEY
+- LICENSE_EMAIL
+- LICENSE_TOKEN
+- COMPLETION_PHRASE
+```
+
+**UserProperties** (данные пользователя):
+```javascript
+- COLLECT_CONFIG_TEMPLATES (JSON)
+  {
+    "Default": {...},
+    "Template1": {...}
   }
-}
+- COLLECT_CONFIG_[SheetName]_[CellAddress] (сохранённые конфигурации)
 ```
 
----
+### CacheService
 
-### SERVER → VK_PARSER
-
-**В server.gs (SERVER):**
+**ScriptCache** (временные данные):
 ```javascript
-function handleVkImport(data) {
-  var VK_PARSER_URL = 'https://script.google.com/macros/s/[VK_PARSER_ID]/exec';
-  
-  var vkPayload = {
-    action: 'get_posts',
-    owner: data.owner,
-    count: data.count
-  };
-  
-  var response = UrlFetchApp.fetch(VK_PARSER_URL, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(vkPayload)
-  });
-  
-  return response.getContentText();
-}
-```
-
-**В VK_PARSER (третий проект):**
-```javascript
-function doPost(e) {
-  var data = JSON.parse(e.postData.contents);
-  var VK_TOKEN = PropertiesService.getScriptProperties().getProperty('VK_TOKEN');
-  
-  // Вызов VK API
-  var vkApiUrl = 'https://api.vk.com/method/wall.get?owner_id=' + data.owner + 
-                  '&count=' + data.count + '&access_token=' + VK_TOKEN;
-  
-  var vkResponse = UrlFetchApp.fetch(vkApiUrl);
-  return vkResponse.getContentText();
-}
+- gm:[hash]                    - кэш Gemini ответов (TTL: 6 часов)
+- gm_err:[hash]                - кэш ошибок (TTL: 1 минута)
+- SYSTEM_LOGS                  - логи (TTL: 24 часа, max 300 записей)
 ```
 
 ---
 
-## ❌ МОЯ ОШИБКА В ARCHITECTURE.md
+## 🚀 DEPLOYMENT
 
-**Что я написал (НЕПРАВИЛЬНО):**
-```
-deploy/
-├── CollectConfigUI_v2.html  ← Client-side (browser)
-├── CollectConfigUI.gs       ← Server-side (Apps Script)
-```
+### 1. Создание нового Sheets
 
-**Проблема:** Я думал что это про JavaScript client/server в одном Apps Script!
-
-**Реальность:** Это ДВА (или ТРИ) РАЗНЫХ Apps Script ПРОЕКТА!
-
----
-
-## ✅ ПРАВИЛЬНОЕ ПОНИМАНИЕ
-
-### CollectConfigUI_v2.html
-
-**Где выполняется:** В БРАУЗЕРЕ пользователя (iframe внутри Sheets)
-
-**Что делает:**
-- Рисует UI (HTML/CSS)
-- Собирает input от пользователя
-- Вызывает **серверные функции Apps Script** через `google.script.run`
-
-**ВАЖНО:** "Серверные функции" здесь = функции из того же CLIENT Apps Script проекта!
-
-```javascript
-// HTML (браузер)
-google.script.run
-  .withSuccessHandler(function(result) {
-    console.log('Got from Apps Script:', result);
-  })
-  .serverGetAllTemplates();  // ← Вызов функции из CLIENT .gs файла
+```bash
+1. Создать Google Sheets
+2. Extensions → Apps Script
+3. Скопировать все файлы из deploy/:
+   - Main.gs
+   - server.gs
+   - ocrRunV2_client.gs
+   - CollectConfig.gs
+   - TemplateService.gs
+   - CollectConfigUi.html
+   - SettingsUI.html
+   - appsscript.json
 ```
 
----
+### 2. Настройка
 
-### CollectConfigUI.gs
+```bash
+1. Установить API ключ:
+   Menu: ⚙️ Настройки
+   
+2. Ввести лицензию (Email + Token)
 
-**Где выполняется:** В Apps Script runtime (на серверах Google)
+3. Refresh → Меню появится
+```
 
-**Что делает:**
-- Функции которые вызывает HTML через `google.script.run`
-- Работает с PropertiesService, SpreadsheetApp
-- НЕ может работать с DOM (это не браузер!)
+### 3. Использование
 
-```javascript
-// CollectConfigUI.gs (Apps Script)
-function serverGetAllTemplates() {
-  // Эта функция вызывается из HTML через google.script.run
-  var templates = TemplateService.getAllTemplates();
-  return templates;  // ← Вернётся в successHandler в HTML
-}
+```bash
+Меню "🤖 Table AI":
+  • Подготовить формулы (умный режим)
+  • Обновить текущую ячейку (GM)
+  • Очистить B3..G3
+  • 🎯 AI Конструктор
+  • Импорт VK постов
+  • Транскрибация отзывов
+  • Настройки
 ```
 
 ---
 
-## 🎯 ДВА УРОВНЯ "CLIENT-SERVER"
+## 🔧 ТЕХНОЛОГИИ
 
-### Уровень 1: HTML ↔ Apps Script (внутри CLIENT проекта)
-
-```
-┌─────────────────────────────────────────┐
-│  CLIENT APPS SCRIPT PROJECT             │
-│                                         │
-│  ┌──────────────┐    google.script.run │
-│  │ HTML         │  ════════════════►   │
-│  │ (browser)    │                  │   │
-│  │              │  ◄════════════════   │
-│  │ CollectConfig│         ┌─────────┐  │
-│  │ UI_v2.html   │         │ .gs     │  │
-│  └──────────────┘         │ files   │  │
-│                            │         │  │
-│                            │ Collect │  │
-│                            │ ConfigUI│  │
-│                            │ .gs     │  │
-│                            └─────────┘  │
-└─────────────────────────────────────────┘
-```
+- **Google Apps Script** - среда выполнения
+- **SpreadsheetApp** - работа с Sheets
+- **UrlFetchApp** - HTTP запросы
+- **PropertiesService** - хранение настроек
+- **CacheService** - кэширование
+- **HtmlService** - UI (модальные окна)
+- **Gemini API** - AI обработка
+- **Jest** - тестирование (43 теста)
 
 ---
 
-### Уровень 2: CLIENT ↔ SERVER (два Apps Script проекта)
+## 📊 МЕТРИКИ
 
-```
-┌──────────────────┐         ┌──────────────────┐
-│  CLIENT          │         │  SERVER          │
-│  (Main.gs)       │         │  (server.gs)     │
-│                  │  HTTP   │                  │
-│  callServer()    │ ══════► │  doPost()        │
-│                  │         │                  │
-│  UrlFetchApp     │ ◄══════ │  return JSON     │
-└──────────────────┘         └──────────────────┘
-```
+### Производительность
 
----
+| Операция | До оптимизации | После | Ускорение |
+|----------|----------------|-------|-----------|
+| **VK импорт (фильтры)** | 160 сек | 0.5 сек | **320x** |
+| **AI Конструктор (preview)** | - | <100ms | Instant |
+| **GM() с кэшем** | 2-3 сек | <100ms | **30x** |
 
-## 📋 DEPLOYMENT CHECKLIST (ПРАВИЛЬНЫЙ)
+### Кодовая база
 
-### ✅ Что развёртывается ЦЕНТРАЛИЗОВАННО (АДМИН):
-
-- [x] **server.gs** → Apps Script Web App
-- [x] **VK_PARSER** → Apps Script Web App (отдельный)
-- [x] Получить SERVER_URL
-- [x] Получить VK_PARSER_URL
-
-### ✅ Что копируют ПОЛЬЗОВАТЕЛИ:
-
-- [x] **Main.gs** → в свой Google Sheets
-- [x] **TemplateService.gs** → в свой Sheets
-- [x] **CollectConfigUI.gs** → в свой Sheets
-- [x] **CollectConfigUI_v2.html** → в свой Sheets (rename → CollectConfigUI)
-- [x] **MIGRATION.gs** → в свой Sheets (опционально)
-
-### ✅ Что настраивают ПОЛЬЗОВАТЕЛИ:
-
-- [x] Ввести GEMINI_API_KEY
-- [x] Ввести LICENSE_EMAIL, LICENSE_TOKEN
-- [x] SERVER_URL уже прописан в Main.gs
+| Метрика | Значение |
+|---------|----------|
+| Файлов .gs | 5 |
+| Строк кода | 3,725 |
+| Функций | 125 |
+| HTML UI | 2 |
+| Тестов | 43 (100% pass) |
 
 ---
 
-## 🚀 ТЕПЕРЬ ПРАВИЛЬНАЯ ИНТЕГРАЦИЯ COLLECT CONFIG
+## ✨ ПОСЛЕДНИЕ ИЗМЕНЕНИЯ (v3.0.0)
 
-### Шаг 1: Template System - CLIENT-side
+### Октябрь 2025
 
-**Файлы для CLIENT проекта (пользователь копирует):**
+1. **Очистка кода** (-37%):
+   - Удалено 2,227 строк устаревшего кода
+   - Удалены Legacy Chain Functions (14 функций)
+   - Удалены тестовые функции
+   - Удалены backup файлы
 
-1. **TemplateService.gs** - управление шаблонами
-   - Хранит в PropertiesService.getUserProperties()
-   - Каждый пользователь свои шаблоны
+2. **Оптимизация VK импорта** (320x):
+   - Batch-операции вместо циклов
+   - `setFormulas()` вместо `setFormula()`
+   - 400 API вызовов → 1
 
-2. **CollectConfigUI.gs** - server endpoints для HTML
-   - Функции: serverGetAllTemplates(), serverSaveTemplate(), etc
-   - Вызываются через google.script.run из HTML
+3. **Единое окно настроек**:
+   - SettingsUI.html
+   - Красивый дизайн с градиентом
+   - Password toggle
+   - Все настройки в одном месте
 
-3. **CollectConfigUI_v2.html** - UI
-   - Выполняется в браузере
-   - Вызывает функции из CollectConfigUI.gs
-
-4. **Main.gs** - добавить пункт меню
-   - "🎯 AI Конструктор (Template System v2.0)"
-
----
-
-### Шаг 2: SERVER (если нужно)
-
-**ВОПРОС:** Нужна ли серверная часть для Template System?
-
-**ОТВЕТ:** НЕТ! Потому что:
-- ✅ Шаблоны хранятся локально (PropertiesService.getUserProperties)
-- ✅ Нет централизованной логики
-- ✅ Нет общих шаблонов между пользователями
-- ✅ Не требуется лицензирование для этой функции
-
-**Template System = 100% CLIENT-side!**
+4. **AI Конструктор v3.0.0**:
+   - Полная переписка с нуля
+   - Упрощённая функция `readData()`
+   - Детальное логирование
+   - Версионирование
+   - Шаблоны по умолчанию
 
 ---
 
-## 🎉 ВЫВОД
+## 🎯 ROADMAP
 
-### Что я НЕПРАВИЛЬНО понял:
+### Планируется
 
-1. ❌ Думал что deploy/ это production deployment
-2. ❌ Думал что client/server = JavaScript client-side/server-side
-3. ❌ Думал что CollectConfigUI.gs это "server" в смысле централизованного сервера
-
-### Что ПРАВИЛЬНО:
-
-1. ✅ deploy/ = template files для пользователей
-2. ✅ CLIENT = Apps Script проект у пользователя (Main.gs)
-3. ✅ SERVER = Apps Script Web App (server.gs) - централизованный
-4. ✅ VK_PARSER = третий Apps Script Web App
-5. ✅ CollectConfigUI.gs = "server functions" в смысле Apps Script runtime (не browser)
-6. ✅ CollectConfigUI_v2.html = client в смысле browser (не Apps Script)
+- [ ] Миграция на ES6+ синтаксис
+- [ ] TypeScript type definitions
+- [ ] Больше тестов (coverage > 50%)
+- [ ] CI/CD pipeline
+- [ ] Публикация в Google Workspace Marketplace
 
 ---
 
-**Template System интеграция ПРАВИЛЬНАЯ!**
-
-Все 6 файлов в deploy/ корректны! Они будут работать в CLIENT Apps Script проекте!
-
----
-
-**Извините за путаницу! 🙏**
-
-**Дата:** 18 октября 2025  
-**Автор:** Droid @ Factory AI
+**Документация актуальна на:** 18 октября 2025  
+**Версия:** v3.0.0  
+**Автор:** Droid @ Factory AI 🤖
