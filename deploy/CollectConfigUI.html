@@ -49,6 +49,33 @@
       letter-spacing: 0.5px;
     }
     
+    .templates-section {
+      background: #f1f3f4;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    
+    hr {
+      border: none;
+      border-top: 1px solid #dadce0;
+      margin: 14px 0;
+    }
+    
+    .stats {
+      font-size: 11px;
+      color: #5f6368;
+      margin-top: 8px;
+      padding: 6px 8px;
+      background: white;
+      border-radius: 4px;
+    }
+    
+    .btn-small {
+      padding: 6px 10px !important;
+      font-size: 12px !important;
+    }
+    
     .cell-preview {
       margin-top: 4px;
       padding: 8px;
@@ -225,16 +252,28 @@
       border-radius: 4px;
       margin-top: 16px;
       display: none;
+      font-size: 14px;
+    }
+    
+    .status.info {
+      display: block;
+      background: #e8f0fe;
+      color: #1967d2;
+      border-left: 4px solid #1a73e8;
     }
     
     .status.success {
+      display: block;
       background: #e6f4ea;
       color: #137333;
+      border-left: 4px solid #34a853;
     }
     
     .status.error {
+      display: block;
       background: #fce8e6;
       color: #c5221f;
+      border-left: 4px solid #ea4335;
     }
     
     .loading {
@@ -260,8 +299,30 @@
 </head>
 <body>
   <div class="container">
-    <h2>🎯 Настройка AI запроса</h2>
+    <h2>🎯 AI Конструктор v2.0</h2>
     <div class="cell-info" id="cellInfo">Загрузка...</div>
+
+    <!-- TEMPLATES SECTION -->
+    <div class="section templates-section">
+      <div class="section-title">📋 Шаблоны конфигураций</div>
+      
+      <div class="input-group">
+        <select id="templateSelect">
+          <option value="">-- Выберите шаблон --</option>
+        </select>
+        <button class="btn btn-secondary btn-small" onclick="loadSelectedTemplate()">📂 Загрузить</button>
+      </div>
+      
+      <hr>
+      
+      <div class="input-group">
+        <input type="text" id="templateNameInput" placeholder="Имя нового или обновленного шаблона..." />
+        <button class="btn btn-secondary btn-small" onclick="saveAsTemplate()">💾 Сохранить</button>
+        <button class="btn btn-danger btn-small" onclick="deleteSelectedTemplate()">❌</button>
+      </div>
+      
+      <div class="stats" id="templateStats">Шаблонов: 0</div>
+    </div>
     
     <!-- System Prompt -->
     <div class="section">
@@ -324,6 +385,10 @@
         option.textContent = sheet;
         systemSheet.appendChild(option);
       });
+      
+      // Загружаем список шаблонов и статистику
+      loadTemplatesList();
+      loadTemplatesStats();
       
       // Загружаем существующую конфигурацию
       loadExistingConfig();
@@ -594,6 +659,143 @@
           .deleteCollectConfig(sheetName, cellAddress);
       }
     }
+    
+    // ============================================================================
+    // TEMPLATE FUNCTIONS
+    // ============================================================================
+    
+    function loadTemplatesList() {
+      google.script.run
+        .withSuccessHandler(function(templates) {
+          const select = document.getElementById('templateSelect');
+          select.options.length = 1; // Keep first option
+          
+          for (const templateName in templates) {
+            const option = document.createElement('option');
+            option.value = templateName;
+            option.textContent = templateName;
+            select.appendChild(option);
+          }
+        })
+        .withFailureHandler(showError)
+        .serverGetAllTemplates();
+    }
+    
+    function loadSelectedTemplate() {
+      const select = document.getElementById('templateSelect');
+      const templateName = select.value;
+      
+      if (!templateName) {
+        showError('Выберите шаблон из списка');
+        return;
+      }
+      
+      showStatus('Загрузка шаблона "' + templateName + '"...', 'info');
+      
+      google.script.run
+        .withSuccessHandler(function(config) {
+          if (!config) {
+            showError('Шаблон "' + templateName + '" не найден');
+            return;
+          }
+          
+          // Populate UI
+          document.getElementById('systemSheet').value = config.systemPrompt ? config.systemPrompt.sheet : '';
+          document.getElementById('systemCell').value = config.systemPrompt ? config.systemPrompt.cell : '';
+          
+          const userDataList = document.getElementById('userDataList');
+          userDataList.innerHTML = '';
+          
+          if (config.userData && config.userData.length > 0) {
+            config.userData.forEach(function(ud) {
+              addUserDataRow(ud.sheet, ud.cell);
+            });
+          }
+          
+          document.getElementById('templateNameInput').value = templateName;
+          
+          showStatus('Шаблон "' + templateName + '" загружен', 'success');
+        })
+        .withFailureHandler(showError)
+        .serverGetTemplate(templateName);
+    }
+    
+    function saveAsTemplate() {
+      const templateName = document.getElementById('templateNameInput').value.trim();
+      
+      if (!templateName) {
+        showError('Введите имя шаблона');
+        return;
+      }
+      
+      const config = collectConfig();
+      
+      if (!config.systemPrompt || !config.systemPrompt.sheet || !config.systemPrompt.cell) {
+        showError('Укажите System Prompt (лист и ячейку)');
+        return;
+      }
+      
+      showStatus('Сохранение шаблона "' + templateName + '"...', 'info');
+      
+      google.script.run
+        .withSuccessHandler(function(response) {
+          if (response.success) {
+            showStatus(response.message + (response.size ? ' (' + response.size + ' байт)' : ''), 'success');
+            loadTemplatesList();
+            loadTemplatesStats();
+          } else {
+            showError(response.message);
+          }
+        })
+        .withFailureHandler(showError)
+        .serverSaveTemplate(templateName, config);
+    }
+    
+    function deleteSelectedTemplate() {
+      const select = document.getElementById('templateSelect');
+      const templateName = select.value;
+      
+      if (!templateName) {
+        showError('Выберите шаблон для удаления');
+        return;
+      }
+      
+      if (!confirm('Вы уверены, что хотите удалить шаблон "' + templateName + '"?')) {
+        return;
+      }
+      
+      showStatus('Удаление шаблона "' + templateName + '"...', 'info');
+      
+      google.script.run
+        .withSuccessHandler(function(response) {
+          if (response.success) {
+            showStatus(response.message, 'success');
+            document.getElementById('templateNameInput').value = '';
+            loadTemplatesList();
+            loadTemplatesStats();
+          } else {
+            showError(response.message);
+          }
+        })
+        .withFailureHandler(showError)
+        .serverDeleteTemplate(templateName);
+    }
+    
+    function loadTemplatesStats() {
+      google.script.run
+        .withSuccessHandler(function(stats) {
+          const statsDiv = document.getElementById('templateStats');
+          statsDiv.textContent = 'Шаблонов: ' + stats.count + '/' + stats.maxCount + ' | Размер: ' + stats.totalSize + ' байт';
+        })
+        .withFailureHandler(function() {
+          // Silently fail
+        })
+        .serverGetTemplatesStats();
+    }
+    
+    // ============================================================================
+    // STATUS FUNCTIONS
+    // ============================================================================
     
     function showStatus(message, type) {
       const status = document.getElementById('status');
