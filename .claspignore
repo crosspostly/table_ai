@@ -1,0 +1,31 @@
+# CLASP ignore file for deploy/ directory
+# Ignore non-Apps Script files
+
+# Documentation and guides
+*.md
+DEPLOYMENT_GUIDE.md
+
+# System files  
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Node modules and build files
+node_modules/
+dist/
+build/
+
+# Git files
+.git/
+.gitignore
+
+# Other system integration files
+system_integrations/
+__tests__/
+package*.json
+jest.config.js
+
+# Only deploy .gs, .html, .json files from deploy/

@@ -9,8 +9,8 @@ global.PropertiesService = {
     getProperty: jest.fn(),
     setProperty: jest.fn(),
     deleteProperty: jest.fn(),
-    getProperties: jest.fn(() => ({}))
-  }))
+    getProperties: jest.fn(() => ({})),
+  })),
 };
 
 global.LockService = {
@@ -18,22 +18,22 @@ global.LockService = {
     waitLock: jest.fn(),
     releaseLock: jest.fn(),
     tryLock: jest.fn(() => true),
-    hasLock: jest.fn(() => true)
-  }))
+    hasLock: jest.fn(() => true),
+  })),
 };
 
 global.Session = {
   getEffectiveUser: jest.fn(() => ({
-    getEmail: jest.fn(() => 'test@example.com')
-  }))
+    getEmail: jest.fn(() => 'test@example.com'),
+  })),
 };
 
 global.Logger = {
-  log: jest.fn()
+  log: jest.fn(),
 };
 
 global.Utilities = {
-  formatDate: jest.fn((date) => date.toISOString())
+  formatDate: jest.fn((date) => date.toISOString()),
 };
 
 describe('TemplateService - Basic Structure', () => {
@@ -59,36 +59,36 @@ describe('TemplateService - Basic Structure', () => {
 describe('Template Validation Logic', () => {
   const validateTemplateStructure = (template) => {
     const errors = [];
-    
+
     if (!template || typeof template !== 'object') {
       errors.push('Template must be an object');
       return {valid: false, errors};
     }
-    
+
     if (!template.prompt || typeof template.prompt !== 'string') {
       errors.push('Template must have a prompt string');
     }
-    
+
     if (template.prompt && template.prompt.length > 8000) {
       errors.push('Prompt must be less than 8000 characters');
     }
-    
+
     if (template.maxTokens !== undefined) {
-      if (typeof template.maxTokens !== 'number' || 
-          template.maxTokens < 1 || 
+      if (typeof template.maxTokens !== 'number' ||
+          template.maxTokens < 1 ||
           template.maxTokens > 25000) {
         errors.push('maxTokens must be between 1 and 25000');
       }
     }
-    
+
     if (template.temperature !== undefined) {
-      if (typeof template.temperature !== 'number' || 
-          template.temperature < 0 || 
+      if (typeof template.temperature !== 'number' ||
+          template.temperature < 0 ||
           template.temperature > 1) {
         errors.push('temperature must be between 0 and 1');
       }
     }
-    
+
     return {valid: errors.length === 0, errors};
   };
 
@@ -96,9 +96,9 @@ describe('Template Validation Logic', () => {
     const template = {
       prompt: 'Test prompt: {{value}}',
       maxTokens: 10000,
-      temperature: 0.7
+      temperature: 0.7,
     };
-    
+
     const result = validateTemplateStructure(template);
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
@@ -107,9 +107,9 @@ describe('Template Validation Logic', () => {
   test('Template without prompt fails validation', () => {
     const template = {
       maxTokens: 10000,
-      temperature: 0.7
+      temperature: 0.7,
     };
-    
+
     const result = validateTemplateStructure(template);
     expect(result.valid).toBe(false);
     expect(result.errors).toContain('Template must have a prompt string');
@@ -119,36 +119,36 @@ describe('Template Validation Logic', () => {
     const template = {
       prompt: 'Test',
       maxTokens: 50000,
-      temperature: 0.7
+      temperature: 0.7,
     };
-    
+
     const result = validateTemplateStructure(template);
     expect(result.valid).toBe(false);
-    expect(result.errors.some(e => e.includes('maxTokens'))).toBe(true);
+    expect(result.errors.some((e) => e.includes('maxTokens'))).toBe(true);
   });
 
   test('Template with invalid temperature fails validation', () => {
     const template = {
       prompt: 'Test',
       maxTokens: 10000,
-      temperature: 1.5
+      temperature: 1.5,
     };
-    
+
     const result = validateTemplateStructure(template);
     expect(result.valid).toBe(false);
-    expect(result.errors.some(e => e.includes('temperature'))).toBe(true);
+    expect(result.errors.some((e) => e.includes('temperature'))).toBe(true);
   });
 
   test('Template with very long prompt fails validation', () => {
     const template = {
       prompt: 'x'.repeat(9000),
       maxTokens: 10000,
-      temperature: 0.7
+      temperature: 0.7,
     };
-    
+
     const result = validateTemplateStructure(template);
     expect(result.valid).toBe(false);
-    expect(result.errors.some(e => e.includes('8000 characters'))).toBe(true);
+    expect(result.errors.some((e) => e.includes('8000 characters'))).toBe(true);
   });
 });
 
@@ -157,15 +157,15 @@ describe('Template Name Validation', () => {
     if (!name || typeof name !== 'string') {
       return {valid: false, error: 'Name must be a non-empty string'};
     }
-    
+
     if (name.length > 100) {
       return {valid: false, error: 'Name must be less than 100 characters'};
     }
-    
+
     if (name.trim().length === 0) {
       return {valid: false, error: 'Name cannot be only whitespace'};
     }
-    
+
     return {valid: true};
   };
 
@@ -204,7 +204,7 @@ describe('Storage Size Calculations', () => {
     const template = {
       prompt: 'Test prompt',
       maxTokens: 10000,
-      temperature: 0.7
+      temperature: 0.7,
     };
     const size = calculateStorageSize(template);
     expect(size).toBeGreaterThan(0);
@@ -219,8 +219,8 @@ describe('Storage Size Calculations', () => {
       metadata: {
         created: '2025-10-18',
         updated: '2025-10-18',
-        description: 'y'.repeat(1000)
-      }
+        description: 'y'.repeat(1000),
+      },
     };
     const size = calculateStorageSize(template);
     expect(size).toBeGreaterThan(6000);
@@ -235,7 +235,7 @@ describe('Multi-user Isolation', () => {
   test('Different users get different keys', () => {
     const key1 = getUserKey('user1@example.com', 'Template1');
     const key2 = getUserKey('user2@example.com', 'Template1');
-    
+
     expect(key1).not.toBe(key2);
     expect(key1).toContain('user1@example.com');
     expect(key2).toContain('user2@example.com');
@@ -244,7 +244,7 @@ describe('Multi-user Isolation', () => {
   test('Same user, different templates get different keys', () => {
     const key1 = getUserKey('user@example.com', 'Template1');
     const key2 = getUserKey('user@example.com', 'Template2');
-    
+
     expect(key1).not.toBe(key2);
   });
 });

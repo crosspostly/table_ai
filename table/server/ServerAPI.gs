@@ -1,7 +1,7 @@
 /**
  * Server-Side API Handler
  * Обработчик HTTP запросов от клиентских Apps Script проектов
- * 
+ *
  * Version: 1.0.0
  * Created: 2024-10-18
  */
@@ -12,57 +12,56 @@
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-    const { action, params, clientId, timestamp } = data;
-    
+    const {action, params, clientId, timestamp} = data;
+
     Logger.log(`API Request: ${action} from client ${clientId} at ${timestamp}`);
-    
+
     let result;
-    
+
     switch (action) {
-      case 'getAllTemplates':
-        result = handleGetAllTemplates(params, clientId);
-        break;
-        
-      case 'getTemplate':
-        result = handleGetTemplate(params, clientId);
-        break;
-        
-      case 'saveTemplate':
-        result = handleSaveTemplate(params, clientId);
-        break;
-        
-      case 'deleteTemplate':
-        result = handleDeleteTemplate(params, clientId);
-        break;
-        
-      case 'executeConfig':
-        result = handleExecuteConfig(params, clientId);
-        break;
-        
-      case 'getTemplatesStats':
-        result = handleGetTemplatesStats(params, clientId);
-        break;
-        
-      default:
-        throw new Error(`Unknown action: ${action}`);
+    case 'getAllTemplates':
+      result = handleGetAllTemplates(params, clientId);
+      break;
+
+    case 'getTemplate':
+      result = handleGetTemplate(params, clientId);
+      break;
+
+    case 'saveTemplate':
+      result = handleSaveTemplate(params, clientId);
+      break;
+
+    case 'deleteTemplate':
+      result = handleDeleteTemplate(params, clientId);
+      break;
+
+    case 'executeConfig':
+      result = handleExecuteConfig(params, clientId);
+      break;
+
+    case 'getTemplatesStats':
+      result = handleGetTemplatesStats(params, clientId);
+      break;
+
+    default:
+      throw new Error(`Unknown action: ${action}`);
     }
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({
         success: true,
         data: result,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       }))
       .setMimeType(ContentService.MimeType.JSON);
-      
   } catch (error) {
     Logger.log(`API Error: ${error.message}`);
-    
+
     return ContentService
       .createTextOutput(JSON.stringify({
         success: false,
         error: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       }))
       .setMimeType(ContentService.MimeType.JSON);
   }
@@ -81,7 +80,7 @@ function handleGetAllTemplates(params, clientId) {
  */
 function handleGetTemplate(params, clientId) {
   const user = getUserFromClientId(clientId);
-  const { templateName } = params;
+  const {templateName} = params;
   return getTemplate(user, templateName);
 }
 
@@ -90,7 +89,7 @@ function handleGetTemplate(params, clientId) {
  */
 function handleSaveTemplate(params, clientId) {
   const user = getUserFromClientId(clientId);
-  const { templateName, config } = params;
+  const {templateName, config} = params;
   return saveTemplate(user, templateName, config);
 }
 
@@ -99,7 +98,7 @@ function handleSaveTemplate(params, clientId) {
  */
 function handleDeleteTemplate(params, clientId) {
   const user = getUserFromClientId(clientId);
-  const { templateName } = params;
+  const {templateName} = params;
   return deleteTemplate(user, templateName);
 }
 
@@ -108,12 +107,12 @@ function handleDeleteTemplate(params, clientId) {
  */
 function handleExecuteConfig(params, clientId) {
   const user = getUserFromClientId(clientId);
-  const { config, cellInfo } = params;
-  
+  const {config, cellInfo} = params;
+
   // Адаптируем для серверной обработки
   // TODO: Здесь нужно реализовать логику выполнения AI запроса
   // и записи результата в указанную таблицу
-  
+
   return executeConfigOnServer(config, cellInfo, user);
 }
 
@@ -141,29 +140,28 @@ function executeConfigOnServer(config, cellInfo, user) {
   try {
     // 1. Получить данные из клиентской таблицы
     const clientData = getDataFromClientSpreadsheet(cellInfo.spreadsheetId, config);
-    
+
     // 2. Выполнить AI обработку
     const aiResult = processWithAI(config, clientData);
-    
+
     // 3. Записать результат обратно в клиентскую таблицу
     writeResultToClientSpreadsheet(
-      cellInfo.spreadsheetId, 
-      cellInfo.sheetName, 
-      cellInfo.a1Notation, 
-      aiResult
+      cellInfo.spreadsheetId,
+      cellInfo.sheetName,
+      cellInfo.a1Notation,
+      aiResult,
     );
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       message: `Результат записан в ячейку ${cellInfo.a1Notation}`,
-      result: aiResult 
+      result: aiResult,
     };
-    
   } catch (error) {
     Logger.log('executeConfigOnServer error: ' + error.message);
-    return { 
-      success: false, 
-      error: error.message 
+    return {
+      success: false,
+      error: error.message,
     };
   }
 }
@@ -175,7 +173,7 @@ function getDataFromClientSpreadsheet(spreadsheetId, config) {
   try {
     const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
     const data = {};
-    
+
     // System Prompt
     if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
       const sheet = spreadsheet.getSheetByName(config.systemPrompt.sheet);
@@ -183,11 +181,11 @@ function getDataFromClientSpreadsheet(spreadsheetId, config) {
         data.systemPrompt = sheet.getRange(config.systemPrompt.cell).getValue();
       }
     }
-    
+
     // User Data
     data.userData = [];
     if (config.userData && config.userData.length > 0) {
-      config.userData.forEach(ud => {
+      config.userData.forEach((ud) => {
         if (ud.sheet && ud.cell) {
           const sheet = spreadsheet.getSheetByName(ud.sheet);
           if (sheet) {
@@ -197,9 +195,8 @@ function getDataFromClientSpreadsheet(spreadsheetId, config) {
         }
       });
     }
-    
+
     return data;
-    
   } catch (error) {
     throw new Error(`Failed to read from client spreadsheet: ${error.message}`);
   }
@@ -212,13 +209,12 @@ function writeResultToClientSpreadsheet(spreadsheetId, sheetName, a1Notation, re
   try {
     const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
     const sheet = spreadsheet.getSheetByName(sheetName);
-    
+
     if (!sheet) {
       throw new Error(`Sheet "${sheetName}" not found`);
     }
-    
+
     sheet.getRange(a1Notation).setValue(result);
-    
   } catch (error) {
     throw new Error(`Failed to write to client spreadsheet: ${error.message}`);
   }
@@ -230,9 +226,9 @@ function writeResultToClientSpreadsheet(spreadsheetId, sheetName, a1Notation, re
 function processWithAI(config, data) {
   // TODO: Реализовать AI обработку
   // Это должно использовать существующую логику из server.gs
-  
+
   const prompt = data.systemPrompt || 'Обработай данные';
   const userData = data.userData.join(', ') || 'Нет данных';
-  
+
   return `AI Result: ${prompt} -> ${userData}`;
 }

@@ -1,7 +1,7 @@
 /**
  * Template Service для Collect Config System
  * Управляет шаблонами конфигураций через PropertiesService
- * 
+ *
  * Основные возможности:
  * - Создание и сохранение шаблонов конфигураций
  * - Загрузка шаблонов по имени
@@ -9,7 +9,7 @@
  * - Multi-user поддержка (по email)
  * - Защита от race conditions через LockService
  * - Валидация размера данных (лимит PropertiesService 9KB)
- * 
+ *
  * Version: 1.0.0
  * Author: Droid (Factory AI) + Gemini
  * Created: 2025-10-18
@@ -27,17 +27,17 @@ const MAX_TEMPLATES_PER_USER = 100; // Максимум шаблонов на п
  */
 function _getTemplateStorageWithLock() {
   const lock = LockService.getScriptLock();
-  
+
   try {
     lock.waitLock(TEMPLATES_LOCK_TIMEOUT);
   } catch (e) {
     throw new Error('Не удалось получить блокировку хранилища. Попробуйте позже. ' + e.message);
   }
-  
+
   const properties = PropertiesService.getScriptProperties();
   const jsonString = properties.getProperty(TEMPLATES_STORAGE_KEY);
   let storage = {};
-  
+
   if (jsonString) {
     try {
       storage = JSON.parse(jsonString);
@@ -50,8 +50,8 @@ function _getTemplateStorageWithLock() {
       storage = {};
     }
   }
-  
-  return { lock, storage };
+
+  return {lock, storage};
 }
 
 /**
@@ -64,12 +64,12 @@ function _saveTemplateStorageAndUnlock(lock, storage) {
   try {
     const properties = PropertiesService.getScriptProperties();
     const jsonString = JSON.stringify(storage);
-    
+
     // Проверка размера всего storage
     if (jsonString.length > 500000) { // ~500KB - общий лимит PropertiesService
       throw new Error('Превышен общий лимит хранилища. Удалите неиспользуемые шаблоны.');
     }
-    
+
     properties.setProperty(TEMPLATES_STORAGE_KEY, jsonString);
   } catch (e) {
     throw new Error('Ошибка сохранения в storage: ' + e.message);
@@ -86,43 +86,43 @@ function _saveTemplateStorageAndUnlock(lock, storage) {
  */
 function _validateTemplateConfig(config) {
   if (!config || typeof config !== 'object') {
-    return { valid: false, error: 'Конфигурация должна быть объектом' };
+    return {valid: false, error: 'Конфигурация должна быть объектом'};
   }
-  
+
   // Проверка структуры
   if (config.systemPrompt && typeof config.systemPrompt !== 'object') {
-    return { valid: false, error: 'systemPrompt должен быть объектом' };
+    return {valid: false, error: 'systemPrompt должен быть объектом'};
   }
-  
+
   if (config.systemPrompt) {
     if (!config.systemPrompt.sheet || !config.systemPrompt.cell) {
-      return { valid: false, error: 'systemPrompt должен содержать sheet и cell' };
+      return {valid: false, error: 'systemPrompt должен содержать sheet и cell'};
     }
   }
-  
+
   if (config.userData && !Array.isArray(config.userData)) {
-    return { valid: false, error: 'userData должен быть массивом' };
+    return {valid: false, error: 'userData должен быть массивом'};
   }
-  
+
   if (config.userData) {
-    for (var i = 0; i < config.userData.length; i++) {
-      var item = config.userData[i];
+    for (let i = 0; i < config.userData.length; i++) {
+      const item = config.userData[i];
       if (!item.sheet || !item.cell) {
-        return { valid: false, error: 'Каждый элемент userData должен содержать sheet и cell' };
+        return {valid: false, error: 'Каждый элемент userData должен содержать sheet и cell'};
       }
     }
   }
-  
+
   // Проверка размера
-  var configSize = JSON.stringify(config).length;
+  const configSize = JSON.stringify(config).length;
   if (configSize > MAX_TEMPLATE_SIZE) {
-    return { 
-      valid: false, 
-      error: 'Конфигурация слишком большая (' + configSize + ' байт). Максимум ' + MAX_TEMPLATE_SIZE + ' байт.' 
+    return {
+      valid: false,
+      error: 'Конфигурация слишком большая (' + configSize + ' байт). Максимум ' + MAX_TEMPLATE_SIZE + ' байт.',
     };
   }
-  
-  return { valid: true };
+
+  return {valid: true};
 }
 
 /**
@@ -132,7 +132,7 @@ function _validateTemplateConfig(config) {
  */
 function _getCurrentUser() {
   try {
-    var email = Session.getActiveUser().getEmail();
+    const email = Session.getActiveUser().getEmail();
     return email || 'anonymous';
   } catch (e) {
     return 'anonymous';
@@ -146,15 +146,15 @@ function _getCurrentUser() {
  */
 function getAllTemplates(user) {
   user = user || _getCurrentUser();
-  
+
   if (!user) {
     throw new Error('Не удалось определить пользователя');
   }
-  
-  const { lock, storage } = _getTemplateStorageWithLock();
+
+  const {lock, storage} = _getTemplateStorageWithLock();
   const userTemplates = storage[user] || {};
   lock.releaseLock();
-  
+
   return userTemplates;
 }
 
@@ -168,7 +168,7 @@ function getTemplate(user, templateName) {
   if (!user || !templateName) {
     throw new Error('Требуются параметры user и templateName');
   }
-  
+
   const userTemplates = getAllTemplates(user);
   return userTemplates[templateName] || null;
 }
@@ -182,80 +182,79 @@ function getTemplate(user, templateName) {
  */
 function saveTemplate(user, templateName, config) {
   if (!user || !templateName || !config) {
-    return { 
-      success: false, 
-      message: 'Требуются параметры: user, templateName и config' 
+    return {
+      success: false,
+      message: 'Требуются параметры: user, templateName и config',
     };
   }
-  
+
   // Валидация имени шаблона
   if (templateName.length > 100) {
-    return { 
-      success: false, 
-      message: 'Имя шаблона слишком длинное (максимум 100 символов)' 
+    return {
+      success: false,
+      message: 'Имя шаблона слишком длинное (максимум 100 символов)',
     };
   }
-  
+
   // Валидация конфигурации
   const validation = _validateTemplateConfig(config);
   if (!validation.valid) {
-    return { 
-      success: false, 
-      message: 'Некорректная конфигурация: ' + validation.error 
+    return {
+      success: false,
+      message: 'Некорректная конфигурация: ' + validation.error,
     };
   }
-  
+
   try {
-    const { lock, storage } = _getTemplateStorageWithLock();
-    
+    const {lock, storage} = _getTemplateStorageWithLock();
+
     // Инициализация хранилища пользователя
     if (!storage[user]) {
       storage[user] = {};
     }
-    
+
     // Проверка количества шаблонов
     const templateCount = Object.keys(storage[user]).length;
     if (templateCount >= MAX_TEMPLATES_PER_USER && !storage[user][templateName]) {
       lock.releaseLock();
-      return { 
-        success: false, 
-        message: 'Достигнут лимит шаблонов (' + MAX_TEMPLATES_PER_USER + '). Удалите неиспользуемые.' 
+      return {
+        success: false,
+        message: 'Достигнут лимит шаблонов (' + MAX_TEMPLATES_PER_USER + '). Удалите неиспользуемые.',
       };
     }
-    
+
     // Добавляем метаданные
     const templateWithMeta = {
       config: config,
       created: storage[user][templateName] ? storage[user][templateName].created : new Date().toISOString(),
       updated: new Date().toISOString(),
-      version: '1.0'
+      version: '1.0',
     };
-    
+
     storage[user][templateName] = templateWithMeta;
-    
+
     _saveTemplateStorageAndUnlock(lock, storage);
-    
+
     const configSize = JSON.stringify(config).length;
-    
+
     // Логирование
     if (typeof addSystemLog === 'function') {
       addSystemLog(
-        'Template saved: ' + templateName + ' (' + configSize + ' bytes)', 
-        'INFO', 
-        'TEMPLATE_SERVICE'
+        'Template saved: ' + templateName + ' (' + configSize + ' bytes)',
+        'INFO',
+        'TEMPLATE_SERVICE',
       );
     }
-    
-    return { 
-      success: true, 
-      message: 'Шаблон "' + templateName + '" сохранён', 
-      size: configSize 
+
+    return {
+      success: true,
+      message: 'Шаблон "' + templateName + '" сохранён',
+      size: configSize,
     };
-    
   } catch (e) {
-    return { 
-      success: false, 
-      message: 'Ошибка сохранения: ' + e.message 
+    return {
+      success: false,
+      message: 'Ошибка сохранения: ' + e.message,
     };
   }
 }
@@ -268,46 +267,45 @@ function saveTemplate(user, templateName, config) {
  */
 function deleteTemplate(user, templateName) {
   if (!user || !templateName) {
-    return { 
-      success: false, 
-      message: 'Требуются параметры: user и templateName' 
+    return {
+      success: false,
+      message: 'Требуются параметры: user и templateName',
     };
   }
-  
+
   try {
-    const { lock, storage } = _getTemplateStorageWithLock();
-    
+    const {lock, storage} = _getTemplateStorageWithLock();
+
     if (storage[user] && storage[user][templateName]) {
       delete storage[user][templateName];
-      
+
       // Удаляем пустой объект пользователя
       if (Object.keys(storage[user]).length === 0) {
         delete storage[user];
       }
-      
+
       _saveTemplateStorageAndUnlock(lock, storage);
-      
+
       // Логирование
       if (typeof addSystemLog === 'function') {
         addSystemLog('Template deleted: ' + templateName, 'INFO', 'TEMPLATE_SERVICE');
       }
-      
-      return { 
-        success: true, 
-        message: 'Шаблон "' + templateName + '" удалён' 
+
+      return {
+        success: true,
+        message: 'Шаблон "' + templateName + '" удалён',
       };
     } else {
       lock.releaseLock();
-      return { 
-        success: false, 
-        message: 'Шаблон "' + templateName + '" не найден' 
+      return {
+        success: false,
+        message: 'Шаблон "' + templateName + '" не найден',
       };
     }
-    
   } catch (e) {
-    return { 
-      success: false, 
-      message: 'Ошибка удаления: ' + e.message 
+    return {
+      success: false,
+      message: 'Ошибка удаления: ' + e.message,
     };
   }
 }
@@ -320,60 +318,59 @@ function deleteTemplate(user, templateName) {
  */
 function replaceAllTemplates(user, newTemplates) {
   if (!user || typeof newTemplates !== 'object') {
-    return { 
-      success: false, 
-      message: 'Требуются параметры: user и объект newTemplates' 
+    return {
+      success: false,
+      message: 'Требуются параметры: user и объект newTemplates',
     };
   }
-  
+
   // Валидация всех шаблонов
   const templateNames = Object.keys(newTemplates);
-  
+
   if (templateNames.length > MAX_TEMPLATES_PER_USER) {
-    return { 
-      success: false, 
-      message: 'Слишком много шаблонов (' + templateNames.length + '). Максимум ' + MAX_TEMPLATES_PER_USER 
+    return {
+      success: false,
+      message: 'Слишком много шаблонов (' + templateNames.length + '). Максимум ' + MAX_TEMPLATES_PER_USER,
     };
   }
-  
-  for (var i = 0; i < templateNames.length; i++) {
-    var name = templateNames[i];
-    var template = newTemplates[name];
-    var config = template.config || template; // Поддержка обоих форматов
-    
-    var validation = _validateTemplateConfig(config);
+
+  for (let i = 0; i < templateNames.length; i++) {
+    const name = templateNames[i];
+    const template = newTemplates[name];
+    const config = template.config || template; // Поддержка обоих форматов
+
+    const validation = _validateTemplateConfig(config);
     if (!validation.valid) {
-      return { 
-        success: false, 
-        message: 'Шаблон "' + name + '" некорректен: ' + validation.error 
+      return {
+        success: false,
+        message: 'Шаблон "' + name + '" некорректен: ' + validation.error,
       };
     }
   }
-  
+
   try {
-    const { lock, storage } = _getTemplateStorageWithLock();
+    const {lock, storage} = _getTemplateStorageWithLock();
     storage[user] = newTemplates;
     _saveTemplateStorageAndUnlock(lock, storage);
-    
+
     // Логирование
     if (typeof addSystemLog === 'function') {
       addSystemLog(
-        'All templates replaced for user: ' + templateNames.length + ' templates', 
-        'INFO', 
-        'TEMPLATE_SERVICE'
+        'All templates replaced for user: ' + templateNames.length + ' templates',
+        'INFO',
+        'TEMPLATE_SERVICE',
       );
     }
-    
-    return { 
-      success: true, 
-      message: 'Импортировано ' + templateNames.length + ' шаблонов', 
-      count: templateNames.length 
+
+    return {
+      success: true,
+      message: 'Импортировано ' + templateNames.length + ' шаблонов',
+      count: templateNames.length,
     };
-    
   } catch (e) {
-    return { 
-      success: false, 
-      message: 'Ошибка импорта: ' + e.message 
+    return {
+      success: false,
+      message: 'Ошибка импорта: ' + e.message,
     };
   }
 }
@@ -398,31 +395,31 @@ function getTemplatesStats(user) {
   user = user || _getCurrentUser();
   const templates = getAllTemplates(user);
   const templateNames = Object.keys(templates);
-  
-  var totalSize = 0;
-  var oldestDate = null;
-  var newestDate = null;
-  
-  for (var i = 0; i < templateNames.length; i++) {
-    var template = templates[templateNames[i]];
-    var config = template.config || template;
+
+  let totalSize = 0;
+  let oldestDate = null;
+  let newestDate = null;
+
+  for (let i = 0; i < templateNames.length; i++) {
+    const template = templates[templateNames[i]];
+    const config = template.config || template;
     totalSize += JSON.stringify(config).length;
-    
+
     if (template.created) {
-      var created = new Date(template.created);
+      const created = new Date(template.created);
       if (!oldestDate || created < oldestDate) {
         oldestDate = created;
       }
     }
-    
+
     if (template.updated) {
-      var updated = new Date(template.updated);
+      const updated = new Date(template.updated);
       if (!newestDate || updated > newestDate) {
         newestDate = updated;
       }
     }
   }
-  
+
   return {
     count: templateNames.length,
     maxCount: MAX_TEMPLATES_PER_USER,
@@ -430,6 +427,6 @@ function getTemplatesStats(user) {
     maxSize: MAX_TEMPLATE_SIZE * MAX_TEMPLATES_PER_USER,
     oldestTemplate: oldestDate ? oldestDate.toISOString() : null,
     newestTemplate: newestDate ? newestDate.toISOString() : null,
-    templates: templateNames
+    templates: templateNames,
   };
 }
