@@ -259,7 +259,9 @@
     <div class="section">
       <div class="section-title">📍 System Prompt (инструкция для AI)</div>
       <div class="input-group">
-        <input type="text" id="systemPromptSheet" placeholder="Название листа" />
+        <select id="systemPromptSheet">
+          <option value="">-- Выберите лист --</option>
+        </select>
         <input type="text" id="systemPromptCell" placeholder="Ячейка (например A1)" />
       </div>
     </div>
@@ -302,6 +304,7 @@
         .withSuccessHandler(context => {
           activeCellInfo = context;
           updateCellInfo(context);
+          loadSheetsList();
           loadTemplatesList();
           loadTemplatesStats();
         })
@@ -321,6 +324,55 @@
         cellInfoDiv.style.background = '#fce8e6';
         cellInfoDiv.style.color = '#d93025';
       }
+    }
+    
+    /**
+     * Loads list of all sheets in the spreadsheet
+     */
+    function loadSheetsList() {
+      google.script.run
+        .withSuccessHandler(sheets => {
+          // Update System Prompt sheet select
+          const systemPromptSheet = document.getElementById('systemPromptSheet');
+          const currentValue = systemPromptSheet.value;
+          systemPromptSheet.options.length = 1; // Keep first option
+          
+          sheets.forEach(sheetName => {
+            const option = document.createElement('option');
+            option.value = sheetName;
+            option.textContent = sheetName;
+            systemPromptSheet.appendChild(option);
+          });
+          
+          // Restore selection if it was set
+          if (currentValue) systemPromptSheet.value = currentValue;
+          
+          // Update all user data sheet selects
+          updateUserDataSheetSelects(sheets);
+        })
+        .withFailureHandler(showError)
+        .getAllSheetNames();
+    }
+    
+    /**
+     * Updates all user data sheet select elements
+     */
+    function updateUserDataSheetSelects(sheets) {
+      const selects = document.querySelectorAll('.user-data-sheet-select');
+      selects.forEach(select => {
+        const currentValue = select.value;
+        select.options.length = 1; // Keep first option
+        
+        sheets.forEach(sheetName => {
+          const option = document.createElement('option');
+          option.value = sheetName;
+          option.textContent = sheetName;
+          select.appendChild(option);
+        });
+        
+        // Restore selection if it was set
+        if (currentValue) select.value = currentValue;
+      });
     }
 
     // ============================================================================
@@ -531,8 +583,10 @@
       
       const userDataRows = document.querySelectorAll('#userDataList .input-group');
       userDataRows.forEach(row => {
-        const sheet = row.querySelector('input[placeholder*="Название листа"]').value.trim();
-        const cell = row.querySelector('input[placeholder*="Cell"]').value.trim();
+        const sheetSelect = row.querySelector('.user-data-sheet-select');
+        const cellInput = row.querySelector('input[placeholder*="Cell"]');
+        const sheet = sheetSelect ? sheetSelect.value.trim() : '';
+        const cell = cellInput ? cellInput.value.trim() : '';
         if (sheet && cell) {
           config.userData.push({ sheet, cell });
         }
@@ -562,12 +616,33 @@
       const div = document.createElement('div');
       div.className = 'input-group';
       div.innerHTML = `
-        <input type="text" placeholder="Название листа" value="${sheet}" />
+        <select class="user-data-sheet-select">
+          <option value="">-- Выберите лист --</option>
+        </select>
         <input type="text" placeholder="Cell/Range (A1, A1:B10)" value="${cell}" />
         <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
       `;
       
       userDataList.appendChild(div);
+      
+      // Load sheets for the new select element
+      const newSelect = div.querySelector('.user-data-sheet-select');
+      google.script.run
+        .withSuccessHandler(sheets => {
+          sheets.forEach(sheetName => {
+            const option = document.createElement('option');
+            option.value = sheetName;
+            option.textContent = sheetName;
+            newSelect.appendChild(option);
+          });
+          
+          // Set the pre-selected value if provided
+          if (sheet) newSelect.value = sheet;
+        })
+        .withFailureHandler(() => {
+          // Silently fail
+        })
+        .getAllSheetNames();
     }
     
     /**
