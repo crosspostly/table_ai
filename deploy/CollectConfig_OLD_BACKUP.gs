@@ -16,8 +16,8 @@ const COLLECT_CONFIG_UPDATED = new Date('2025-01-18T13:30:00');
 function openCollectConfigUI() {
   try {
     // ВАЖНО: Apps Script не поддерживает пути с папками!
-    // Файл должен называться просто 'CollectConfigUI' в плоской структуре
-    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUI')
+    // Файл должен называться просто 'CollectConfig' в плоской структуре
+    const html = HtmlService.createHtmlOutputFromFile('CollectConfig')
       .setWidth(700)
       .setTitle('🎯 Настройка AI запроса');
 
