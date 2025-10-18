@@ -621,3 +621,41 @@ function hasConfigForCurrentCell() {
     return false;
   }
 }
+
+// ============================================================================
+// ПРОСТОЙ UI ДЛЯ УПРАВЛЕНИЯ ШАБЛОНАМИ
+// ============================================================================
+function openTemplatesUI() {
+  try {
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const templates = getAllTemplates(user);
+    const templateNames = Object.keys(templates);
+    
+    if (templateNames.length === 0) {
+      SpreadsheetApp.getUi().alert(
+        '🗂️ Шаблоны',
+        'У вас пока нет сохранённых шаблонов.\n\n' +
+        'Создайте шаблон через:\n' +
+        '🎯 Настроить запрос → заполните форму → 💾 Сохранить как шаблон',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+    
+    // Формируем список шаблонов
+    let list = '📋 ВАШИ ШАБЛОНЫ (' + templateNames.length + '):\n\n';
+    templateNames.forEach(function(name, index) {
+      const tmpl = templates[name];
+      const created = tmpl.created ? new Date(tmpl.created).toLocaleDateString('ru-RU') : '—';
+      list += (index + 1) + '. ' + name + '\n   Создан: ' + created + '\n\n';
+    });
+    
+    SpreadsheetApp.getUi().alert(
+      '🗂️ Управление шаблонами',
+      list,
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  } catch (error) {
+    SpreadsheetApp.getUi().alert('Ошибка', 'Не удалось загрузить шаблоны: ' + error.message);
+  }
+}
