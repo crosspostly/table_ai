@@ -862,7 +862,8 @@ function onOpen() {
       .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
       .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
       .addSeparator()
-      .addItem('🗂️ Управление шаблонами', 'openTemplatesUI'),
+      .addItem('🗂️ Управление шаблонами', 'openTemplatesUI')
+      .addItem('❓ Справка', 'showCollectConfigHelp'),
     )
     .addSeparator()
     .addItem('📥 Импорт VK постов', 'importVkPosts')
