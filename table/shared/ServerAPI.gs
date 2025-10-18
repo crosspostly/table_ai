@@ -1,7 +1,7 @@
 /**
  * Client-Server API Communications
  * Функции для связи между клиентским и серверным Apps Script
- * 
+ *
  * Version: 1.0.0
  * Created: 2024-10-18
  */
@@ -18,29 +18,28 @@ function callServerAPI(action, params = {}) {
       action: action,
       params: params,
       clientId: getClientId(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
-    
+
     const response = UrlFetchApp.fetch(SERVER_URL, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      payload: JSON.stringify(payload)
+      payload: JSON.stringify(payload),
     });
-    
+
     if (response.getResponseCode() !== 200) {
       throw new Error('Server responded with code: ' + response.getResponseCode());
     }
-    
+
     const result = JSON.parse(response.getContentText());
-    
+
     if (result.success === false) {
       throw new Error(result.error || 'Server returned error');
     }
-    
+
     return result;
-    
   } catch (error) {
     Logger.log('ServerAPI Error: ' + error.message);
     throw new Error('Server API call failed: ' + error.message);
@@ -67,12 +66,12 @@ function getActiveCellContext() {
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = spreadsheet.getActiveSheet();
     const range = sheet.getActiveRange();
-    
+
     return {
       spreadsheetId: spreadsheet.getId(),
       sheetName: sheet.getName(),
       a1Notation: range.getA1Notation(),
-      sheetId: sheet.getSheetId()
+      sheetId: sheet.getSheetId(),
     };
   } catch (error) {
     Logger.log('getActiveCellContext error: ' + error.message);
@@ -87,7 +86,7 @@ function getAllSheetNames() {
   try {
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     const sheets = spreadsheet.getSheets();
-    return sheets.map(sheet => sheet.getName());
+    return sheets.map((sheet) => sheet.getName());
   } catch (error) {
     Logger.log('getAllSheetNames error: ' + error.message);
     return [];
