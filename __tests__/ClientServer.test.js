@@ -9,8 +9,8 @@ global.LockService = {
     waitLock: jest.fn(),
     releaseLock: jest.fn(),
     tryLock: jest.fn(() => true),
-    hasLock: jest.fn(() => true)
-  }))
+    hasLock: jest.fn(() => true),
+  })),
 };
 
 describe('Client-Server Communication', () => {
@@ -33,7 +33,7 @@ describe('Client-Server Communication', () => {
           setTimeout(() => {
             this.successFn({
               'Template 1': {prompt: 'Test 1', maxTokens: 10000, temperature: 0.7},
-              'Template 2': {prompt: 'Test 2', maxTokens: 5000, temperature: 0.5}
+              'Template 2': {prompt: 'Test 2', maxTokens: 5000, temperature: 0.5},
             });
           }, 0);
         }
@@ -51,13 +51,13 @@ describe('Client-Server Communication', () => {
             this.successFn(true);
           }, 0);
         }
-      })
+      }),
     };
 
     global.google = {
       script: {
-        run: mockGoogleScriptRun
-      }
+        run: mockGoogleScriptRun,
+      },
     };
   });
 
@@ -83,7 +83,7 @@ describe('Client-Server Communication', () => {
     const config = {
       prompt: 'New template',
       maxTokens: 10000,
-      temperature: 0.7
+      temperature: 0.7,
     };
 
     google.script.run
@@ -127,12 +127,12 @@ describe('Client-Server Communication', () => {
 
 describe('Server-side Function Signatures', () => {
   // Test that server functions have expected signatures
-  
+
   test('serverGetAllTemplates signature', () => {
     const serverGetAllTemplates = () => {
       // Mock implementation
       return {
-        'Template1': {prompt: 'test', maxTokens: 10000, temperature: 0.7}
+        'Template1': {prompt: 'test', maxTokens: 10000, temperature: 0.7},
       };
     };
 
@@ -151,7 +151,7 @@ describe('Server-side Function Signatures', () => {
     const result = serverSaveTemplate('Test', {
       prompt: 'test',
       maxTokens: 10000,
-      temperature: 0.7
+      temperature: 0.7,
     });
     expect(result).toBe(true);
   });
@@ -178,7 +178,7 @@ describe('Server-side Function Signatures', () => {
       prompt: 'test',
       cell: 'A1',
       maxTokens: 10000,
-      temperature: 0.7
+      temperature: 0.7,
     });
     expect(result.success).toBe(true);
   });

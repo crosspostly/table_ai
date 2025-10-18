@@ -6,7 +6,7 @@
 /**
  * addSystemLog() - основная реализация находится в Utils.gs:219
  * Использует CacheService для временного хранения логов
- * 
+ *
  * Этот файл содержит только вспомогательные функции для логирования
  */
 
@@ -17,50 +17,49 @@
  */
 function logToSheet(logEntry, level) {
   try {
-    var ss = SpreadsheetApp.getActive();
-    var logSheet = ss.getSheetByName('System Logs');
-    
+    const ss = SpreadsheetApp.getActive();
+    let logSheet = ss.getSheetByName('System Logs');
+
     if (!logSheet) {
       logSheet = ss.insertSheet('System Logs');
       // Заголовки
       logSheet.getRange('A1:D1').setValues([['Timestamp', 'Level', 'Component', 'Message']]);
       logSheet.getRange('A1:D1').setFontWeight('bold').setBackground('#f1f3f4');
     }
-    
+
     // Добавляем запись
-    var lastRow = logSheet.getLastRow();
-    var timestamp = new Date().toISOString();
-    
+    const lastRow = logSheet.getLastRow();
+    const timestamp = new Date().toISOString();
+
     // Парсим log entry для извлечения компонентов
-    var matches = logEntry.match(/\\[(.*?)\\]\\s+\\[(.*?)\\]\\s+\\[(.*?)\\]\\s+(.*)/);
+    const matches = logEntry.match(/\\[(.*?)\\]\\s+\\[(.*?)\\]\\s+\\[(.*?)\\]\\s+(.*)/);
     if (matches) {
       logSheet.getRange(lastRow + 1, 1, 1, 4).setValues([[
         matches[1], // timestamp
         matches[2], // level
         matches[3], // component
-        matches[4]  // message
+        matches[4], // message
       ]]);
-      
+
       // Цветовая кодировка по уровням
-      var range = logSheet.getRange(lastRow + 1, 1, 1, 4);
+      const range = logSheet.getRange(lastRow + 1, 1, 1, 4);
       switch (level) {
-        case 'CRITICAL':
-          range.setBackground('#fce8e6');
-          break;
-        case 'ERROR':
-          range.setBackground('#fef7e0');
-          break;
-        case 'WARN':
-          range.setBackground('#e8f5e8');
-          break;
+      case 'CRITICAL':
+        range.setBackground('#fce8e6');
+        break;
+      case 'ERROR':
+        range.setBackground('#fef7e0');
+        break;
+      case 'WARN':
+        range.setBackground('#e8f5e8');
+        break;
       }
     }
-    
+
     // Ограничиваем количество записей в листе (максимум 1000)
     if (lastRow > 1000) {
       logSheet.deleteRows(2, lastRow - 1000);
     }
-    
   } catch (error) {
     Logger.log('Sheet logging error: ' + error.message);
   }
@@ -73,8 +72,8 @@ function logToSheet(logEntry, level) {
  */
 function generateTraceId(prefix) {
   prefix = prefix || 'trace';
-  var timestamp = Date.now().toString(36);
-  var random = Math.random().toString(36).substr(2, 6);
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substr(2, 6);
   return `${prefix}_${timestamp}_${random}`;
 }
 
@@ -85,17 +84,17 @@ function generateTraceId(prefix) {
  */
 function maskEmail(email) {
   if (!email || typeof email !== 'string') return 'unknown';
-  
-  var parts = email.split('@');
+
+  const parts = email.split('@');
   if (parts.length !== 2) return 'invalid_email';
-  
-  var username = parts[0];
-  var domain = parts[1];
-  
+
+  const username = parts[0];
+  const domain = parts[1];
+
   if (username.length <= 2) {
     return '*'.repeat(username.length) + '@' + domain;
   }
-  
+
   return username[0] + '*'.repeat(username.length - 2) + username[username.length - 1] + '@' + domain;
 }
 
@@ -108,13 +107,13 @@ function maskEmail(email) {
  * @param {string} traceId - trace ID
  */
 function logLicenseActivity(action, email, token, result, traceId) {
-  var maskedEmail = maskEmail(email);
-  var maskedToken = token ? token.substr(0, 6) + '***' : 'null';
-  
-  var message = `License check: action=${action}, email=${maskedEmail}, ` +
+  const maskedEmail = maskEmail(email);
+  const maskedToken = token ? token.substr(0, 6) + '***' : 'null';
+
+  const message = `License check: action=${action}, email=${maskedEmail}, ` +
                 `token=${maskedToken}, result=${result.ok ? 'VALID' : 'INVALID'}, ` +
                 `reason=${result.error || 'none'}, traceId=${traceId}`;
-  
+
   addSystemLog(message, 'INFO', 'LICENSE');
 }
 
@@ -124,13 +123,13 @@ function logLicenseActivity(action, email, token, result, traceId) {
  * @param {Object} context - контекст события
  */
 function logSecurityEvent(event, context) {
-  var message = `Security event: ${event}`;
-  
+  let message = `Security event: ${event}`;
+
   if (context.ip) message += `, ip=${context.ip}`;
   if (context.userAgent) message += `, ua=${context.userAgent}`;
   if (context.email) message += `, user=${maskEmail(context.email)}`;
   if (context.details) message += `, details=${JSON.stringify(context.details)}`;
-  
+
   addSystemLog(message, 'WARN', 'SECURITY');
 }
 
@@ -143,22 +142,21 @@ function logSecurityEvent(event, context) {
  */
 function addSystemLogThrottled(message, level, component, throttleMs) {
   throttleMs = throttleMs || 1000;
-  
+
   // Создаем ключ для throttling
-  var throttleKey = `throttle_${component}_${level}_${message.substr(0, 50)}`;
-  
+  const throttleKey = `throttle_${component}_${level}_${message.substr(0, 50)}`;
+
   try {
-    var cache = CacheService.getScriptCache();
-    var lastLogged = cache.get(throttleKey);
-    var now = Date.now();
-    
+    const cache = CacheService.getScriptCache();
+    const lastLogged = cache.get(throttleKey);
+    const now = Date.now();
+
     if (lastLogged && (now - parseInt(lastLogged)) < throttleMs) {
       return; // Пропускаем - слишком частые логи
     }
-    
+
     cache.put(throttleKey, now.toString(), 60); // TTL 1 минута
     addSystemLog(message, level, component);
-    
   } catch (error) {
     // Fallback без throttling
     addSystemLog(message, level, component);
@@ -172,13 +170,13 @@ function addSystemLogThrottled(message, level, component, throttleMs) {
  */
 function addSystemLogsBulk(entries, async) {
   if (!Array.isArray(entries) || entries.length === 0) return;
-  
-  var processEntries = function() {
+
+  const processEntries = function() {
     entries.forEach(function(entry) {
       addSystemLog(entry.message, entry.level, entry.component);
     });
   };
-  
+
   if (async) {
     // Google Apps Script не поддерживает setTimeout, выполняем синхронно
     processEntries();
@@ -196,36 +194,35 @@ function addSystemLogsBulk(entries, async) {
  */
 function getSystemLogs(level, component, limit) {
   limit = limit || 100;
-  
+
   try {
-    var props = PropertiesService.getScriptProperties();
-    var allProps = props.getProperties();
-    
-    var logs = [];
-    
+    const props = PropertiesService.getScriptProperties();
+    const allProps = props.getProperties();
+
+    const logs = [];
+
     Object.keys(allProps).forEach(function(key) {
       if (key.startsWith('log_')) {
         try {
-          var logEntry = JSON.parse(allProps[key]);
-          
+          const logEntry = JSON.parse(allProps[key]);
+
           // Применяем фильтры
           if (level && logEntry.level !== level) return;
           if (component && logEntry.component !== component) return;
-          
+
           logs.push(logEntry);
         } catch (e) {
           // Пропускаем невалидные записи
         }
       }
     });
-    
+
     // Сортируем по времени (новые сверху)
     logs.sort(function(a, b) {
       return new Date(b.timestamp) - new Date(a.timestamp);
     });
-    
+
     return logs.slice(0, limit);
-    
   } catch (error) {
     addSystemLog('Failed to get system logs: ' + error.message, 'ERROR', 'LOGGING');
     return [];
@@ -238,20 +235,20 @@ function getSystemLogs(level, component, limit) {
  */
 function cleanupOldLogs(daysToKeep) {
   daysToKeep = daysToKeep || 30;
-  
+
   try {
-    var props = PropertiesService.getScriptProperties();
-    var allProps = props.getProperties();
-    var cutoffTime = Date.now() - (daysToKeep * 24 * 60 * 60 * 1000);
-    
-    var keysToDelete = [];
-    
+    const props = PropertiesService.getScriptProperties();
+    const allProps = props.getProperties();
+    const cutoffTime = Date.now() - (daysToKeep * 24 * 60 * 60 * 1000);
+
+    const keysToDelete = [];
+
     Object.keys(allProps).forEach(function(key) {
       if (key.startsWith('log_')) {
         try {
-          var logEntry = JSON.parse(allProps[key]);
-          var logTime = new Date(logEntry.timestamp).getTime();
-          
+          const logEntry = JSON.parse(allProps[key]);
+          const logTime = new Date(logEntry.timestamp).getTime();
+
           if (logTime < cutoffTime) {
             keysToDelete.push(key);
           }
@@ -261,17 +258,16 @@ function cleanupOldLogs(daysToKeep) {
         }
       }
     });
-    
+
     // Удаляем батчами по 100 (лимит Apps Script)
-    for (var i = 0; i < keysToDelete.length; i += 100) {
-      var batch = keysToDelete.slice(i, i + 100);
+    for (let i = 0; i < keysToDelete.length; i += 100) {
+      const batch = keysToDelete.slice(i, i + 100);
       batch.forEach(function(key) {
         props.deleteProperty(key);
       });
     }
-    
+
     addSystemLog(`Cleaned up ${keysToDelete.length} old log entries`, 'INFO', 'LOGGING');
-    
   } catch (error) {
     addSystemLog('Failed to cleanup logs: ' + error.message, 'ERROR', 'LOGGING');
   }
@@ -283,48 +279,46 @@ function cleanupOldLogs(daysToKeep) {
  */
 function getLoggingStats() {
   try {
-    var props = PropertiesService.getScriptProperties();
-    var allProps = props.getProperties();
-    
-    var stats = {
+    const props = PropertiesService.getScriptProperties();
+    const allProps = props.getProperties();
+
+    const stats = {
       total: 0,
       byLevel: {},
       byComponent: {},
       oldestEntry: null,
-      newestEntry: null
+      newestEntry: null,
     };
-    
+
     Object.keys(allProps).forEach(function(key) {
       if (key.startsWith('log_')) {
         try {
-          var logEntry = JSON.parse(allProps[key]);
+          const logEntry = JSON.parse(allProps[key]);
           stats.total++;
-          
+
           // По уровням
           stats.byLevel[logEntry.level] = (stats.byLevel[logEntry.level] || 0) + 1;
-          
+
           // По компонентам
           stats.byComponent[logEntry.component] = (stats.byComponent[logEntry.component] || 0) + 1;
-          
+
           // Временные рамки
-          var entryTime = new Date(logEntry.timestamp);
+          const entryTime = new Date(logEntry.timestamp);
           if (!stats.oldestEntry || entryTime < stats.oldestEntry) {
             stats.oldestEntry = entryTime;
           }
           if (!stats.newestEntry || entryTime > stats.newestEntry) {
             stats.newestEntry = entryTime;
           }
-          
         } catch (e) {
           // Пропускаем невалидные
         }
       }
     });
-    
+
     return stats;
-    
   } catch (error) {
     addSystemLog('Failed to get logging stats: ' + error.message, 'ERROR', 'LOGGING');
-    return { total: 0, error: error.message };
+    return {total: 0, error: error.message};
   }
 }
