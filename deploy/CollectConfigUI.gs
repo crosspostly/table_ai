@@ -1,7 +1,7 @@
 /**
  * Collect Config UI Functions
  * Функции для работы с веб-интерфейсом настройки
- * 
+ *
  * Version: 1.0.0
  * Last updated: 2024-10-14
  */
@@ -14,27 +14,26 @@ function openCollectConfigUI() {
   try {
     // ВАЖНО: Apps Script не поддерживает пути с папками!
     // Файл должен называться просто 'CollectConfigUI' в плоской структуре
-    var html = HtmlService.createHtmlOutputFromFile('CollectConfigUI')
+    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUI')
       .setWidth(700)
       .setTitle('🎯 Настройка AI запроса');
-    
-    // Используем sidebar вместо dialog - он может требовать меньше разрешений
-    SpreadsheetApp.getUi().showSidebar(html);
-    
+
+    // ФИШКА: Используем красивый modal dialog (требует UI разрешения в appsscript.json)
+    SpreadsheetApp.getUi().showModalDialog(html, 'AI Конструктор');
   } catch (error) {
     // Fallback: если sidebar тоже не работает, используем простой prompt-based интерфейс
     SpreadsheetApp.getUi().alert(
       '❌ HTML интерфейс недоступен (нет разрешений UI).\n\n' +
-      '💡 Альтернатива: используйте функцию quickCollectConfig() для быстрой настройки через prompts.'
+      '💡 Альтернатива: используйте функцию quickCollectConfig() для быстрой настройки через prompts.',
     );
-    
+
     // Предлагаем простую альтернативу
-    var useSimple = SpreadsheetApp.getUi().alert(
+    const useSimple = SpreadsheetApp.getUi().alert(
       'Простой интерфейс',
       'Хотите настроить AI запрос через простые диалоги?',
-      SpreadsheetApp.getUi().ButtonSet.YES_NO
+      SpreadsheetApp.getUi().ButtonSet.YES_NO,
     );
-    
+
     if (useSimple === SpreadsheetApp.getUi().Button.YES) {
       quickCollectConfig();
     }
@@ -46,104 +45,103 @@ function openCollectConfigUI() {
  * АЛЬТЕРНАТИВА для случаев когда HTML UI недоступен из-за разрешений
  */
 function quickCollectConfig() {
-  var ui = SpreadsheetApp.getUi();
-  
+  const ui = SpreadsheetApp.getUi();
+
   try {
-    var sheet = SpreadsheetApp.getActiveSheet();
-    var range = sheet.getActiveRange();
-    
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+
     if (!range) {
       ui.alert('⚠️ Внимание', 'Сначала выделите ячейку где нужен результат!', ui.ButtonSet.OK);
       return;
     }
-    
-    var sheetName = sheet.getName();
-    var cellAddress = range.getA1Notation();
-    
+
+    const sheetName = sheet.getName();
+    const cellAddress = range.getA1Notation();
+
     // 1. System Prompt
-    var systemPromptInfo = ui.prompt(
+    const systemPromptInfo = ui.prompt(
       'Шаг 1/3: System Prompt',
       'Введите адрес ячейки с инструкцией для AI\\n' +
       'Формат: ИмяЛиста!Адрес (например: Prompts!A1)\\n\\n' +
       'Или оставьте пустым, если нет:',
-      ui.ButtonSet.OK_CANCEL
+      ui.ButtonSet.OK_CANCEL,
     );
-    
+
     if (systemPromptInfo.getSelectedButton() !== ui.Button.OK) return;
-    
-    var systemPrompt = null;
-    var systemPromptText = systemPromptInfo.getResponseText().trim();
+
+    let systemPrompt = null;
+    const systemPromptText = systemPromptInfo.getResponseText().trim();
     if (systemPromptText && systemPromptText.includes('!')) {
       var parts = systemPromptText.split('!');
-      systemPrompt = { sheet: parts[0], cell: parts[1] };
+      systemPrompt = {sheet: parts[0], cell: parts[1]};
     }
-    
+
     // 2. User Data Sources
-    var userData = [];
-    var addMore = true;
-    var sourceIndex = 1;
-    
+    const userData = [];
+    let addMore = true;
+    let sourceIndex = 1;
+
     while (addMore && sourceIndex <= 5) { // Ограничиваем до 5 источников
-      var sourceInfo = ui.prompt(
+      const sourceInfo = ui.prompt(
         'Шаг 2/3: Данные для анализа (источник ' + sourceIndex + ')',
         'Введите адрес ячейки/диапазона с данными:\\n' +
         'Формат: ИмяЛиста!Адрес (например: Data!A:A)\\n\\n' +
         'Или оставьте пустым, если больше нет данных:',
-        ui.ButtonSet.OK_CANCEL
+        ui.ButtonSet.OK_CANCEL,
       );
-      
+
       if (sourceInfo.getSelectedButton() !== ui.Button.OK) return;
-      
-      var sourceText = sourceInfo.getResponseText().trim();
+
+      const sourceText = sourceInfo.getResponseText().trim();
       if (sourceText && sourceText.includes('!')) {
         var parts = sourceText.split('!');
-        userData.push({ sheet: parts[0], cell: parts[1] });
+        userData.push({sheet: parts[0], cell: parts[1]});
         sourceIndex++;
       } else {
         addMore = false;
       }
     }
-    
+
     if (userData.length === 0 && !systemPrompt) {
       ui.alert('⚠️ Ошибка', 'Нужно указать хотя бы System Prompt или источники данных!', ui.ButtonSet.OK);
       return;
     }
-    
+
     // 3. Подтверждение и выполнение
-    var summary = 'ПРОВЕРЬТЕ НАСТРОЙКИ:\\n\\n';
+    let summary = 'ПРОВЕРЬТЕ НАСТРОЙКИ:\\n\\n';
     summary += 'Результат будет записан в: ' + sheetName + '!' + cellAddress + '\\n\\n';
     summary += 'System Prompt: ' + (systemPrompt ? systemPrompt.sheet + '!' + systemPrompt.cell : 'не задан') + '\\n';
     summary += 'Источников данных: ' + userData.length + '\\n';
-    
-    for (var i = 0; i < userData.length; i++) {
+
+    for (let i = 0; i < userData.length; i++) {
       summary += '  • ' + userData[i].sheet + '!' + userData[i].cell + '\\n';
     }
-    
+
     summary += '\\nНачать обработку?';
-    
-    var confirm = ui.alert('Шаг 3/3: Подтверждение', summary, ui.ButtonSet.YES_NO);
-    
+
+    const confirm = ui.alert('Шаг 3/3: Подтверждение', summary, ui.ButtonSet.YES_NO);
+
     if (confirm !== ui.Button.YES) return;
-    
+
     // Создаем конфигурацию
-    var config = {
+    const config = {
       systemPrompt: systemPrompt,
-      userData: userData
+      userData: userData,
     };
-    
+
     // Сохраняем и выполняем
     saveCollectConfig(sheetName, cellAddress, config);
-    
+
     ui.alert('🚀 Запуск...', 'Конфигурация сохранена.\\nНачинаю обработку данных...', ui.ButtonSet.OK);
-    
-    var result = executeCollectConfig(sheetName, cellAddress);
-    
+
+    const result = executeCollectConfig(sheetName, cellAddress);
+
     if (result.success) {
       ui.alert('✅ Готово!', 'Результат записан в ячейку ' + cellAddress, ui.ButtonSet.OK);
     } else {
       ui.alert('❌ Ошибка выполнения', result.error || 'Неизвестная ошибка', ui.ButtonSet.OK);
     }
-    
   } catch (error) {
     ui.alert('❌ Ошибка', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
   }
@@ -155,23 +153,22 @@ function quickCollectConfig() {
  */
 function getCollectConfigInitData() {
   try {
-    var sheet = SpreadsheetApp.getActiveSheet();
-    var range = sheet.getActiveRange();
-    
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+
     if (!range) {
       throw new Error('Выделите ячейку!');
     }
-    
-    var sheetName = sheet.getName();
-    var cellAddress = range.getA1Notation();
-    var sheets = getAllSheetNames();
-    
+
+    const sheetName = sheet.getName();
+    const cellAddress = range.getA1Notation();
+    const sheets = getAllSheetNames();
+
     return {
       sheetName: sheetName,
       cellAddress: cellAddress,
-      sheets: sheets
+      sheets: sheets,
     };
-    
   } catch (error) {
     throw new Error('Ошибка инициализации: ' + error.message);
   }
@@ -183,66 +180,65 @@ function getCollectConfigInitData() {
  */
 function refreshCellWithConfig() {
   try {
-    var ui = SpreadsheetApp.getUi();
-    var sheet = SpreadsheetApp.getActiveSheet();
-    var range = sheet.getActiveRange();
-    
+    const ui = SpreadsheetApp.getUi();
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+
     if (!range) {
       ui.alert('⚠️ Внимание', 'Выделите ячейку!', ui.ButtonSet.OK);
       return;
     }
-    
-    var sheetName = sheet.getName();
-    var cellAddress = range.getA1Notation();
-    
+
+    const sheetName = sheet.getName();
+    const cellAddress = range.getA1Notation();
+
     // Проверяем есть ли сохранённая конфигурация
-    var config = loadCollectConfig(sheetName, cellAddress);
-    
+    const config = loadCollectConfig(sheetName, cellAddress);
+
     if (!config) {
-      var response = ui.alert(
+      const response = ui.alert(
         '⚠️ Конфигурация не найдена',
         'Для ячейки ' + sheetName + '!' + cellAddress + ' нет сохранённой конфигурации.\n\n' +
         'Хотите создать новую?',
-        ui.ButtonSet.YES_NO
+        ui.ButtonSet.YES_NO,
       );
-      
+
       if (response == ui.Button.YES) {
         openCollectConfigUI();
       }
       return;
     }
-    
+
     // Показываем информацию о запуске
     ui.alert(
       '🚀 Запуск обновления',
       'Конфигурация найдена!\n\n' +
-      'System Prompt: ' + (config.systemPrompt ? 
+      'System Prompt: ' + (config.systemPrompt ?
         config.systemPrompt.sheet + '!' + config.systemPrompt.cell : 'не задан') + '\n' +
       'User Data: ' + config.userData.length + ' источник(ов)\n\n' +
       'Запускаю обработку...',
-      ui.ButtonSet.OK
+      ui.ButtonSet.OK,
     );
-    
+
     // Выполняем запрос
-    var result = executeCollectConfig(sheetName, cellAddress);
-    
+    const result = executeCollectConfig(sheetName, cellAddress);
+
     if (result.success) {
       // Записываем результат в ячейку
       range.setValue(result.result);
-      
+
       ui.alert(
         '✅ Готово!',
         'Результат записан в ячейку ' + cellAddress,
-        ui.ButtonSet.OK
+        ui.ButtonSet.OK,
       );
     } else {
       ui.alert(
         '❌ Ошибка',
         'Не удалось выполнить запрос:\n' + result.error,
-        ui.ButtonSet.OK
+        ui.ButtonSet.OK,
       );
     }
-    
   } catch (error) {
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
   }
@@ -254,19 +250,18 @@ function refreshCellWithConfig() {
  */
 function hasConfigForCurrentCell() {
   try {
-    var sheet = SpreadsheetApp.getActiveSheet();
-    var range = sheet.getActiveRange();
-    
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+
     if (!range) {
       return false;
     }
-    
-    var sheetName = sheet.getName();
-    var cellAddress = range.getA1Notation();
-    var config = loadCollectConfig(sheetName, cellAddress);
-    
+
+    const sheetName = sheet.getName();
+    const cellAddress = range.getA1Notation();
+    const config = loadCollectConfig(sheetName, cellAddress);
+
     return config !== null;
-    
   } catch (error) {
     return false;
   }
@@ -278,16 +273,15 @@ function hasConfigForCurrentCell() {
  */
 function getAllSheetNames() {
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheets = ss.getSheets();
-    var names = [];
-    
-    for (var i = 0; i < sheets.length; i++) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheets = ss.getSheets();
+    const names = [];
+
+    for (let i = 0; i < sheets.length; i++) {
       names.push(sheets[i].getName());
     }
-    
+
     return names;
-    
   } catch (error) {
     Logger.log('Error getting sheet names: ' + error.message);
     return [];
@@ -302,28 +296,27 @@ function getAllSheetNames() {
  */
 function getCellPreview(sheetName, cellAddress) {
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(sheetName);
-    
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(sheetName);
+
     if (!sheet) {
       return '❌ Лист не найден';
     }
-    
-    var cell = sheet.getRange(cellAddress);
-    var value = cell.getValue();
-    
+
+    const cell = sheet.getRange(cellAddress);
+    const value = cell.getValue();
+
     if (!value || value.toString().trim() === '') {
       return '(пусто)';
     }
-    
-    var text = value.toString();
-    
+
+    const text = value.toString();
+
     if (text.length <= 100) {
       return text;
     }
-    
+
     return text.substring(0, 100) + '...';
-    
   } catch (error) {
     return '❌ Ошибка: ' + error.message;
   }
@@ -333,15 +326,15 @@ function getCellPreview(sheetName, cellAddress) {
  * Справка по AI Конструктору
  */
 function showCollectConfigHelp() {
-  var ui = SpreadsheetApp.getUi();
-  
-  var helpText = '🎯 AI КОНСТРУКТОР - ЧТО ЭТО?\n\n';
+  const ui = SpreadsheetApp.getUi();
+
+  let helpText = '🎯 AI КОНСТРУКТОР - ЧТО ЭТО?\n\n';
   helpText += '💡 ПРОБЛЕМА:\n';
   helpText += 'Google Sheets ограничивает формулу 50,000 символами.\n';
   helpText += 'Если вы собираете данные из многих ячеек:\n';
   helpText += '=GM("Промпт: " & A1 & A2 & ... & A1000)\n';
   helpText += '❌ Формула слишком длинная = ОШИБКА!\n\n';
-  
+
   helpText += '✅ РЕШЕНИЕ:\n';
   helpText += 'AI Конструктор собирает данные НА СЕРВЕРЕ!\n';
   helpText += '1. Выбираете ячейку (например B3)\n';
@@ -350,26 +343,26 @@ function showCollectConfigHelp() {
   helpText += '   • User Data - листы и ячейки с данными\n';
   helpText += '3. Нажимаете "Запустить"\n';
   helpText += '4. Результат появляется в B3\n\n';
-  
+
   helpText += '🎯 КАК ИСПОЛЬЗОВАТЬ:\n';
   helpText += '1. Выделите ячейку где нужен результат\n';
   helpText += '2. Меню → 🎯 AI Конструктор → 🎯 Настроить запрос\n';
   helpText += '3. Выберите лист и ячейку для System Prompt\n';
   helpText += '4. Добавьте источники данных (+ Добавить данные)\n';
   helpText += '5. Нажмите "Запустить"\n\n';
-  
+
   helpText += '💾 НАСТРОЙКИ СОХРАНЯЮТСЯ!\n';
   helpText += 'При повторном открытии - все поля заполнены.\n';
   helpText += 'Можно быстро обновить: 🔄 Обновить ячейку\n\n';
-  
+
   helpText += '📊 ДАННЫЕ В JSON:\n';
   helpText += 'Все данные отправляются в AI в структурированном\n';
   helpText += 'JSON формате - нейросеть лучше понимает!\n\n';
-  
+
   helpText += '🔒 ХРАНЕНИЕ:\n';
   helpText += 'Конфигурации сохраняются в скрытом листе\n';
   helpText += '"ConfigData" - нет лимитов, легко экспортировать!';
-  
+
   ui.alert('🎯 AI Конструктор', helpText, ui.ButtonSet.OK);
 }
 
@@ -384,26 +377,25 @@ function showCollectConfigHelp() {
  */
 function getActiveCellContext() {
   try {
-    var sheet = SpreadsheetApp.getActiveSheet();
-    var range = sheet.getActiveRange();
-    
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+
     if (!range) {
       return {
         sheetName: null,
-        a1Notation: null
+        a1Notation: null,
       };
     }
-    
+
     return {
       sheetName: sheet.getName(),
-      a1Notation: range.getA1Notation()
+      a1Notation: range.getA1Notation(),
     };
-    
   } catch (e) {
     Logger.log('getActiveCellContext error: ' + e.message);
     return {
       sheetName: null,
-      a1Notation: null
+      a1Notation: null,
     };
   }
 }
@@ -414,18 +406,17 @@ function getActiveCellContext() {
  */
 function serverGetAllTemplates() {
   try {
-    var user = Session.getActiveUser().getEmail() || 'anonymous';
-    var templates = getAllTemplates(user); // Из TemplateService.gs
-    
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const templates = getAllTemplates(user); // Из TemplateService.gs
+
     // Преобразуем в формат для UI (только конфигурации)
-    var result = {};
-    for (var name in templates) {
-      var template = templates[name];
+    const result = {};
+    for (const name in templates) {
+      const template = templates[name];
       result[name] = template.config || template; // Совместимость с обоими форматами
     }
-    
+
     return result;
-    
   } catch (e) {
     Logger.log('serverGetAllTemplates error: ' + e.message);
     return {};
@@ -442,17 +433,16 @@ function serverGetTemplate(templateName) {
     if (!templateName) {
       throw new Error('Не указано имя шаблона');
     }
-    
-    var user = Session.getActiveUser().getEmail() || 'anonymous';
-    var template = getTemplate(user, templateName); // Из TemplateService.gs
-    
+
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const template = getTemplate(user, templateName); // Из TemplateService.gs
+
     if (!template) {
       return null;
     }
-    
+
     // Возвращаем только конфигурацию (без метаданных)
     return template.config || template;
-    
   } catch (e) {
     Logger.log('serverGetTemplate error: ' + e.message);
     return null;
@@ -470,20 +460,19 @@ function serverSaveTemplate(templateName, config) {
     if (!templateName || !config) {
       return {
         success: false,
-        message: 'Не указано имя шаблона или конфигурация'
+        message: 'Не указано имя шаблона или конфигурация',
       };
     }
-    
-    var user = Session.getActiveUser().getEmail() || 'anonymous';
-    var result = saveTemplate(user, templateName, config); // Из TemplateService.gs
-    
+
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const result = saveTemplate(user, templateName, config); // Из TemplateService.gs
+
     return result;
-    
   } catch (e) {
     Logger.log('serverSaveTemplate error: ' + e.message);
     return {
       success: false,
-      message: 'Ошибка сохранения: ' + e.message
+      message: 'Ошибка сохранения: ' + e.message,
     };
   }
 }
@@ -498,20 +487,19 @@ function serverDeleteTemplate(templateName) {
     if (!templateName) {
       return {
         success: false,
-        message: 'Не указано имя шаблона'
+        message: 'Не указано имя шаблона',
       };
     }
-    
-    var user = Session.getActiveUser().getEmail() || 'anonymous';
-    var result = deleteTemplate(user, templateName); // Из TemplateService.gs
-    
+
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const result = deleteTemplate(user, templateName); // Из TemplateService.gs
+
     return result;
-    
   } catch (e) {
     Logger.log('serverDeleteTemplate error: ' + e.message);
     return {
       success: false,
-      message: 'Ошибка удаления: ' + e.message
+      message: 'Ошибка удаления: ' + e.message,
     };
   }
 }
@@ -527,52 +515,51 @@ function serverExecuteConfig(config, cellInfo) {
     if (!cellInfo || !cellInfo.sheetName || !cellInfo.a1Notation) {
       return {
         success: false,
-        error: 'Не указана целевая ячейка'
+        error: 'Не указана целевая ячейка',
       };
     }
-    
+
     if (!config) {
       return {
         success: false,
-        error: 'Не указана конфигурация'
+        error: 'Не указана конфигурация',
       };
     }
-    
-    var sheetName = cellInfo.sheetName;
-    var cellAddress = cellInfo.a1Notation;
-    
+
+    const sheetName = cellInfo.sheetName;
+    const cellAddress = cellInfo.a1Notation;
+
     // Временно сохраняем конфигурацию для этой ячейки (используем старый механизм)
     saveCollectConfig(sheetName, cellAddress, config);
-    
+
     // Выполняем через существующую функцию
-    var result = executeCollectConfig(sheetName, cellAddress);
-    
+    const result = executeCollectConfig(sheetName, cellAddress);
+
     if (result.success) {
       // Записываем результат в ячейку
-      var ss = SpreadsheetApp.getActiveSpreadsheet();
-      var sheet = ss.getSheetByName(sheetName);
-      
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const sheet = ss.getSheetByName(sheetName);
+
       if (sheet) {
-        var range = sheet.getRange(cellAddress);
+        const range = sheet.getRange(cellAddress);
         range.setValue(result.result);
       }
-      
+
       return {
         success: true,
-        result: result.result
+        result: result.result,
       };
     } else {
       return {
         success: false,
-        error: result.error || 'Неизвестная ошибка'
+        error: result.error || 'Неизвестная ошибка',
       };
     }
-    
   } catch (e) {
     Logger.log('serverExecuteConfig error: ' + e.message);
     return {
       success: false,
-      error: 'Ошибка выполнения: ' + e.message
+      error: 'Ошибка выполнения: ' + e.message,
     };
   }
 }
@@ -583,14 +570,14 @@ function serverExecuteConfig(config, cellInfo) {
  */
 function serverGetTemplatesStats() {
   try {
-    var user = Session.getActiveUser().getEmail() || 'anonymous';
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
     return getTemplatesStats(user); // Из TemplateService.gs
   } catch (e) {
     Logger.log('serverGetTemplatesStats error: ' + e.message);
     return {
       count: 0,
       totalSize: 0,
-      templates: []
+      templates: [],
     };
   }
 }
@@ -605,25 +592,25 @@ function serverGetTemplatesStats() {
  * @return {{success: boolean, result?: string, error?: string}}
  */
 function executeCollectConfig(sheetName, cellAddress) {
-  var logCtx = { traceId: Utilities.getUuid(), target: `'${sheetName}'!${cellAddress}` };
+  const logCtx = {traceId: Utilities.getUuid(), target: `'${sheetName}'!${cellAddress}`};
   addLog('executeCollectConfig START', 'INFO');
 
   try {
-    var config = loadCollectConfig(sheetName, cellAddress);
+    const config = loadCollectConfig(sheetName, cellAddress);
     if (!config) throw new Error('Конфигурация не найдена. Настройте и сохраните запрос.');
     addLog('Config loaded successfully', 'DEBUG');
 
-    var systemPrompt = '';
+    let systemPrompt = '';
     if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
       systemPrompt = collectDataFromRange(config.systemPrompt.sheet, config.systemPrompt.cell);
     }
 
-    var userDataContent = [];
+    const userDataContent = [];
     if (config.userData) {
       config.userData.forEach(function(source) {
         if (source.sheet && source.cell) {
           try {
-            var data = collectDataFromRange(source.sheet, source.cell);
+            const data = collectDataFromRange(source.sheet, source.cell);
             userDataContent.push(`Источник (${source.sheet}!${source.cell}):\n${data}`);
           } catch (e) {
             userDataContent.push(`Источник (${source.sheet}!${source.cell}):\n[ОШИБКА СБОРА ДАННЫХ: ${e.message}]`);
@@ -631,28 +618,27 @@ function executeCollectConfig(sheetName, cellAddress) {
         }
       });
     }
-    
-    var fullPrompt = (systemPrompt ? systemPrompt + '\n\n---\n\n' : '') + 
+
+    const fullPrompt = (systemPrompt ? systemPrompt + '\n\n---\n\n' : '') +
                      (userDataContent.length > 0 ? 'ДАННЫЕ ДЛЯ АНАЛИЗА:\n' + userDataContent.join('\n\n') : '');
 
     if (!fullPrompt.trim()) throw new Error('Нет данных для обработки. Настройте System Prompt или User Data.');
 
     // Используем GM() для совместимости с Main.gs (адаптация от GM_RAW)
-    var geminiResult = GM(fullPrompt);
+    const geminiResult = GM(fullPrompt);
 
     if (!geminiResult || geminiResult.startsWith('Error:')) throw new Error('API Error: ' + geminiResult);
 
     SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName).getRange(cellAddress).setValue(geminiResult);
     updateLastRun(sheetName, cellAddress);
     addLog('executeCollectConfig END', 'INFO');
-    return { success: true, result: geminiResult };
-
+    return {success: true, result: geminiResult};
   } catch (error) {
     addLog(`executeCollectConfig FAILED: ${error.message}`, 'ERROR');
     try {
       SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName).getRange(cellAddress).setValue(`ОШИБКА: ${error.message}`);
-    } catch(e) { /* ignore */ }
-    return { success: false, error: error.message };
+    } catch (e) {/* ignore */}
+    return {success: false, error: error.message};
   }
 }
 
@@ -666,19 +652,19 @@ function executeCollectConfig(sheetName, cellAddress) {
 function saveCollectConfig(sheetName, cellAddress, config) {
   try {
     if (!sheetName || !cellAddress || !config) throw new Error('Требуются sheetName, cellAddress и config');
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var configSheet = ss.getSheetByName('ConfigData') || ss.insertSheet('ConfigData').hideSheet();
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ConfigData') || ss.insertSheet('ConfigData').hideSheet();
     if (configSheet.getLastRow() === 0) {
-        var headers = ['Sheet', 'Cell', 'SystemPromptSheet', 'SystemPromptCell', 'UserDataJSON', 'CreatedAt', 'LastRun', 'ConfigName'];
-        configSheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#4285f4').setFontColor('white');
+      const headers = ['Sheet', 'Cell', 'SystemPromptSheet', 'SystemPromptCell', 'UserDataJSON', 'CreatedAt', 'LastRun', 'ConfigName'];
+      configSheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#4285f4').setFontColor('white');
     }
-    
-    var existingRowIndex = findExistingConfig(configSheet, sheetName, cellAddress);
-    var rowData = [
+
+    const existingRowIndex = findExistingConfig(configSheet, sheetName, cellAddress);
+    const rowData = [
       sheetName, cellAddress,
       config.systemPrompt ? config.systemPrompt.sheet : '',
       config.systemPrompt ? config.systemPrompt.cell : '',
-      JSON.stringify(config.userData || [])
+      JSON.stringify(config.userData || []),
     ];
 
     if (existingRowIndex > 0) {
@@ -701,21 +687,21 @@ function saveCollectConfig(sheetName, cellAddress, config) {
  * @return {Object|null} - конфигурация или null если не найдена
  */
 function loadCollectConfig(sheetName, cellAddress) {
-  var configSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ConfigData');
+  const configSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ConfigData');
   if (!configSheet) return null;
-  var rowIndex = findExistingConfig(configSheet, sheetName, cellAddress);
+  const rowIndex = findExistingConfig(configSheet, sheetName, cellAddress);
   if (rowIndex <= 0) return null;
 
-  var rowData = configSheet.getRange(rowIndex, 1, 1, 8).getValues()[0];
-  var userData = [];
+  const rowData = configSheet.getRange(rowIndex, 1, 1, 8).getValues()[0];
+  let userData = [];
   try {
     if (rowData[4]) userData = JSON.parse(rowData[4]);
-  } catch (e) { /* ignore malformed JSON */ }
+  } catch (e) {/* ignore malformed JSON */}
 
   return {
-    systemPrompt: (rowData[2] && rowData[3]) ? { sheet: rowData[2], cell: rowData[3] } : null,
+    systemPrompt: (rowData[2] && rowData[3]) ? {sheet: rowData[2], cell: rowData[3]} : null,
     userData: userData,
-    name: rowData[7] || ''
+    name: rowData[7] || '',
   };
 }
 
@@ -727,8 +713,8 @@ function loadCollectConfig(sheetName, cellAddress) {
  * @return {number} - номер строки или -1 если не найдено
  */
 function findExistingConfig(configSheet, sheetName, cellAddress) {
-  var data = configSheet.getRange(2, 1, configSheet.getLastRow() - 1, 2).getValues();
-  for (var i = 0; i < data.length; i++) {
+  const data = configSheet.getRange(2, 1, configSheet.getLastRow() - 1, 2).getValues();
+  for (let i = 0; i < data.length; i++) {
     if (data[i][0] === sheetName && data[i][1] === cellAddress) return i + 2;
   }
   return -1;
@@ -740,9 +726,9 @@ function findExistingConfig(configSheet, sheetName, cellAddress) {
  * @param {string} cellAddress - Адрес ячейки
  */
 function updateLastRun(sheetName, cellAddress) {
-  var configSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ConfigData');
+  const configSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ConfigData');
   if (!configSheet) return;
-  var rowIndex = findExistingConfig(configSheet, sheetName, cellAddress);
+  const rowIndex = findExistingConfig(configSheet, sheetName, cellAddress);
   if (rowIndex > 0) {
     configSheet.getRange(rowIndex, 7).setValue(new Date().toISOString());
   }
@@ -755,14 +741,696 @@ function updateLastRun(sheetName, cellAddress) {
  * @return {string} - данные из ячеек, объединенные через \n
  */
 function collectDataFromRange(sheetName, cellAddress) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sheet) throw new Error(`Лист \"${sheetName}\" не найден.`);
-  
+
   if (/^[A-Z]+:[A-Z]+$/.test(cellAddress)) {
-    var col = cellAddress.split(':')[0];
-    var fullRangeAddress = `${col}1:${col}${sheet.getLastRow()}`;
+    // Обработка диапазона типа A:A, B:B и т.д.
+    const col = cellAddress.split(':')[0];
+    const lastRow = sheet.getLastRow();
+
+    // ИСПРАВЛЕНИЕ: проверяем что лист не пустой
+    if (lastRow === 0) {
+      addLog(`⚠️ Лист "${sheetName}" пуст, возвращаем пустую строку`, 'WARN');
+      return '';
+    }
+
+    const fullRangeAddress = `${col}1:${col}${lastRow}`;
+    addLog(`📊 Читаем диапазон: ${fullRangeAddress} с листа "${sheetName}"`, 'INFO');
     return sheet.getRange(fullRangeAddress).getValues().flat().filter(String).join('\n');
   } else {
+    // Обработка конкретной ячейки или диапазона
+    addLog(`📋 Читаем ячейку: ${cellAddress} с листа "${sheetName}"`, 'INFO');
     return sheet.getRange(cellAddress).getValues().flat().filter(String).join('\n');
+  }
+}
+
+// ============================================================================
+// НОВЫЕ КРУТЫЕ ФУНКЦИИ для меню AI Конструктора
+// ============================================================================
+
+/**
+ * 👁️ Просмотр конфигурации текущей ячейки
+ */
+function previewCurrentCellConfig() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+
+    if (!range) {
+      ui.alert('⚠️ Внимание', 'Выберите ячейку!', ui.ButtonSet.OK);
+      return;
+    }
+
+    const sheetName = sheet.getName();
+    const cellAddress = range.getA1Notation();
+    const config = loadCollectConfig(sheetName, cellAddress);
+
+    if (!config) {
+      ui.alert(
+        '❌ Конфигурация не найдена',
+        `Для ячейки ${sheetName}!${cellAddress} нет сохранённой конфигурации.`,
+        ui.ButtonSet.OK,
+      );
+      return;
+    }
+
+    // Формируем информацию о конфигурации
+    let preview = `🎯 КОНФИГУРАЦИЯ ЯЧЕЙКИ: ${sheetName}!${cellAddress}\n\n`;
+
+    // System Prompt
+    if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
+      preview += '📝 SYSTEM PROMPT:\n';
+      preview += `   Источник: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}\n`;
+
+      try {
+        const systemContent = collectDataFromRange(config.systemPrompt.sheet, config.systemPrompt.cell);
+        const systemPreview = systemContent.length > 200 ? systemContent.substring(0, 200) + '...' : systemContent;
+        preview += `   Содержимое: ${systemPreview || '(пусто)'}\n\n`;
+      } catch (e) {
+        preview += `   Содержимое: ❌ Ошибка чтения: ${e.message}\n\n`;
+      }
+    } else {
+      preview += '📝 SYSTEM PROMPT: не задан\n\n';
+    }
+
+    // User Data
+    if (config.userData && config.userData.length > 0) {
+      preview += `📊 ДАННЫЕ ДЛЯ АНАЛИЗА (${config.userData.length} источник${config.userData.length > 1 ? 'ов' : ''}):\n`;
+
+      for (let i = 0; i < Math.min(config.userData.length, 5); i++) { // Показываем максимум 5 источников
+        const source = config.userData[i];
+        preview += `   ${i + 1}. ${source.sheet}!${source.cell}`;
+
+        try {
+          const sourceData = collectDataFromRange(source.sheet, source.cell);
+          const sourcePreview = sourceData.length > 100 ? sourceData.substring(0, 100) + '...' : sourceData;
+          preview += ` → ${sourcePreview || '(пусто)'}\n`;
+        } catch (e) {
+          preview += ` → ❌ Ошибка: ${e.message}\n`;
+        }
+      }
+
+      if (config.userData.length > 5) {
+        preview += `   ... и ещё ${config.userData.length - 5} источник${config.userData.length - 5 > 1 ? 'ов' : ''}\n`;
+      }
+    } else {
+      preview += '📊 ДАННЫЕ ДЛЯ АНАЛИЗА: не заданы\n';
+    }
+
+    // Статистика
+    preview += '\n📈 СТАТИСТИКА:\n';
+
+    const configSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ConfigData');
+    if (configSheet) {
+      const rowIndex = findExistingConfig(configSheet, sheetName, cellAddress);
+      if (rowIndex > 0) {
+        const rowData = configSheet.getRange(rowIndex, 1, 1, 8).getValues()[0];
+        const createdAt = rowData[5] ? new Date(rowData[5]).toLocaleString('ru-RU') : 'неизвестно';
+        const lastRun = rowData[6] ? new Date(rowData[6]).toLocaleString('ru-RU') : 'никогда';
+
+        preview += `   Создано: ${createdAt}\n`;
+        preview += `   Последний запуск: ${lastRun}\n`;
+      }
+    }
+
+    ui.alert('👁️ Просмотр конфигурации', preview, ui.ButtonSet.OK);
+  } catch (error) {
+    ui.alert('❌ Ошибка просмотра', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * 📋 Скопировать конфигурацию текущей ячейки в буфер
+ */
+function copyCurrentCellConfig() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+
+    if (!range) {
+      ui.alert('⚠️ Внимание', 'Выберите ячейку!', ui.ButtonSet.OK);
+      return;
+    }
+
+    const sheetName = sheet.getName();
+    const cellAddress = range.getA1Notation();
+    const config = loadCollectConfig(sheetName, cellAddress);
+
+    if (!config) {
+      ui.alert(
+        '❌ Конфигурация не найдена',
+        `Для ячейки ${sheetName}!${cellAddress} нет сохранённой конфигурации.`,
+        ui.ButtonSet.OK,
+      );
+      return;
+    }
+
+    // Сохраняем конфигурацию в буфер (Properties)
+    const configJson = JSON.stringify(config);
+    PropertiesService.getScriptProperties().setProperty('COPIED_CONFIG', configJson);
+    PropertiesService.getScriptProperties().setProperty('COPIED_CONFIG_SOURCE', `${sheetName}!${cellAddress}`);
+
+    ui.alert(
+      '📋 Конфигурация скопирована!',
+      `Конфигурация из ${sheetName}!${cellAddress} скопирована в буфер.\n\n` +
+      'Теперь выберите другую ячейку и используйте:\n' +
+      '"📥 Вставить конфигурацию"',
+      ui.ButtonSet.OK,
+    );
+  } catch (error) {
+    ui.alert('❌ Ошибка копирования', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * 📥 Вставить конфигурацию в текущую ячейку из буфера
+ */
+function pasteConfigToCurrentCell() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+
+    if (!range) {
+      ui.alert('⚠️ Внимание', 'Выберите ячейку!', ui.ButtonSet.OK);
+      return;
+    }
+
+    const sheetName = sheet.getName();
+    const cellAddress = range.getA1Notation();
+
+    // Получаем конфигурацию из буфера
+    const configJson = PropertiesService.getScriptProperties().getProperty('COPIED_CONFIG');
+    const configSource = PropertiesService.getScriptProperties().getProperty('COPIED_CONFIG_SOURCE');
+
+    if (!configJson) {
+      ui.alert(
+        '❌ Буфер пуст',
+        'Сначала скопируйте конфигурацию из другой ячейки:\n' +
+        '"📋 Скопировать конфигурацию"',
+        ui.ButtonSet.OK,
+      );
+      return;
+    }
+
+    let config;
+    try {
+      config = JSON.parse(configJson);
+    } catch (e) {
+      ui.alert('❌ Ошибка буфера', 'Повреждённая конфигурация в буфере', ui.ButtonSet.OK);
+      return;
+    }
+
+    // Проверяем, есть ли уже конфигурация в этой ячейке
+    const existingConfig = loadCollectConfig(sheetName, cellAddress);
+    if (existingConfig) {
+      const overwrite = ui.alert(
+        '⚠️ Перезаписать конфигурацию?',
+        `В ячейке ${sheetName}!${cellAddress} уже есть конфигурация.\n\n` +
+        'Перезаписать её конфигурацией из:\n' +
+        (configSource || 'неизвестного источника') + '?',
+        ui.ButtonSet.YES_NO,
+      );
+
+      if (overwrite !== ui.Button.YES) {
+        return;
+      }
+    }
+
+    // Сохраняем конфигурацию
+    const saved = saveCollectConfig(sheetName, cellAddress, config);
+
+    if (saved) {
+      ui.alert(
+        '✅ Конфигурация вставлена!',
+        `Конфигурация из ${configSource || 'буфера'} вставлена в ${sheetName}!${cellAddress}.\n\n` +
+        'Можете сразу запустить:\n"🔄 Обновить ячейку"',
+        ui.ButtonSet.OK,
+      );
+    } else {
+      ui.alert('❌ Ошибка сохранения', 'Не удалось сохранить конфигурацию', ui.ButtonSet.OK);
+    }
+  } catch (error) {
+    ui.alert('❌ Ошибка вставки', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * 🗂️ Управление шаблонами
+ */
+function showTemplateManager() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const templates = getAllTemplates(user);
+    const templateNames = Object.keys(templates);
+
+    if (templateNames.length === 0) {
+      const createNew = ui.alert(
+        '🗂️ Шаблоны не найдены',
+        'У вас пока нет сохранённых шаблонов.\n\n' +
+        'Хотите создать шаблон из текущей ячейки?',
+        ui.ButtonSet.YES_NO,
+      );
+
+      if (createNew === ui.Button.YES) {
+        createTemplateFromCurrentCell();
+      }
+      return;
+    }
+
+    // Показываем список шаблонов
+    let templateList = '🗂️ УПРАВЛЕНИЕ ШАБЛОНАМИ\n\n';
+    templateList += `Найдено шаблонов: ${templateNames.length}\n\n`;
+
+    for (let i = 0; i < Math.min(templateNames.length, 10); i++) { // Показываем до 10 шаблонов
+      const name = templateNames[i];
+      const template = templates[name];
+      const created = template.created ? new Date(template.created).toLocaleDateString('ru-RU') : 'неизвестно';
+      templateList += `${i + 1}. ${name} (создан: ${created})\n`;
+    }
+
+    if (templateNames.length > 10) {
+      templateList += `... и ещё ${templateNames.length - 10} шаблон${templateNames.length - 10 > 1 ? 'ов' : ''}\n`;
+    }
+
+    templateList += '\nВыберите действие:';
+
+    const action = ui.prompt(
+      '🗂️ Управление шаблонами',
+      templateList + '\n\n' +
+      '1 - Применить шаблон к текущей ячейке\n' +
+      '2 - Удалить шаблон\n' +
+      '3 - Создать новый шаблон\n' +
+      '4 - Просмотр содержимого шаблона\n\n' +
+      'Введите номер действия:',
+      ui.ButtonSet.OK_CANCEL,
+    );
+
+    if (action.getSelectedButton() !== ui.Button.OK) return;
+
+    const choice = action.getResponseText().trim();
+
+    switch (choice) {
+    case '1':
+      applyTemplateToCurrentCell(templateNames);
+      break;
+    case '2':
+      deleteTemplateDialog(templateNames);
+      break;
+    case '3':
+      createTemplateFromCurrentCell();
+      break;
+    case '4':
+      previewTemplateDialog(templateNames, templates);
+      break;
+    default:
+      ui.alert('❌ Неверный выбор', 'Введите номер от 1 до 4', ui.ButtonSet.OK);
+    }
+  } catch (error) {
+    ui.alert('❌ Ошибка управления шаблонами', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Применить шаблон к текущей ячейке
+ */
+function applyTemplateToCurrentCell(templateNames) {
+  const ui = SpreadsheetApp.getUi();
+
+  const sheet = SpreadsheetApp.getActiveSheet();
+  const range = sheet.getActiveRange();
+
+  if (!range) {
+    ui.alert('⚠️ Внимание', 'Выберите ячейку!', ui.ButtonSet.OK);
+    return;
+  }
+
+  const templateChoice = ui.prompt(
+    '🎯 Применить шаблон',
+    'Доступные шаблоны:\n\n' +
+    templateNames.map((name, i) => `${i + 1}. ${name}`).join('\n') +
+    '\n\nВведите номер или имя шаблона:',
+    ui.ButtonSet.OK_CANCEL,
+  );
+
+  if (templateChoice.getSelectedButton() !== ui.Button.OK) return;
+
+  const input = templateChoice.getResponseText().trim();
+  let templateName;
+
+  if (/^\d+$/.test(input)) {
+    const index = parseInt(input, 10) - 1;
+    if (index >= 0 && index < templateNames.length) {
+      templateName = templateNames[index];
+    }
+  } else {
+    templateName = input;
+  }
+
+  if (!templateName || templateNames.indexOf(templateName) === -1) {
+    ui.alert('❌ Шаблон не найден', 'Указанный шаблон не существует', ui.ButtonSet.OK);
+    return;
+  }
+
+  const user = Session.getActiveUser().getEmail() || 'anonymous';
+  const template = getTemplate(user, templateName);
+
+  if (!template) {
+    ui.alert('❌ Ошибка загрузки', 'Не удалось загрузить шаблон', ui.ButtonSet.OK);
+    return;
+  }
+
+  const sheetName = sheet.getName();
+  const cellAddress = range.getA1Notation();
+
+  const config = template.config || template;
+  const saved = saveCollectConfig(sheetName, cellAddress, config);
+
+  if (saved) {
+    ui.alert(
+      '✅ Шаблон применён!',
+      `Шаблон "${templateName}" применён к ячейке ${sheetName}!${cellAddress}.\n\n` +
+      'Можете сразу запустить:\n"🔄 Обновить ячейку"',
+      ui.ButtonSet.OK,
+    );
+  } else {
+    ui.alert('❌ Ошибка применения', 'Не удалось применить шаблон', ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Создать шаблон из текущей ячейки
+ */
+function createTemplateFromCurrentCell() {
+  const ui = SpreadsheetApp.getUi();
+
+  const sheet = SpreadsheetApp.getActiveSheet();
+  const range = sheet.getActiveRange();
+
+  if (!range) {
+    ui.alert('⚠️ Внимание', 'Выберите ячейку с настроенной конфигурацией!', ui.ButtonSet.OK);
+    return;
+  }
+
+  const sheetName = sheet.getName();
+  const cellAddress = range.getA1Notation();
+  const config = loadCollectConfig(sheetName, cellAddress);
+
+  if (!config) {
+    ui.alert(
+      '❌ Конфигурация не найдена',
+      `Для ячейки ${sheetName}!${cellAddress} нет конфигурации.\n\n` +
+      'Сначала настройте ячейку через:\n"🎯 Настроить запрос"',
+      ui.ButtonSet.OK,
+    );
+    return;
+  }
+
+  const templateName = ui.prompt(
+    '💾 Сохранить как шаблон',
+    'Введите имя для нового шаблона:\n\n' +
+    '(Используйте понятные названия, например:\n' +
+    '"Анализ отзывов", "Сводка продаж", "Извлечение данных")',
+    ui.ButtonSet.OK_CANCEL,
+  );
+
+  if (templateName.getSelectedButton() !== ui.Button.OK) return;
+
+  const name = templateName.getResponseText().trim();
+  if (!name) {
+    ui.alert('❌ Пустое имя', 'Имя шаблона не может быть пустым', ui.ButtonSet.OK);
+    return;
+  }
+
+  const user = Session.getActiveUser().getEmail() || 'anonymous';
+  const result = saveTemplate(user, name, config);
+
+  if (result.success) {
+    ui.alert(
+      '✅ Шаблон создан!',
+      `Шаблон "${name}" успешно сохранён.\n\n` +
+      'Теперь его можно применить к любой ячейке через:\n' +
+      '"🗂️ Управление шаблонами"',
+      ui.ButtonSet.OK,
+    );
+  } else {
+    ui.alert('❌ Ошибка создания', result.message || 'Не удалось создать шаблон', ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Удалить шаблон
+ */
+function deleteTemplateDialog(templateNames) {
+  const ui = SpreadsheetApp.getUi();
+
+  const templateChoice = ui.prompt(
+    '🗑️ Удалить шаблон',
+    'ВНИМАНИЕ: Это действие необратимо!\n\n' +
+    'Доступные шаблоны:\n\n' +
+    templateNames.map((name, i) => `${i + 1}. ${name}`).join('\n') +
+    '\n\nВведите номер или имя шаблона для удаления:',
+    ui.ButtonSet.OK_CANCEL,
+  );
+
+  if (templateChoice.getSelectedButton() !== ui.Button.OK) return;
+
+  const input = templateChoice.getResponseText().trim();
+  let templateName;
+
+  if (/^\d+$/.test(input)) {
+    const index = parseInt(input, 10) - 1;
+    if (index >= 0 && index < templateNames.length) {
+      templateName = templateNames[index];
+    }
+  } else {
+    templateName = input;
+  }
+
+  if (!templateName || templateNames.indexOf(templateName) === -1) {
+    ui.alert('❌ Шаблон не найден', 'Указанный шаблон не существует', ui.ButtonSet.OK);
+    return;
+  }
+
+  const confirm = ui.alert(
+    '⚠️ Подтверждение удаления',
+    `Удалить шаблон "${templateName}"?\n\nЭто действие нельзя отменить!`,
+    ui.ButtonSet.YES_NO,
+  );
+
+  if (confirm !== ui.Button.YES) return;
+
+  const user = Session.getActiveUser().getEmail() || 'anonymous';
+  const result = deleteTemplate(user, templateName);
+
+  if (result.success) {
+    ui.alert('✅ Шаблон удалён', `Шаблон "${templateName}" успешно удалён.`, ui.ButtonSet.OK);
+  } else {
+    ui.alert('❌ Ошибка удаления', result.message || 'Не удалось удалить шаблон', ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Просмотр содержимого шаблона
+ */
+function previewTemplateDialog(templateNames, templates) {
+  const ui = SpreadsheetApp.getUi();
+
+  const templateChoice = ui.prompt(
+    '👁️ Просмотр шаблона',
+    'Доступные шаблоны:\n\n' +
+    templateNames.map((name, i) => `${i + 1}. ${name}`).join('\n') +
+    '\n\nВведите номер или имя шаблона:',
+    ui.ButtonSet.OK_CANCEL,
+  );
+
+  if (templateChoice.getSelectedButton() !== ui.Button.OK) return;
+
+  const input = templateChoice.getResponseText().trim();
+  let templateName;
+
+  if (/^\d+$/.test(input)) {
+    const index = parseInt(input, 10) - 1;
+    if (index >= 0 && index < templateNames.length) {
+      templateName = templateNames[index];
+    }
+  } else {
+    templateName = input;
+  }
+
+  if (!templateName || templateNames.indexOf(templateName) === -1) {
+    ui.alert('❌ Шаблон не найден', 'Указанный шаблон не существует', ui.ButtonSet.OK);
+    return;
+  }
+
+  const template = templates[templateName];
+  const config = template.config || template;
+
+  let preview = `🗂️ ШАБЛОН: ${templateName}\n\n`;
+
+  // System Prompt
+  if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
+    preview += `📝 System Prompt: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}\n`;
+  } else {
+    preview += '📝 System Prompt: не задан\n';
+  }
+
+  // User Data
+  if (config.userData && config.userData.length > 0) {
+    preview += `📊 Данные (${config.userData.length} источник${config.userData.length > 1 ? 'ов' : ''}):\n`;
+    for (let i = 0; i < Math.min(config.userData.length, 5); i++) {
+      const source = config.userData[i];
+      preview += `   ${i + 1}. ${source.sheet}!${source.cell}\n`;
+    }
+    if (config.userData.length > 5) {
+      preview += `   ... и ещё ${config.userData.length - 5}\n`;
+    }
+  } else {
+    preview += '📊 Данные: не заданы\n';
+  }
+
+  // Метаданные
+  if (template.created) {
+    preview += `\n🕒 Создан: ${new Date(template.created).toLocaleString('ru-RU')}`;
+  }
+  if (template.updated) {
+    preview += `\n🔄 Обновлён: ${new Date(template.updated).toLocaleString('ru-RU')}`;
+  }
+
+  ui.alert('👁️ Просмотр шаблона', preview, ui.ButtonSet.OK);
+}
+
+/**
+ * 📊 Статистика использования AI Конструктора
+ */
+function showConfigStats() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ConfigData');
+
+    let stats = '📊 СТАТИСТИКА AI КОНСТРУКТОРА\n\n';
+
+    if (!configSheet || configSheet.getLastRow() <= 1) {
+      stats += '❌ Нет данных\n';
+      stats += 'Конфигурации не найдены.\n\n';
+      stats += '💡 Создайте первую конфигурацию:\n';
+      stats += '🎯 AI Конструктор → Настроить запрос';
+    } else {
+      const data = configSheet.getRange(2, 1, configSheet.getLastRow() - 1, 8).getValues();
+      var totalConfigs = data.length;
+      const sheetsUsed = new Set();
+      var runCounts = 0;
+      let oldestConfig = null;
+      let newestConfig = null;
+      let mostRecentRun = null;
+
+      for (var i = 0; i < data.length; i++) {
+        const row = data[i];
+        var sheetName = row[0];
+        const createdAt = row[5];
+        const lastRun = row[6];
+
+        if (sheetName) sheetsUsed.add(sheetName);
+        if (lastRun) runCounts++;
+
+        if (createdAt) {
+          const created = new Date(createdAt);
+          if (!oldestConfig || created < oldestConfig) {
+            oldestConfig = created;
+          }
+          if (!newestConfig || created > newestConfig) {
+            newestConfig = created;
+          }
+        }
+
+        if (lastRun) {
+          const run = new Date(lastRun);
+          if (!mostRecentRun || run > mostRecentRun) {
+            mostRecentRun = run;
+          }
+        }
+      }
+
+      stats += '📈 ОБЩАЯ СТАТИСТИКА:\n';
+      stats += `   Всего конфигураций: ${totalConfigs}\n`;
+      stats += `   Активных (запускались): ${runCounts}\n`;
+      stats += `   Неиспользованных: ${totalConfigs - runCounts}\n`;
+      stats += `   Задействовано листов: ${sheetsUsed.size}\n\n`;
+
+      if (oldestConfig) {
+        stats += '📅 ВРЕМЕННЫЕ ДАННЫЕ:\n';
+        stats += `   Первая конфигурация: ${oldestConfig.toLocaleString('ru-RU')}\n`;
+      }
+      if (newestConfig) {
+        stats += `   Последняя конфигурация: ${newestConfig.toLocaleString('ru-RU')}\n`;
+      }
+      if (mostRecentRun) {
+        stats += `   Последний запуск: ${mostRecentRun.toLocaleString('ru-RU')}\n\n`;
+      }
+
+      // Статистика по листам
+      const sheetStats = {};
+      for (var i = 0; i < data.length; i++) {
+        var sheetName = data[i][0];
+        if (sheetName) {
+          sheetStats[sheetName] = (sheetStats[sheetName] || 0) + 1;
+        }
+      }
+
+      if (Object.keys(sheetStats).length > 0) {
+        stats += '📋 ПО ЛИСТАМ:\n';
+        const sortedSheets = Object.keys(sheetStats).sort((a, b) => sheetStats[b] - sheetStats[a]);
+        for (var i = 0; i < Math.min(sortedSheets.length, 5); i++) {
+          const sheet = sortedSheets[i];
+          stats += `   ${sheet}: ${sheetStats[sheet]} конфигураций\n`;
+        }
+        if (sortedSheets.length > 5) {
+          stats += `   ... и ещё ${sortedSheets.length - 5} лист${sortedSheets.length - 5 > 1 ? 'ов' : ''}\n`;
+        }
+      }
+    }
+
+    // Статистика по шаблонам
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const templates = getAllTemplates(user);
+    const templateCount = Object.keys(templates).length;
+
+    stats += '\n🗂️ ШАБЛОНЫ:\n';
+    stats += `   Сохранённых шаблонов: ${templateCount}\n`;
+
+    if (templateCount > 0) {
+      const templateNames = Object.keys(templates).slice(0, 3);
+      stats += `   Последние: ${templateNames.join(', ')}`;
+      if (templateCount > 3) {
+        stats += ` и ещё ${templateCount - 3}`;
+      }
+      stats += '\n';
+    }
+
+    stats += '\n💡 РЕКОМЕНДАЦИИ:\n';
+    if (totalConfigs === 0) {
+      stats += '   • Создайте первую конфигурацию\n';
+      stats += '   • Попробуйте простую настройку\n';
+    } else if (runCounts === 0) {
+      stats += '   • Запустите созданные конфигурации\n';
+      stats += '   • Используйте "🔄 Обновить ячейку"\n';
+    } else {
+      stats += '   • Создавайте шаблоны из удачных конфигураций\n';
+      stats += '   • Копируйте настройки между ячейками\n';
+    }
+
+    ui.alert('📊 Статистика использования', stats, ui.ButtonSet.OK);
+  } catch (error) {
+    ui.alert('❌ Ошибка статистики', 'Произошла ошибка: ' + error.message, ui.ButtonSet.OK);
   }
 }
