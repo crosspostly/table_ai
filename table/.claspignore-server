@@ -1,0 +1,11 @@
+# Server Project: только server/ и shared/
+
+# Игнорировать ВСЁ по умолчанию
+**/*
+
+# Включить только server и shared
+!server/**
+!shared/**
+
+# Включить только appsscript.json из server/
+!server/appsscript.json
