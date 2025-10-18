@@ -296,32 +296,41 @@ function getAllSheetNames() {
  */
 function getCellPreview(sheetName, cellAddress) {
   try {
-    // Валидация входных параметров
-    if (!sheetName || !cellAddress) {
-      return '⚠️ Укажите лист и ячейку';
+    addLog('getCellPreview: вызвана с sheetName="' + sheetName + '", cellAddress="' + cellAddress + '"', 'INFO');
+    
+    // Валидация входных параметров - БОЛЕЕ СТРОГАЯ
+    if (!sheetName || sheetName.trim() === '') {
+      addLog('getCellPreview: sheetName пустой или не указан', 'WARN');
+      return '⚠️ Не указан лист';
     }
     
-    // Проверка что cellAddress не пустой после trim
-    const cleanAddress = cellAddress.trim();
-    if (cleanAddress === '') {
-      return '⚠️ Укажите адрес ячейки (например A1 или C)';
+    if (!cellAddress || cellAddress.trim() === '') {
+      addLog('getCellPreview: cellAddress пустой или не указан', 'WARN');
+      return '⚠️ Не указана ячейка';
     }
+    
+    const cleanAddress = cellAddress.trim();
+    addLog('getCellPreview: cleanAddress="' + cleanAddress + '"', 'INFO');
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(sheetName);
 
     if (!sheet) {
-      return `❌ Лист "${sheetName}" не найден`;
+      addLog('getCellPreview: лист "' + sheetName + '" не найден', 'ERROR');
+      return '❌ Лист "' + sheetName + '" не найден';
     }
 
+    addLog('getCellPreview: лист найден, пытаемся прочитать "' + cleanAddress + '"', 'INFO');
     const cell = sheet.getRange(cleanAddress);
     const value = cell.getValue();
 
     if (!value || value.toString().trim() === '') {
+      addLog('getCellPreview: ячейка "' + cleanAddress + '" пустая', 'INFO');
       return '(пусто)';
     }
 
     const text = value.toString();
+    addLog('getCellPreview: прочитано ' + text.length + ' символов', 'INFO');
 
     if (text.length <= 100) {
       return text;
@@ -329,7 +338,8 @@ function getCellPreview(sheetName, cellAddress) {
 
     return text.substring(0, 100) + '...';
   } catch (error) {
-    return `❌ Ошибка: ${error.message}`;
+    addLog('getCellPreview ОШИБКА: ' + error.message, 'ERROR');
+    return '❌ Ошибка: ' + error.message;
   }
 }
 
