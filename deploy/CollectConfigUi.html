@@ -982,10 +982,14 @@
       status.textContent = message;
       status.className = 'status ' + type;
       status.style.display = 'block';
+      
+      // Добавляем в логи
+      addLogEntry(message, type || 'info');
     }
     
     function showError(error) {
-      showStatus('❌ Ошибка: ' + error, 'error');
+      const errorMsg = '❌ Ошибка: ' + error;
+      showStatus(errorMsg, 'error');
     }
   </script>
 </body>
