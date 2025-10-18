@@ -623,21 +623,37 @@ function executeCollectConfig(sheetName, cellAddress) {
 
     let systemPrompt = '';
     if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
-      systemPrompt = collectDataFromRange(config.systemPrompt.sheet, config.systemPrompt.cell);
+      addLog(`🔍 СБОР System Prompt: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}`, 'INFO');
+      try {
+        systemPrompt = collectDataFromRange(config.systemPrompt.sheet, config.systemPrompt.cell);
+        addLog(`✅ System Prompt собран: ${systemPrompt.length} символов`, 'INFO');
+      } catch (e) {
+        addLog(`❌ ОШИБКА сбора System Prompt: ${e.message}`, 'ERROR');
+        throw e; // Пробрасываем дальше
+      }
+    } else {
+      addLog('⚠️ System Prompt не указан', 'WARN');
     }
 
     const userDataContent = [];
     if (config.userData) {
-      config.userData.forEach(function(source) {
+      addLog(`🔍 СБОР User Data: ${config.userData.length} источников`, 'INFO');
+      config.userData.forEach(function(source, index) {
         if (source.sheet && source.cell) {
+          addLog(`  📍 Источник ${index + 1}: ${source.sheet}!${source.cell}`, 'INFO');
           try {
             const data = collectDataFromRange(source.sheet, source.cell);
+            addLog(`  ✅ Источник ${index + 1}: собрано ${data.length} символов`, 'INFO');
             userDataContent.push(`Источник (${source.sheet}!${source.cell}):\n${data}`);
           } catch (e) {
+            addLog(`  ❌ Источник ${index + 1} ОШИБКА: ${e.message}`, 'ERROR');
             userDataContent.push(`Источник (${source.sheet}!${source.cell}):\n[ОШИБКА СБОРА ДАННЫХ: ${e.message}]`);
           }
         }
       });
+      addLog(`✅ User Data собран из ${userDataContent.length} источников`, 'INFO');
+    } else {
+      addLog('⚠️ User Data не указан', 'WARN');
     }
 
     const fullPrompt = (systemPrompt ? systemPrompt + '\n\n---\n\n' : '') +
