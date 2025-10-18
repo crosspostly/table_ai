@@ -2,9 +2,12 @@
  * Collect Config UI Functions
  * Функции для работы с веб-интерфейсом настройки
  *
- * Version: 1.0.0
- * Last updated: 2024-10-14
+ * Version: 2.1.0
+ * Last updated: 2025-01-18 13:30:00
  */
+
+const COLLECT_CONFIG_VERSION = '2.1.0';
+const COLLECT_CONFIG_UPDATED = new Date('2025-01-18T13:30:00');
 
 /**
  * Открыть интерфейс настройки для текущей ячейки
@@ -163,6 +166,9 @@ function getCollectConfigInitData() {
     const sheetName = sheet.getName();
     const cellAddress = range.getA1Notation();
     const sheets = getAllSheetNames();
+
+    // ✅ Создаём базовый пресет при первом открытии
+    createDefaultPreset();
 
     return {
       sheetName: sheetName,
@@ -614,6 +620,7 @@ function serverGetTemplatesStats() {
  */
 function executeCollectConfig(sheetName, cellAddress) {
   const logCtx = {traceId: Utilities.getUuid(), target: `'${sheetName}'!${cellAddress}`};
+  addLog(`🔧 Collect Config v${COLLECT_CONFIG_VERSION} (обновлено: ${COLLECT_CONFIG_UPDATED.toLocaleString('ru-RU')})`, 'INFO');
   addLog('executeCollectConfig START', 'INFO');
 
   try {
@@ -623,21 +630,37 @@ function executeCollectConfig(sheetName, cellAddress) {
 
     let systemPrompt = '';
     if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
-      systemPrompt = collectDataFromRange(config.systemPrompt.sheet, config.systemPrompt.cell);
+      addLog(`🔍 СБОР System Prompt: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}`, 'INFO');
+      try {
+        systemPrompt = collectDataFromRange(config.systemPrompt.sheet, config.systemPrompt.cell);
+        addLog(`✅ System Prompt собран: ${systemPrompt.length} символов`, 'INFO');
+      } catch (e) {
+        addLog(`❌ ОШИБКА сбора System Prompt: ${e.message}`, 'ERROR');
+        throw e; // Пробрасываем дальше
+      }
+    } else {
+      addLog('⚠️ System Prompt не указан', 'WARN');
     }
 
     const userDataContent = [];
     if (config.userData) {
-      config.userData.forEach(function(source) {
+      addLog(`🔍 СБОР User Data: ${config.userData.length} источников`, 'INFO');
+      config.userData.forEach(function(source, index) {
         if (source.sheet && source.cell) {
+          addLog(`  📍 Источник ${index + 1}: ${source.sheet}!${source.cell}`, 'INFO');
           try {
             const data = collectDataFromRange(source.sheet, source.cell);
+            addLog(`  ✅ Источник ${index + 1}: собрано ${data.length} символов`, 'INFO');
             userDataContent.push(`Источник (${source.sheet}!${source.cell}):\n${data}`);
           } catch (e) {
+            addLog(`  ❌ Источник ${index + 1} ОШИБКА: ${e.message}`, 'ERROR');
             userDataContent.push(`Источник (${source.sheet}!${source.cell}):\n[ОШИБКА СБОРА ДАННЫХ: ${e.message}]`);
           }
         }
       });
+      addLog(`✅ User Data собран из ${userDataContent.length} источников`, 'INFO');
+    } else {
+      addLog('⚠️ User Data не указан', 'WARN');
     }
 
     const fullPrompt = (systemPrompt ? systemPrompt + '\n\n---\n\n' : '') +
@@ -756,108 +779,134 @@ function updateLastRun(sheetName, cellAddress) {
 }
 
 /**
- * Сбор данных из диапазона ячеек - ИСПРАВЛЕННАЯ ВЕРСИЯ
- * Поддерживает все форматы: A1, A1:B10, C:C, C1:C100
+ * Сбор данных из диапазона ячеек - ПОЛНОСТЬЮ ПЕРЕПИСАННАЯ ВЕРСИЯ
+ * Поддерживает ВСЕ форматы: A1, A1:B10, C:C, C1:C100, B1:B
  * @param {string} sheetName - Имя листа
  * @param {string} cellAddress - Адрес ячейки или диапазона (A1 notation)
  * @return {string} - данные из ячеек, объединенные через \n
  */
 function collectDataFromRange(sheetName, cellAddress) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) {
-    throw new Error(`Лист \"${sheetName}\" не найден.`);
-  }
-
-  // ✅ КРИТИЧНО: Получаем размеры листа ОДИН РАЗ в начале
-  const lastRow = sheet.getLastRow();
-  const lastCol = sheet.getLastColumn();
-
-  // Проверяем что лист не пустой
-  if (lastRow === 0 || lastCol === 0) {
-    addLog(`⚠️ Лист \"${sheetName}\" пуст (lastRow=${lastRow}, lastCol=${lastCol})`, 'WARN');
-    return ''; // Возвращаем пустую строку вместо ошибки
-  }
-
-  // Нормализация адреса для обработки
-  const normalizedAddress = cellAddress.trim().toUpperCase();
-
+  addLog(`━━━ collectDataFromRange START ━━━`, 'INFO');
+  addLog(`  sheetName: "${sheetName}"`, 'INFO');
+  addLog(`  cellAddress: "${cellAddress}"`, 'INFO');
+  
   try {
-    // Случай 1: Полный столбец (C:C, A:B)
+    // ШАГ 1: Получаем лист
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    addLog(`  Spreadsheet: "${ss.getName()}"`, 'INFO');
+    
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      const errorMsg = `Лист "${sheetName}" не найден`;
+      addLog(`  ❌ ${errorMsg}`, 'ERROR');
+      throw new Error(errorMsg);
+    }
+    addLog(`  ✅ Лист "${sheetName}" найден`, 'INFO');
+
+    // ШАГ 2: Получаем размеры листа
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    addLog(`  Размеры листа: lastRow=${lastRow}, lastCol=${lastCol}`, 'INFO');
+
+    // Если лист пустой - возвращаем пустую строку (НЕ ошибку!)
+    if (lastRow === 0 || lastCol === 0) {
+      addLog(`  ⚠️ Лист пуст, возвращаем пустую строку`, 'WARN');
+      return '';
+    }
+
+    // ШАГ 3: Нормализация адреса
+    const normalizedAddress = cellAddress.trim().toUpperCase();
+    addLog(`  Нормализованный адрес: "${normalizedAddress}"`, 'INFO');
+
+    // ШАГ 4: Определяем ТИП диапазона
+    let rangeToRead = null;
+    let rangeType = 'unknown';
+
+    // Тип 1: Полный столбец (B:B, A:C)
     if (/^[A-Z]+:[A-Z]+$/.test(normalizedAddress)) {
-      const cols = normalizedAddress.split(':');
-      const startCol = cols[0];
-      const endCol = cols[1];
-
-      // Преобразуем в конкретный диапазон: C:C → C1:C[lastRow]
-      const fullRangeAddress = `${startCol}1:${endCol}${lastRow}`;
-      addLog(`📊 Читаем полный столбец: ${fullRangeAddress} с листа "${sheetName}"`, 'INFO');
-      const values = sheet.getRange(fullRangeAddress).getValues();
-
-      // Flatten 2D array и фильтруем пустые значения
-      return values
-        .flat()
-        .filter(function(val) {
-          return val !== null && val !== undefined && val.toString().trim() !== '';
-        })
-        .join('\n');
+      rangeType = 'full_column';
+      const parts = normalizedAddress.split(':');
+      rangeToRead = `${parts[0]}1:${parts[1]}${lastRow}`;
+      addLog(`  Тип: полный столбец → "${rangeToRead}"`, 'INFO');
+    }
+    // Тип 2: Диапазон с числами (A1:B10, B1:B100, B1:B)
+    else if (normalizedAddress.includes(':')) {
+      rangeType = 'range';
+      // Проверяем формат B1:B (столбец+число:столбец)
+      const partialColRegex = /^([A-Z]+)(\d+):([A-Z]+)$/;
+      const partialMatch = normalizedAddress.match(partialColRegex);
+      
+      if (partialMatch && partialMatch[1] === partialMatch[3]) {
+        // B1:B → B1:B{lastRow}
+        const col = partialMatch[1];
+        const startRow = partialMatch[2];
+        rangeToRead = `${col}${startRow}:${col}${lastRow}`;
+        addLog(`  Тип: частичный столбец B1:B → "${rangeToRead}"`, 'INFO');
+      } else {
+        // Обычный диапазон A1:B10
+        rangeToRead = normalizedAddress;
+        addLog(`  Тип: обычный диапазон → "${rangeToRead}"`, 'INFO');
+      }
+    }
+    // Тип 3: Одна ячейка (A1, B5, C100)
+    else {
+      rangeType = 'single_cell';
+      rangeToRead = normalizedAddress;
+      addLog(`  Тип: одна ячейка → "${rangeToRead}"`, 'INFO');
     }
 
-    // Случай 2: Конкретный диапазон (A1, A1:B10, C1:C100)
-    // ✅ ИСПРАВЛЕНО: Проверяем что диапазон не выходит за границы данных
-    addLog(`📋 Читаем диапазон: ${normalizedAddress} с листа "${sheetName}"`, 'INFO');
-
-    // Проверка для диапазонов типа C1:C100
-    const rangeRegex = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/;
-    const match = normalizedAddress.match(rangeRegex);
-
-    if (match) {
-      // Это диапазон типа C1:C100
-      const startCol = match[1];
-      const startRow = parseInt(match[2]);
-      const endCol = match[3];
-      const endRow = parseInt(match[4]);
-
-      // Обрезаем диапазон до реальных данных
-      const actualEndRow = Math.min(endRow, lastRow);
-
-      if (startRow > lastRow) {
-        addLog(`⚠️ Диапазон "${normalizedAddress}" начинается за границами данных (startRow=${startRow} > lastRow=${lastRow})`, 'WARN');
-        return ''; // Диапазон вне данных
-      }
-
-      const adjustedAddress = `${startCol}${startRow}:${endCol}${actualEndRow}`;
-      if (adjustedAddress !== normalizedAddress) {
-        addLog(`📋 Скорректированный диапазон: ${adjustedAddress} (было ${normalizedAddress})`, 'INFO');
-      }
-
-      const values = sheet.getRange(adjustedAddress).getValues();
-
-      // Flatten 2D array и фильтруем пустые значения
-      return values
-        .flat()
-        .filter(function(val) {
-          return val !== null && val !== undefined && val.toString().trim() !== '';
-        })
-        .join('\n');
+    // ШАГ 5: Читаем данные БЕЗОПАСНО
+    addLog(`  Попытка чтения диапазона: "${rangeToRead}"...`, 'INFO');
+    
+    let range;
+    try {
+      range = sheet.getRange(rangeToRead);
+    } catch (getRangeError) {
+      const errorMsg = `Google Sheets API ошибка при getRange("${rangeToRead}"): ${getRangeError.message}`;
+      addLog(`  ❌ ${errorMsg}`, 'ERROR');
+      throw new Error(errorMsg);
+    }
+    
+    addLog(`  ✅ Range получен успешно`, 'INFO');
+    
+    // Получаем размеры диапазона
+    const numRows = range.getNumRows();
+    const numCols = range.getNumColumns();
+    addLog(`  Размеры диапазона: ${numRows} строк × ${numCols} столбцов`, 'INFO');
+    
+    // Проверка что диапазон не пустой
+    if (numRows === 0 || numCols === 0) {
+      addLog(`  ⚠️ Диапазон имеет нулевые размеры, возвращаем пустую строку`, 'WARN');
+      return '';
     }
 
-    // Случай 3: Одна ячейка (A1) или другой простой формат
-    const range = sheet.getRange(normalizedAddress);
+    // Читаем значения
     const values = range.getValues();
+    addLog(`  ✅ Значения прочитаны: ${values.length} строк`, 'INFO');
 
-    // Flatten 2D array и фильтруем пустые значения
-    return values
-      .flat()
-      .filter(function(val) {
-        return val !== null && val !== undefined && val.toString().trim() !== '';
-      })
-      .join('\n');
-  } catch (rangeError) {
-    // Обработка ошибок при некорректном диапазоне
-    addLog(`❌ Ошибка чтения диапазона "${cellAddress}" на листе "${sheetName}": ${rangeError.message}`, 'ERROR');
-    throw new Error(
-      `Некорректный диапазон \"${cellAddress}\" на листе \"${sheetName}\": ${rangeError.message}`,
-    );
+    // ШАГ 6: Обработка и фильтрация данных
+    const flatValues = values.flat();
+    addLog(`  После flat(): ${flatValues.length} значений`, 'INFO');
+    
+    const filteredValues = flatValues.filter(function(val) {
+      return val !== null && val !== undefined && val.toString().trim() !== '';
+    });
+    addLog(`  После фильтрации: ${filteredValues.length} непустых значений`, 'INFO');
+
+    // ШАГ 7: Формируем результат
+    const result = filteredValues.join('\n');
+    addLog(`  Результат: ${result.length} символов`, 'INFO');
+    addLog(`━━━ collectDataFromRange END (SUCCESS) ━━━`, 'INFO');
+    
+    return result;
+    
+  } catch (error) {
+    addLog(`━━━ collectDataFromRange END (ERROR) ━━━`, 'ERROR');
+    addLog(`  Ошибка: ${error.message}`, 'ERROR');
+    addLog(`  Stack: ${error.stack}`, 'ERROR');
+    
+    // КРИТИЧНО: НЕ бросаем ошибку дальше, возвращаем понятное сообщение
+    throw new Error(`Не удалось прочитать ${sheetName}!${cellAddress}: ${error.message}`);
   }
 }
 
@@ -1541,23 +1590,125 @@ function showConfigStats() {
  */
 function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
   try {
-    addLog(`saveAndExecuteCollectConfig START: sheet="${sheetName}", cell="${cellAddress}"`, 'INFO');
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+    addLog(`🚀 saveAndExecuteCollectConfig START`, 'INFO');
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+    
+    // ✅ КРИТИЧНО: Валидация входных параметров
+    addLog(`📋 ВХОДНЫЕ ПАРАМЕТРЫ:`, 'INFO');
+    addLog(`  sheetName: "${sheetName}" (type: ${typeof sheetName}, length: ${sheetName ? sheetName.length : 0})`, 'INFO');
+    addLog(`  cellAddress: "${cellAddress}" (type: ${typeof cellAddress}, length: ${cellAddress ? cellAddress.length : 0})`, 'INFO');
+    addLog(`  config: ${JSON.stringify(config)}`, 'INFO');
+    
+    if (!sheetName || sheetName.trim() === '') {
+      throw new Error('❌ КРИТИЧЕСКАЯ ОШИБКА: sheetName пуст или undefined!');
+    }
+    if (!cellAddress || cellAddress.trim() === '') {
+      throw new Error('❌ КРИТИЧЕСКАЯ ОШИБКА: cellAddress пуст или undefined!');
+    }
+    if (!config) {
+      throw new Error('❌ КРИТИЧЕСКАЯ ОШИБКА: config is null или undefined!');
+    }
+    
+    addLog(`✅ Валидация входных параметров пройдена`, 'INFO');
+    
+    // Детальная валидация конфигурации
+    addLog(`📊 ДЕТАЛИ КОНФИГУРАЦИИ:`, 'INFO');
+    if (config.systemPrompt) {
+      addLog(`  System Prompt: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}`, 'INFO');
+      if (!config.systemPrompt.sheet || !config.systemPrompt.cell) {
+        addLog(`  ⚠️ WARNING: System Prompt имеет пустые поля!`, 'WARN');
+      }
+    } else {
+      addLog(`  System Prompt: НЕ УКАЗАН`, 'WARN');
+    }
+    
+    if (config.userData && config.userData.length > 0) {
+      addLog(`  User Data источников: ${config.userData.length}`, 'INFO');
+      config.userData.forEach(function(source, index) {
+        addLog(`    [${index + 1}] ${source.sheet}!${source.cell}`, 'INFO');
+        if (!source.sheet || !source.cell) {
+          addLog(`    ⚠️ WARNING: Источник [${index + 1}] имеет пустые поля!`, 'WARN');
+        }
+      });
+    } else {
+      addLog(`  User Data: ПУСТО (нет источников данных)`, 'WARN');
+    }
+    
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+    addLog(`💾 ШАГ 1: СОХРАНЕНИЕ КОНФИГУРАЦИИ`, 'INFO');
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
 
     // 1. Сначала СОХРАНЯЕМ конфигурацию
-    saveCollectConfig(sheetName, cellAddress, config);
-    addLog('Configuration saved successfully', 'INFO');
+    const saveSuccess = saveCollectConfig(sheetName, cellAddress, config);
+    if (saveSuccess) {
+      addLog('✅ Конфигурация успешно сохранена в ConfigData', 'SUCCESS');
+    } else {
+      addLog('⚠️ Конфигурация НЕ сохранена (saveCollectConfig вернул false)', 'WARN');
+    }
+
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+    addLog(`🔥 ШАГ 2: ВЫПОЛНЕНИЕ КОНФИГУРАЦИИ`, 'INFO');
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
 
     // 2. Затем ВЫПОЛНЯЕМ её
     const result = executeCollectConfig(sheetName, cellAddress);
-    addLog(`saveAndExecuteCollectConfig END: success=${result.success}`, 'INFO');
+    
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+    addLog(`🏁 saveAndExecuteCollectConfig END`, result.success ? 'SUCCESS' : 'ERROR');
+    addLog(`  success: ${result.success}`, result.success ? 'SUCCESS' : 'ERROR');
+    if (result.error) {
+      addLog(`  error: ${result.error}`, 'ERROR');
+    }
+    if (result.result) {
+      addLog(`  result length: ${result.result.length} символов`, 'INFO');
+    }
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
 
     return result;
   } catch (error) {
-    const errorMsg = `saveAndExecuteCollectConfig FAILED: ${error.message}`;
+    const errorMsg = `💥 saveAndExecuteCollectConfig CRASHED: ${error.message}`;
     addLog(errorMsg, 'ERROR');
+    addLog(`Stack trace: ${error.stack}`, 'ERROR');
     return {
       success: false,
       error: error.message,
     };
+  }
+}
+
+/**
+ * Создать базовый пресет с часто используемыми настройками
+ * ВЫЗЫВАЕТСЯ АВТОМАТИЧЕСКИ при первом открытии UI
+ */
+function createDefaultPreset() {
+  try {
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const templates = getAllTemplates(user);
+    
+    // Если уже есть пресет "По умолчанию", не создаём
+    if (templates['По умолчанию']) {
+      return;
+    }
+    
+    // Создаём базовую конфигурацию
+    const defaultConfig = {
+      systemPrompt: {
+        sheet: 'Prompt_box',
+        cell: 'E2'
+      },
+      userData: [
+        {
+          sheet: 'отзывы',
+          cell: 'B:B' // Автоматически конвертируется из B1:B
+        }
+      ]
+    };
+    
+    // Сохраняем как шаблон
+    saveTemplate(user, 'По умолчанию', defaultConfig);
+    addLog('✅ Создан базовый пресет "По умолчанию"', 'INFO');
+  } catch (error) {
+    addLog(`Ошибка создания базового пресета: ${error.message}`, 'WARN');
   }
 }
