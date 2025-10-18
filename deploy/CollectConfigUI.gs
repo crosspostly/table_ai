@@ -761,7 +761,21 @@ function collectDataFromRange(sheetName, cellAddress) {
   } else {
     // Обработка конкретной ячейки или диапазона
     addLog(`📋 Читаем ячейку: ${cellAddress} с листа "${sheetName}"`, 'INFO');
-    return sheet.getRange(cellAddress).getValues().flat().filter(String).join('\n');
+    
+    try {
+      return sheet.getRange(cellAddress).getValues().flat().filter(String).join('\n');
+    } catch (error) {
+      // Если ошибка связана с диапазоном (например, пустой лист или неверный адрес)
+      if (error.message.includes('Range must be within') || 
+          error.message.includes('must contain at least one row') ||
+          error.message.includes('Диапазон должен содержать как минимум одну строку')) {
+        addLog(`⚠️ Ячейка ${cellAddress} недоступна на листе "${sheetName}" (возможно лист пуст), возвращаем пустую строку`, 'WARN');
+        return '';
+      } else {
+        // Перебрасываем другие ошибки
+        throw error;
+      }
+    }
   }
 }
 
