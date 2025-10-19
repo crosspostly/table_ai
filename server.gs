@@ -1,3 +1,23 @@
+/**
+ * TABLE AI - SERVER (Standalone Web App)
+ * v3.0.0 Refactoring: SERVER = ALL BUSINESS LOGIC
+ * 
+ * ИСПОЛЬЗУЕМЫЕ SHARED UTILITIES:
+ * - SecurityValidator.gs: Валидация входных данных
+ * - LoggingService.gs: Централизованное логирование
+ * - Utils.gs: Helper функции
+ * - Constants.gs: Общие константы
+ * 
+ * ARCHITECTURE:
+ * CLIENT → SERVER (HTTP POST with action, email, token, apiKey)
+ * SERVER → Validates license
+ * SERVER → Calls Gemini/VK APIs
+ * SERVER → Logs operations
+ * SERVER → Returns results
+ * 
+ * VK_PARSER: External service (not built-in for now)
+ */
+
 // Table AI Server (Apps Script Web App)
 // Backend: лицензии, прокси к Gemini с КЛЮЧОМ КЛИЕНТА, серверные логи
 
