@@ -217,7 +217,16 @@ function saveSettingsData(data) {
 }
 
 /**
- * Set license credentials via UI
+ * SECURITY: Validate email format (from shared/Utils.gs)
+ */
+function isValidEmail_(email) {
+  if (!email || typeof email !== 'string') return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+}
+
+/**
+ * Set license credentials via UI with validation
  */
 function setLicenseCredentialsUI() {
   try {
@@ -228,6 +237,11 @@ function setLicenseCredentialsUI() {
     const [email, token] = input.split('|').map(s => s.trim());
     if (!email || !token) {
       ui.alert('Error: Please enter both email and token');
+      return;
+    }
+    // SECURITY: Validate email format
+    if (!isValidEmail_(email)) {
+      ui.alert('Error: Invalid email format. Please enter a valid email address.');
       return;
     }
     saveSettingsData({email: email, token: token});
