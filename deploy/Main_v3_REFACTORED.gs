@@ -587,3 +587,209 @@ function runDevSelfTest() {
     SpreadsheetApp.getUi().alert('Error: ' + e.message);
   }
 }
+
+// ============================================================
+// GEMINI FORMULA FUNCTIONS (for use in Sheet formulas)
+// ============================================================
+
+/**
+ * CACHE KEY GENERATION
+ * Creates unique cache key for prompt+params
+ */
+function gmCacheKey_(prompt, maxTokens, temperature) {
+  try {
+    const s = 'p:' + String(prompt) + '|mx:' + String(maxTokens) + '|t:' + String(temperature);
+    const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s);
+    let hex = '';
+    for (let i = 0; i < bytes.length; i++) {
+      let v = (bytes[i] & 0xFF).toString(16);
+      if (v.length === 1) v = '0' + v;
+      hex += v;
+    }
+    return 'gm:' + hex.substring(0, 64);
+  } catch (e) {
+    return 'gm:fallback:' + (String(prompt).length) + ':' + String(maxTokens) + ':' + String(temperature);
+  }
+}
+
+/**
+ * GET FROM CACHE
+ * Retrieves cached result for prompt
+ */
+function gmCacheGet_(key) {
+  try {
+    return CacheService.getScriptCache().get(key);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * PUT TO CACHE
+ * Stores result in cache with TTL
+ */
+function gmCachePut_(key, value, ttlSec) {
+  try {
+    const ttl = Math.max(5, Math.min(21600, Math.floor(ttlSec || 300)));
+    CacheService.getScriptCache().put(key, value, ttl);
+  } catch (e) {}
+}
+
+/**
+ * CALL SERVER FOR GEMINI
+ * CLIENT sends {email, token, apiKey, prompt, ...} to SERVER
+ * SERVER calls Gemini and returns result
+ */
+function serverGM_(prompt, maxTokens, temperature) {
+  const email = getLicenseEmail();
+  const token = getLicenseToken();
+  const apiKey = getGeminiApiKey();
+  const payload = {
+    action: 'gm',
+    email: email,
+    token: token,
+    apiKey: apiKey,
+    prompt: prompt,
+    maxTokens: maxTokens,
+    temperature: temperature
+  };
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+  const resp = UrlFetchApp.fetch(SERVER_URL, options);
+  const code = resp.getResponseCode();
+  const data = JSON.parse(resp.getContentText());
+  if (code !== 200) {
+    return {
+      ok: false,
+      error: (data && data.error) || ('HTTP_' + code)
+    };
+  }
+  return data;
+}
+
+/**
+ * GM - MAIN FORMULA FUNCTION
+ * Use in Sheet formulas: =GM("prompt text")
+ * 
+ * Architecture: CLIENT (this) → SERVER → Gemini
+ * - Checks license
+ * - Uses cache to avoid redundant calls
+ * - Falls back gracefully on errors
+ */
+function GM(prompt, maxTokens, temperature) {
+  // License is required
+  try {
+    const _email = getLicenseEmail();
+    const _token = getLicenseToken();
+    if (!_email || !_token) {
+      addLog('🚫 Rejection: license not configured (email/token empty)', 'WARN');
+      return 'Error: LICENSE_REQUIRED';
+    }
+    const st0 = serverStatus_();
+    if (!st0 || !st0.ok) {
+      addLog('🚫 Rejection: license inactive or server unavailable', 'WARN');
+      return 'Error: LICENSE_OR_SERVER';
+    }
+  } catch (eLic) {
+    addLog('🚫 Rejection: license check failed: ' + eLic.message, 'WARN');
+    return 'Error: LICENSE_CHECK_FAILED';
+  }
+
+  if (maxTokens == null) maxTokens = 25000;
+  if (temperature == null) temperature = 0.7;
+  addLog('→ GM: prompt=' + (prompt ? prompt.slice(0, 60) + '...' : 'none') + ' (' + (prompt ? prompt.length : 0) + ')', 'INFO');
+  
+  if (!prompt || typeof prompt !== 'string') {
+    throw new Error('Prompt must be non-empty string');
+  }
+  if (prompt.length > 50000) {
+    throw new Error('Prompt exceeds 50,000 characters');
+  }
+
+  // Check cache
+  const key = gmCacheKey_(prompt, maxTokens, temperature);
+  const cached = gmCacheGet_(key);
+  if (cached) {
+    addLog('⚡ GM cache-hit', 'DEBUG');
+    return cached;
+  }
+
+  // Check error cache (retry exponential backoff)
+  const errKey = 'gm_err:' + key;
+  const lastErr = gmCacheGet_(errKey);
+  if (lastErr) {
+    addLog('⏳ GM last-error cached, skip call', 'DEBUG');
+    return lastErr;
+  }
+
+  // Call SERVER
+  let ok = false, text = '', serr = null;
+  try {
+    const r = serverGM_(prompt, maxTokens, temperature);
+    if (r && r.ok) {
+      ok = true;
+      text = r.data || '';
+    } else {
+      serr = (r && r.error) || 'SERVER_ERROR';
+    }
+  } catch (e) {
+    serr = e.message;
+  }
+
+  if (ok) {
+    const processed = processGeminiResponse(text);
+    gmCachePut_(key, processed, 21600); // 6 hours TTL
+    return processed;
+  }
+
+  // Error handling
+  const errorMsg = 'Error: ' + (serr || 'Unknown');
+  gmCachePut_(errKey, errorMsg, 60); // Cache error for 1 minute
+  addLog('❌ GM error: ' + serr, 'ERROR');
+  return errorMsg;
+}
+
+/**
+ * GM_IF - CONDITIONAL GEMINI CALL
+ * Use in Sheet formulas: =GM_IF(condition, "prompt text")
+ * Returns empty string if condition is false
+ */
+function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
+  try {
+    // Normalize condition to boolean
+    let condVal = false;
+    let raw = condition;
+    if (Array.isArray(raw)) {
+      raw = (raw[0] && raw[0].length ? raw[0][0] : raw[0] || '');
+    }
+    const t = typeof raw;
+    
+    if (t === 'boolean') {
+      condVal = raw === true;
+    } else if (t === 'number') {
+      condVal = raw !== 0;
+    } else if (t === 'string') {
+      const s = raw.trim().toLowerCase();
+      condVal = (s === 'true' || s === 'истина' || s === '1' || s === 'да');
+    } else {
+      condVal = !!raw;
+    }
+
+    if (!condVal) return '';
+    
+    if (Array.isArray(prompt)) prompt = prompt[0][0];
+    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) return '';
+    
+    if (maxTokens == null) maxTokens = 25000;
+    if (temperature == null) temperature = 0.7;
+    
+    return GM(prompt, maxTokens, temperature);
+  } catch (e) {
+    addLog('❌ GM_IF error: ' + e.message, 'ERROR');
+    return 'Error: ' + e.message;
+  }
+}
