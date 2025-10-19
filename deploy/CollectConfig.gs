@@ -530,6 +530,25 @@ function serverGetAllTemplates() {
   }
 }
 
+function serverGetTemplate(templateName) {
+  try {
+    if (!templateName) {
+      return null;
+    }
+    
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const template = getTemplate(user, templateName);
+    
+    if (!template) {
+      return null;
+    }
+    
+    return template.config || template;
+  } catch (e) {
+    return null;
+  }
+}
+
 function serverGetTemplatesStats() {
   try {
     const user = Session.getActiveUser().getEmail() || 'anonymous';
@@ -558,6 +577,32 @@ function serverDeleteTemplate(templateName) {
 }
 
 // ============================================================================
+// УДАЛЕНИЕ КОНФИГУРАЦИИ
+// ============================================================================
+function deleteCollectConfig(sheetName, cellAddress) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ConfigData');
+    
+    if (!configSheet) {
+      return {success: false, message: 'Нет сохранённых конфигураций'};
+    }
+    
+    const data = configSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
+        configSheet.deleteRow(i + 1);
+        return {success: true, message: 'Конфигурация удалена'};
+      }
+    }
+    
+    return {success: false, message: 'Конфигурация не найдена'};
+  } catch (error) {
+    return {success: false, message: error.message};
+  }
+}
+
+// ============================================================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================================================
 function getAllSheetNames() {
@@ -575,4 +620,86 @@ function hasConfigForCurrentCell() {
   } catch (e) {
     return false;
   }
+}
+
+// ============================================================================
+// ПРОСТОЙ UI ДЛЯ УПРАВЛЕНИЯ ШАБЛОНАМИ
+// ============================================================================
+function openTemplatesUI() {
+  try {
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const templates = getAllTemplates(user);
+    const templateNames = Object.keys(templates);
+    
+    if (templateNames.length === 0) {
+      SpreadsheetApp.getUi().alert(
+        '🗂️ Шаблоны',
+        'У вас пока нет сохранённых шаблонов.\n\n' +
+        'Создайте шаблон через:\n' +
+        '🎯 Настроить запрос → заполните форму → 💾 Сохранить как шаблон',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+    
+    // Формируем список шаблонов
+    let list = '📋 ВАШИ ШАБЛОНЫ (' + templateNames.length + '):\n\n';
+    templateNames.forEach(function(name, index) {
+      const tmpl = templates[name];
+      const created = tmpl.created ? new Date(tmpl.created).toLocaleDateString('ru-RU') : '—';
+      list += (index + 1) + '. ' + name + '\n   Создан: ' + created + '\n\n';
+    });
+    
+    SpreadsheetApp.getUi().alert(
+      '🗂️ Управление шаблонами',
+      list,
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  } catch (error) {
+    SpreadsheetApp.getUi().alert('Ошибка', 'Не удалось загрузить шаблоны: ' + error.message);
+  }
+}
+
+// ============================================================================
+// СПРАВКА ПО AI КОНСТРУКТОРУ
+// ============================================================================
+function showCollectConfigHelp() {
+  const ui = SpreadsheetApp.getUi();
+
+  let helpText = '🎯 AI КОНСТРУКТОР - ЧТО ЭТО?\n\n';
+  helpText += '💡 ПРОБЛЕМА:\n';
+  helpText += 'Google Sheets ограничивает формулу 50,000 символами.\n';
+  helpText += 'Если вы собираете данные из многих ячеек:\n';
+  helpText += '=GM("Промпт: " & A1 & A2 & ... & A1000)\n';
+  helpText += '❌ Формула слишком длинная = ОШИБКА!\n\n';
+
+  helpText += '✅ РЕШЕНИЕ:\n';
+  helpText += 'AI Конструктор собирает данные НА СЕРВЕРЕ!\n';
+  helpText += '1. Выбираете ячейку (например B3)\n';
+  helpText += '2. Настраиваете:\n';
+  helpText += '   • System Prompt - инструкция для AI\n';
+  helpText += '   • User Data - листы и ячейки с данными\n';
+  helpText += '3. Нажимаете "Запустить"\n';
+  helpText += '4. Результат появляется в B3\n\n';
+
+  helpText += '🎯 КАК ИСПОЛЬЗОВАТЬ:\n';
+  helpText += '1. Выделите ячейку где нужен результат\n';
+  helpText += '2. Меню → 🎯 AI Конструктор → 🎯 Настроить запрос\n';
+  helpText += '3. Выберите лист и ячейку для System Prompt\n';
+  helpText += '4. Добавьте источники данных (+ Добавить данные)\n';
+  helpText += '5. Нажмите "Запустить"\n\n';
+
+  helpText += '💾 НАСТРОЙКИ СОХРАНЯЮТСЯ!\n';
+  helpText += 'При повторном открытии - все поля заполнены.\n';
+  helpText += 'Можно быстро обновить: 🔄 Обновить ячейку\n\n';
+
+  helpText += '🗂️ ШАБЛОНЫ:\n';
+  helpText += 'Сохраняйте частые конфигурации как шаблоны!\n';
+  helpText += 'Загружайте их в один клик через форму.\n\n';
+
+  helpText += '🔒 ХРАНЕНИЕ:\n';
+  helpText += 'Конфигурации сохраняются в скрытом листе\n';
+  helpText += '"ConfigData" - нет лимитов, легко экспортировать!';
+
+  ui.alert('🎯 AI Конструктор', helpText, ui.ButtonSet.OK);
 }

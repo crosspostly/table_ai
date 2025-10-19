@@ -211,27 +211,7 @@ function getCompletionPhrase() {
   }
   return COMPLETION_PHRASE;
 }
-function setCompletionPhraseUI() {
-  const ui = SpreadsheetApp.getUi();
-  const current = getCompletionPhrase();
-  const res = ui.prompt('📝 Фраза готовности', 'Введите точную фразу, с которой ДОЛЖЕН начинаться готовый ответ (например: Отчёт готов). Текущая: ' + current, ui.ButtonSet.OK_CANCEL);
-  if (res.getSelectedButton() !== ui.Button.OK) return;
-  const val = (res.getResponseText() || '').trim();
-  if (!val) {
-    ui.alert('Фраза не изменена.'); return;
-  }
-  const ss = SpreadsheetApp.getActive();
-  const params = ss.getSheetByName('Параметры');
-  if (!params) {
-    // если нет листа Параметры — сохраним в Script Properties
-    PropertiesService.getScriptProperties().setProperty('COMPLETION_PHRASE', val);
-    ui.alert('✅ Фраза сохранена в настройках скрипта.');
-  } else {
-    params.getRange('B10').setValue(val);
-    ui.alert('✅ Фраза сохранена в Параметры!B10.');
-  }
-  addLog('🔧 Новая фраза готовности: ' + val, 'INFO');
-}
+// Функция setCompletionPhraseUI удалена - больше не используется
 
 // ====== УТИЛИТЫ ДЛЯ ПОСЛЕДОВАТЕЛЬНОСТИ ======
 function isCompletionReady(text) {
@@ -241,201 +221,6 @@ function isCompletionReady(text) {
   const rdy = phrase ? clean.startsWith(phrase) : false;
   addLog(`🔍 Проверка готовности: "${clean.slice(0, 30)}..." против "${phrase}" → ${rdy ? 'ГОТОВО' : 'НЕ ГОТОВО'}`, 'DEBUG');
   return rdy;
-}
-
-// ====== Prompt_box: фикс чтения формулы (если используем legacy-триггеры) ======
-function getPromptFormula(rowIndex) {
-  try {
-    const ss = SpreadsheetApp.getActive();
-    const promptSheet = ss.getSheetByName('Prompt_box');
-    if (!promptSheet) {
-      addLog('❌ Лист "Prompt_box" не найден', 'ERROR'); return null;
-    }
-    const rng = promptSheet.getRange(rowIndex, 6); // F
-    const formula = rng.getFormula(); // ВАЖНО: формула, а не значение
-    if (!formula || !formula.trim()) {
-      addLog(`ℹ️ Формула в Prompt_box!F${rowIndex} пуста`, 'INFO'); return null;
-    }
-    addLog(`📥 Формула из Prompt_box!F${rowIndex}: ${formula.slice(0, 80)}...`, 'DEBUG');
-    return formula;
-  } catch (e) {
-    addLog('❌ Ошибка получения формулы из F' + rowIndex + ': ' + e.message, 'ERROR');
-    return null;
-  }
-}
-function setFormulaToCell(row, col, formula) {
-  try {
-    const ss = SpreadsheetApp.getActive();
-    const sheet = ss.getSheetByName('Распаковка');
-    if (!sheet) {
-      addLog('❌ Лист "Распаковка" не найден', 'ERROR'); return false;
-    }
-    const cell = sheet.getRange(row, col);
-    cell.setFormula(formula);
-    addLog('✅ Формула установлена в ' + cell.getA1Notation() + ': ' + formula.slice(0, 80) + '...', 'INFO');
-    return true;
-  } catch (e) {
-    addLog('❌ Ошибка установки формулы в (' + row + ',' + col + '): ' + e.message, 'ERROR');
-    return false;
-  }
-}
-function getCellValue(sheetName, row, col) {
-  try {
-    const ss = SpreadsheetApp.getActive();
-    const sheet = ss.getSheetByName(sheetName);
-    if (!sheet) return null;
-    const value = sheet.getRange(row, col).getValue();
-    if (value && typeof value === 'string' && col > 1) {
-      const processed = processGeminiResponse(value);
-      if (processed !== value) {
-        sheet.getRange(row, col).setValue(processed);
-        addLog('🔄 Markdown преобразован в ' + sheet.getRange(row, col).getA1Notation(), 'INFO');
-        return processed;
-      }
-    }
-    return value;
-  } catch (e) {
-    addLog('❌ Ошибка чтения ячейки ' + sheetName + '(' + row + ',' + col + '): ' + e.message, 'ERROR');
-    return null;
-  }
-}
-
-// ====== Legacy-цепочка на триггерах (сохранено, меню не подключаем) ======
-function saveProcessingStatus(row, currentStep, retryCount = 0) {
-  try {
-    const cache = CacheService.getScriptCache();
-    const status = {row: row, currentStep: currentStep, retryCount: retryCount, timestamp: new Date().getTime()};
-    cache.put(PROCESSING_STATUS_KEY, JSON.stringify(status), 21600);
-    addLog('💾 Статус сохранен: строка ' + row + ', шаг ' + currentStep + ', попытка ' + (retryCount + 1), 'DEBUG');
-  } catch (e) {
-    addLog('❌ Ошибка сохранения статуса: ' + e.message, 'ERROR');
-  }
-}
-function getProcessingStatus() {
-  try {
-    const cache = CacheService.getScriptCache();
-    const statusStr = cache.get(PROCESSING_STATUS_KEY);
-    return statusStr ? JSON.parse(statusStr) : null;
-  } catch (e) {
-    addLog('❌ Ошибка получения статуса: ' + e.message, 'ERROR'); return null;
-  }
-}
-function clearProcessingStatus() {
-  try {
-    CacheService.getScriptCache().remove(PROCESSING_STATUS_KEY); addLog('🗑️ Статус обработки очищен', 'DEBUG');
-  } catch (e) {
-    addLog('❌ Ошибка очистки статуса: ' + e.message, 'ERROR');
-  }
-}
-function startAutoProcessingChain(row) {
-  addLog('🚀 Попытка запуска цепочки (legacy) для строки ' + row, 'INFO');
-  const activeStatus = getProcessingStatus();
-  if (activeStatus) {
-    addLog('🚫 Цепочка уже активна: строка ' + activeStatus.row + ' (шаг ' + activeStatus.currentStep + ')', 'WARN'); notifyUser('Дождитесь завершения обработки строки ' + activeStatus.row); return false;
-  }
-  const triggerValue = getCellValue('Распаковка', row, 1);
-  if (!triggerValue) {
-    addLog('❌ Нет данных в A' + row + ' для запуска цепочки', 'WARN'); return false;
-  }
-  saveProcessingStatus(row, 1);
-  processNextStep();
-  return true;
-}
-function processNextStep() {
-  const status = getProcessingStatus();
-  if (!status) {
-    addLog('❌ Нет активной цепочки', 'WARN'); return;
-  }
-  const row = status.row; const step = status.currentStep;
-  addLog('📋 Обработка шага ' + step + ' для строки ' + row, 'INFO');
-  const promptRow = step + 1; // F2, F3, ...
-  const formula = getPromptFormula(promptRow);
-  if (!formula) {
-    addLog('✅ Нет формулы в F' + promptRow + ', цепочка завершена', 'INFO'); clearProcessingStatus(); return;
-  }
-  const targetCol = step + 1; // B=2, C=3...
-  if (!setFormulaToCell(row, targetCol, formula)) {
-    addLog('❌ Не удалось установить формулу, цепочка прервана', 'ERROR'); clearProcessingStatus(); return;
-  }
-  saveProcessingStatus(row, step);
-  try {
-    ScriptApp.newTrigger('checkStepCompletion').timeBased().after(AUTO_PROCESSING_DELAY).create(); addLog('⏰ Проверка через ' + (AUTO_PROCESSING_DELAY/1000) + ' сек', 'DEBUG');
-  } catch (e) {
-    addLog('❌ Ошибка создания триггера: ' + e.message, 'ERROR');
-  }
-}
-function checkStepCompletion() {
-  ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === 'checkStepCompletion') ScriptApp.deleteTrigger(t);
-  });
-  const status = getProcessingStatus();
-  if (!status) {
-    addLog('❌ Нет активной цепочки при проверке', 'WARN'); return;
-  }
-  const row = status.row; const step = status.currentStep; const retryCount = status.retryCount || 0;
-  const targetCol = step + 1;
-  const result = getCellValue('Распаковка', row, targetCol);
-  if (!result) {
-    addLog('⏳ Шаг ' + step + ' (попытка ' + (retryCount+1) + '): результата нет', 'INFO'); return handleRetryOrFallback(row, step, retryCount, 'Результат еще не готов');
-  }
-  if (!isCompletionReady(result.toString())) {
-    addLog('⏳ Шаг ' + step + ' (попытка ' + (retryCount+1) + '): нет фразы готовности', 'INFO'); return handleRetryOrFallback(row, step, retryCount, 'Нет фразы завершения');
-  }
-  addLog('✅ Шаг ' + step + ' завершен', 'INFO');
-  saveProcessingStatus(row, step + 1, 0);
-  processNextStep();
-}
-function handleRetryOrFallback(row, step, retryCount, reason) {
-  retryCount++;
-  if (retryCount >= MAX_RETRY_ATTEMPTS) {
-    addLog('🚨 Превышен лимит попыток на шаге ' + step + ', причина: ' + reason, 'WARN');
-    const strategy = decideFallbackStrategy(row, step, reason);
-    switch (strategy) {
-    case 'SKIP_STEP':
-    case 'FORCE_CONTINUE':
-      saveProcessingStatus(row, step + 1, 0); processNextStep(); break;
-    case 'STOP_CHAIN':
-    default:
-      clearProcessingStatus(); notifyUser('Автоцепочка остановлена после ' + MAX_RETRY_ATTEMPTS + ' неудачных попыток на шаге ' + step + '\nПричина: ' + reason); break;
-    }
-    return;
-  }
-  const nextDelay = AUTO_PROCESSING_DELAY + (retryCount * RETRY_DELAY_INCREMENT);
-  saveProcessingStatus(row, step, retryCount);
-  addLog('🔄 Повторная проверка #' + (retryCount + 1) + ' через ' + (nextDelay/1000) + ' сек', 'INFO');
-  try {
-    ScriptApp.newTrigger('checkStepCompletion').timeBased().after(nextDelay).create();
-  } catch (e) {
-    addLog('❌ Ошибка создания триггера для retry: ' + e.message, 'ERROR');
-  }
-}
-function decideFallbackStrategy(row, step, reason) {
-  if (reason === 'Результат еще не готов') return 'STOP_CHAIN';
-  if (reason === 'Нет фразы завершения') return 'FORCE_CONTINUE';
-  return 'STOP_CHAIN';
-}
-function notifyUser(message) {
-  try {
-    SpreadsheetApp.getUi().alert('Автоцепочка: Внимание!', message, SpreadsheetApp.getUi().ButtonSet.OK);
-  } catch (e) {
-    addLog('❌ Ошибка уведомления: ' + e.message, 'ERROR');
-  }
-}
-function stopAutoProcessingChain() {
-  clearProcessingStatus();
-  const triggers = ScriptApp.getProjectTriggers();
-  let deleted = 0; triggers.forEach(function(t) {
-    if (t.getHandlerFunction() === 'checkStepCompletion') {
-      ScriptApp.deleteTrigger(t); deleted++;
-    }
-  });
-  addLog('🛑 Автоцепочка остановлена, удалено триггеров: ' + deleted, 'INFO');
-}
-function getChainStatus() {
-  const status = getProcessingStatus();
-  if (!status) return 'Нет активной цепочки обработки';
-  const elapsed = Math.floor((new Date().getTime() - status.timestamp) / 1000);
-  return 'Активна цепочка для строки ' + status.row + ', шаг ' + status.currentStep + ' (прошло ' + elapsed + ' сек)';
 }
 
 // ====== НОВАЯ БЕЗОПАСНАЯ ЦЕПОЧКА ТОЛЬКО ДЛЯ A3 (B3..G3) через GM_IF ======
@@ -671,57 +456,51 @@ function importVkPosts() {
 }
 function createStopWordsFormulas(sheet, totalRows) {
   try {
-    addLog('→ Создание формул фильтрации', 'INFO');
+    addLog('→ Создание формул фильтрации (оптимизированная batch-версия)', 'INFO');
+    const startTime = new Date().getTime();
+    
     const stopWordsRange = '$E$2:$E$100';
-    for (var row = 2; row <= totalRows; row++) {
-      const formulaF = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + stopWordsRange + ', C' + row + ')))*(' + stopWordsRange + '<>"")) > 0, "", C' + row + ')';
-      sheet.getRange(row, 6).setFormula(formulaF); // F
-      const formulaG = '=IF(F' + row + '<>"", COUNTA(F$2:F' + row + '), "")';
-      sheet.getRange(row, 7).setFormula(formulaG); // G
-    }
     const positiveWordsRange = '$H$2:$H$100';
+    
+    // Собираем ВСЕ формулы в один массив для batch-операции
+    const formulas = [];
     for (var row = 2; row <= totalRows; row++) {
+      // F: Фильтрация стоп-слов
+      const formulaF = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + stopWordsRange + ', C' + row + ')))*(' + stopWordsRange + '<>"")) > 0, "", C' + row + ')';
+      
+      // G: Номер отфильтрованного поста
+      const formulaG = '=IF(F' + row + '<>"", COUNTA(F$2:F' + row + '), "")';
+      
+      // H: Пусто (колонка для позитивных слов - заполняется вручную)
+      
+      // I: Фильтрация позитивных слов
       const formulaI = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + positiveWordsRange + ', C' + row + ')))*(' + positiveWordsRange + '<>"")) > 0, C' + row + ', "")';
-      sheet.getRange(row, 9).setFormula(formulaI); // I
+      
+      // J: Номер поста с позитивными словами
       const formulaJ = '=IF(I' + row + '<>"", COUNTA(I$2:I' + row + '), "")';
-      sheet.getRange(row, 10).setFormula(formulaJ); // J
+      
+      // Формируем строку: F, G, H (пусто), I, J
+      formulas.push([formulaF, formulaG, '', formulaI, formulaJ]);
     }
-    sheet.getRange(1, 5, 1, 3).setFontWeight('bold').setBackground('#FFF2CC');
-    sheet.getRange(1, 8, 1, 3).setFontWeight('bold').setBackground('#D9EAD3');
+    
+    // ОДИН batch-запрос вместо 400 отдельных!
+    // Устанавливаем формулы для колонок F, G, H, I, J (с E:6 по J:10)
+    if (formulas.length > 0) {
+      sheet.getRange(2, 6, formulas.length, 5).setFormulas(formulas);
+    }
+    
+    // Форматирование заголовков
+    sheet.getRange(1, 5, 1, 3).setFontWeight('bold').setBackground('#FFF2CC'); // E, F, G - стоп-слова
+    sheet.getRange(1, 8, 1, 3).setFontWeight('bold').setBackground('#D9EAD3'); // H, I, J - позитивные
     sheet.autoResizeColumns(5, 6);
-    addLog('✅ Формулы фильтрации созданы', 'INFO');
+    
+    const elapsed = new Date().getTime() - startTime;
+    addLog('✅ Формулы фильтрации созданы за ' + elapsed + 'мс (batch-режим)', 'INFO');
   } catch (e) {
     addLog('❌ Ошибка создания формул: ' + e.message, 'ERROR');
     SpreadsheetApp.getUi().alert('Ошибка создания формул: ' + e.message);
   }
 }
-function testStopWordsFilter() {
-  try {
-    const ss = SpreadsheetApp.getActive();
-    const sheet = ss.getSheetByName('посты');
-    if (!sheet) {
-      SpreadsheetApp.getUi().alert('Лист "посты" не найден'); return;
-    }
-    sheet.getRange(2, 5).setValue('консультация');
-    sheet.getRange(3, 5).setValue('психолог');
-    SpreadsheetApp.flush();
-    const filtered2 = sheet.getRange(2, 6).getValue();
-    const filtered3 = sheet.getRange(3, 6).getValue();
-    const number2 = sheet.getRange(2, 7).getValue();
-    const number3 = sheet.getRange(3, 7).getValue();
-    const message = 'Тест фильтрации:\n\n' +
-      'Строка 2: ' + (filtered2 ? 'показывается' : 'скрыто') + ', номер: ' + (number2 || '—') + '\n' +
-      'Строка 3: ' + (filtered3 ? 'показывается' : 'скрыто') + ', номер: ' + (number3 || '—');
-    SpreadsheetApp.getUi().alert('Результаты теста', message, SpreadsheetApp.getUi().ButtonSet.OK);
-    addLog('✅ Тест фильтрации выполнен', 'INFO');
-  } catch (e) {
-    addLog('❌ Ошибка теста фильтрации: ' + e.message, 'ERROR');
-    SpreadsheetApp.getUi().alert('Ошибка теста: ' + e.message);
-  }
-}
-
-// ====== GEMINI (с авто Markdown-преобразованием) ======
-function getGeminiApiKey() {
   const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) throw new Error('API-ключ Gemini не установлен. Меню: 🤖 Table AI → Установить API ключ Gemini');
   return key;
@@ -858,29 +637,18 @@ function onOpen() {
     .addSeparator()
     .addItem('🧹 Очистить B3..G3', 'clearChainForA3')
     .addSeparator()
-    .addSubMenu(ui.createMenu('🎯 AI Конструктор (Template System)')
+    .addSubMenu(ui.createMenu('🎯 AI Конструктор')
       .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
-      .addItem('⚡ Простая настройка', 'quickCollectConfig')
       .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
       .addSeparator()
-      .addItem('👁️ Просмотр конфигурации', 'previewCurrentCellConfig')
-      .addItem('📋 Скопировать конфигурацию', 'copyCurrentCellConfig')
-      .addItem('📥 Вставить конфигурацию', 'pasteConfigToCurrentCell')
-      .addSeparator()
-      .addItem('🗂️ Управление шаблонами', 'showTemplateManager')
-      .addItem('📊 Статистика использования', 'showConfigStats')
+      .addItem('🗂️ Управление шаблонами', 'openTemplatesUI')
       .addItem('❓ Справка', 'showCollectConfigHelp'),
     )
     .addSeparator()
     .addItem('📥 Импорт VK постов', 'importVkPosts')
-    .addItem('🔑 Установить API ключ Gemini', 'initGeminiKey')
-    .addItem('📝 Фраза готовности (изменить)', 'setCompletionPhraseUI')
-    .addItem('🖼️ OCR отзывов (A→B)', 'ocrReviews')
-    .addItem('🖼️ OCR V2 (A→B)', 'ocrRun')
-    .addSubMenu(ui.createMenu('🔐 Лицензия')
-      .addItem('Ввести Email + Токен', 'setLicenseCredentialsUI')
-      .addItem('Проверить статус', 'checkLicenseStatusUI'),
-    )
+    .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
+    .addSeparator()
+    .addItem('⚙️ Настройки', 'openSettingsUI')
     .addToUi();
 
   if (DEV_MODE) {
@@ -968,10 +736,6 @@ function refreshCurrentGMCell() {
 }
 
 // ====== Тест Markdown ======
-function testMarkdownConversion() {
-  const md = '# Отчёт готов\n\n**Список**:\n- один\n- два\n\n`код`\n\n[ссылка](https://example.com)\n';
-  const converted = convertMarkdownToReadableText(md);
-  SpreadsheetApp.getUi().alert('Преобразование Markdown', 'Исходный:\n' + md + '\n\nПреобразованный:\n' + converted, SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 // ====== onEdit: авто-очистка Markdown для строки 3 (B..G) ======
@@ -1123,6 +887,71 @@ function checkLicenseStatusUI() {
     else SpreadsheetApp.getUi().alert('Лицензия', '❌ ' + (st.error || 'Неизвестная ошибка'), SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
     SpreadsheetApp.getUi().alert('Лицензия', 'Ошибка: ' + e.message, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+// ====== UNIFIED SETTINGS UI ======
+function openSettingsUI() {
+  try {
+    const html = HtmlService.createHtmlOutputFromFile('SettingsUI')
+      .setWidth(600)
+      .setHeight(700);
+    SpreadsheetApp.getUi().showModalDialog(html, '⚙️ Настройки Table AI');
+    addLog('✅ Открыто окно настроек', 'INFO');
+  } catch (e) {
+    addLog('❌ Ошибка открытия окна настроек: ' + e.message, 'ERROR');
+    SpreadsheetApp.getUi().alert('❌ Ошибка открытия настроек: ' + e.message);
+  }
+}
+
+function getSettingsData() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    return {
+      apiKey: props.getProperty('GEMINI_API_KEY') || '',
+      email: props.getProperty('LICENSE_EMAIL') || '',
+      token: props.getProperty('LICENSE_TOKEN') || ''
+    };
+  } catch (e) {
+    addLog('❌ Ошибка чтения настроек: ' + e.message, 'ERROR');
+    return {apiKey: '', email: '', token: ''};
+  }
+}
+
+function saveSettingsData(data) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const updated = [];
+    
+    if (data.apiKey) {
+      props.setProperty('GEMINI_API_KEY', data.apiKey);
+      updated.push('API ключ');
+      addLog('✅ API ключ Gemini обновлён', 'INFO');
+    }
+    
+    if (data.email) {
+      props.setProperty('LICENSE_EMAIL', data.email);
+      updated.push('Email');
+      addLog('✅ Email лицензии обновлён: ' + data.email, 'INFO');
+    }
+    
+    if (data.token) {
+      props.setProperty('LICENSE_TOKEN', data.token);
+      updated.push('Токен');
+      addLog('✅ Токен лицензии обновлён', 'INFO');
+    }
+    
+    if (updated.length === 0) {
+      return {success: false, message: 'Нет данных для сохранения'};
+    }
+    
+    return {
+      success: true,
+      message: 'Сохранено: ' + updated.join(', ')
+    };
+  } catch (e) {
+    addLog('❌ Ошибка сохранения настроек: ' + e.message, 'ERROR');
+    return {success: false, message: 'Ошибка: ' + e.message};
   }
 }
 function serverGM_(prompt, maxTokens, temperature) {
