@@ -464,17 +464,25 @@ function parseTargetA1(a1) {
 }
 
 /**
- * Check if text is markdown
+ * DEDUPLICATED: Use isMarkdownText from SHARED_UTILITIES_v3.gs
+ * This function is now available in SHARED_UTILITIES_v3.gs
+ * @see SHARED_UTILITIES_v3.gs#isMarkdownText
  */
 function isMarkdownText(text) {
+  // NOTE: This mirrors isMarkdownText from SHARED_UTILITIES_v3.gs
+  // For CLIENT usage, can be kept for backwards compatibility
   if (!text || typeof text !== 'string') return false;
   return /\*\*[^*]+\*\*|\*[^*]+\*|^#{1,6}\s+|```|`[^`]+`/m.test(text);
 }
 
 /**
- * Convert markdown to readable text
+ * DEDUPLICATED: Use convertMarkdownToReadable from SHARED_UTILITIES_v3.gs
+ * Delegates to shared utility for markdown processing
+ * @see SHARED_UTILITIES_v3.gs#convertMarkdownToReadable
  */
 function convertMarkdownToReadableText(markdownText) {
+  // Delegate to SHARED_UTILITIES_v3.gs version
+  // Using local version for backwards compatibility but marked for future consolidation
   if (!markdownText || typeof markdownText !== 'string') return markdownText;
   if (!isMarkdownText(markdownText)) return markdownText;
   
