@@ -641,9 +641,9 @@ Temperature: 0.8
 
 ### Документация:
 
-- [collect_config/TEMPLATES_GUIDE.md](../collect_config/TEMPLATES_GUIDE.md) - Подробное руководство пользователя
-- [collect_config/README_INTEGRATION.md](../collect_config/README_INTEGRATION.md) - Техническая интеграция
-- [deploy/DEPLOYMENT_GUIDE.md](../deploy/DEPLOYMENT_GUIDE.md) - Руководство по развертыванию
+- [deploy/README.md](../deploy/README.md) - Быстрый старт и development guide
+- [DEPLOYMENT_INSTRUCTIONS.md](../DEPLOYMENT_INSTRUCTIONS.md) - Руководство по развертыванию
+- [REAL_ARCHITECTURE.md](../REAL_ARCHITECTURE.md) - Подробная архитектура проекта v3.0
 
 ### Видео и туториалы:
 
