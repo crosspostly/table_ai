@@ -1,3 +1,19 @@
+/**
+ * TABLE AI - CLIENT (Google Sheets Container-bound Script)
+ * v3.0.0 Refactoring: CLIENT = UI ONLY
+ * 
+ * ИСПОЛЬЗУЕМЫЕ SHARED UTILITIES:
+ * - SecurityValidator.gs: Валидация входных данных
+ * - LoggingService.gs: Централизованное логирование
+ * - Utils.gs: Helper функции
+ * - EmojiRemover.gs: Очистка текста
+ * - VersionInfo.gs: Информация о версии
+ * - Constants.gs: Общие константы
+ * 
+ * VK_PARSER: Отдельный веб-сервис (VK_PARSER_URL)
+ * SERVER: Отдельный веб-сервис (SERVER_URL)
+ */
+
 // ====== URL-ы и константы ======
 const VK_PARSER_URL = 'https://script.google.com/macros/s/AKfycbzttbqz16EmmcXbEYCuYhNlXkCxAnCG77phspFL1_rTCi4xVqoorByJAPa4dI4iwT8/exec';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
