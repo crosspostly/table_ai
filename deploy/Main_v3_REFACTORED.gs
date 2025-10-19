@@ -768,109 +768,231 @@ function GM(prompt, maxTokens, temperature) {
 
 /**
  * GM_IF - CONDITIONAL GEMINI CALL
- * Use in Sheet formulas: =GM_IF(condition, "prompt text")
- * Returns empty string if condition is false
- */
-function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
-  try {
-    // Normalize condition to boolean
-    let condVal = false;
-    let raw = condition;
-    if (Array.isArray(raw)) {
-      raw = (raw[0] && raw[0].length ? raw[0][0] : raw[0] || '');
-    }
-    const t = typeof raw;
-    
-    if (t === 'boolean') {
-      condVal = raw === true;
-    } else if (t === 'number') {
-      condVal = raw !== 0;
-    } else if (t === 'string') {
-      const s = raw.trim().toLowerCase();
-      condVal = (s === 'true' || s === 'истина' || s === '1' || s === 'да');
-    } else {
-      condVal = !!raw;
-    }
-
-    if (!condVal) return '';
-    
-    if (Array.isArray(prompt)) prompt = prompt[0][0];
-    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) return '';
-    
-    if (maxTokens == null) maxTokens = 25000;
-    if (temperature == null) temperature = 0.7;
-    
-    return GM(prompt, maxTokens, temperature);
-  } catch (e) {
-    addLog('❌ GM_IF error: ' + e.message, 'ERROR');
-    return 'Error: ' + e.message;
-  }
-}
-
-// ============================================================
-// MENU FUNCTIONS - Stubs for functions defined in other files
-// ============================================================
-
-/**
- * PLACEHOLDER: Prepare formulas in smart mode
- * TODO: Restore prepareChainSmart() from old/Main.txt
- */
 function prepareChainSmart() {
-  try {
-    SpreadsheetApp.getUi().alert('🎯 Функция prepareChainSmart() находится в разработке');
-    addLog('⚠️ prepareChainSmart() - Not yet implemented', 'WARN');
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Error: ' + e.message);
+  var ss = SpreadsheetApp.getActive();
+  var prompt = ss.getSheetByName('Prompt_box');
+  var hasTargets = false;
+  if (prompt) {
+    var lastRow = Math.max(2, prompt.getLastRow());
+    var vals = prompt.getRange(2, 2, lastRow - 1, 1).getDisplayValues();
+    for (var i = 0; i < vals.length; i++) {
+      if (String(vals[i][0] || '').trim()) { hasTargets = true; break; }
+    }
+  }
+  if (hasTargets) {
+    prepareChainFromPromptBox();
+  } else {
+    prepareChainForA3();
   }
 }
 
-/**
- * PLACEHOLDER: Refresh current GM cell
- * TODO: Restore refreshCurrentGMCell() from old/Main.txt
- */
+function prepareChainFromPromptBox() {
+  var ss = SpreadsheetApp.getActive();
+  var prompt = ss.getSheetByName('Prompt_box');
+  var pack = ss.getSheetByName('Распаковка');
+  if (!prompt) { SpreadsheetApp.getUi().alert('Лист "Prompt_box" не найден'); return; }
+  if (!pack) { SpreadsheetApp.getUi().alert('Лист "Распаковка" не найден'); return; }
+
+  var lastRow = Math.max(2, prompt.getLastRow());
+  var targets = prompt.getRange(2, 2, lastRow - 1, 1).getDisplayValues();
+  var mappings = [];
+  for (var r = 2; r <= lastRow; r++) {
+    var targetStr = String(targets[r - 2][0] || '').trim();
+    if (!targetStr) continue;
+    try {
+      var parsed = parseTargetA1(targetStr);
+      mappings.push({ promptRow: r, targetRow: parsed.row, targetCol: parsed.col, targetA1: parsed.a1 });
+    } catch (e) {
+      addLog('⚠️ Пропуск строки Prompt_box!B' + r + ': ' + e.message, 'WARN');
+    }
+  }
+
+  if (!mappings.length) { SpreadsheetApp.getUi().alert('Нет целевых ячеек в Prompt_box!B, ничего не сделано.'); return; }
+
+  var phrase = getCompletionPhrase() || COMPLETION_PHRASE;
+  var phraseEscaped = phrase.replace(/"/g, '""');
+
+  for (var i = 0; i < mappings.length; i++) {
+    var m = mappings[i];
+    var cond;
+    if (i === 0) {
+      cond = '$A3<>""';
+    } else {
+      var prev = mappings[i - 1];
+      cond = 'LEFT(' + prev.targetA1 + ', LEN("' + phraseEscaped + '"))="' + phraseEscaped + '"';
+    }
+    var formula = '=GM_IF(' + cond + ', Prompt_box!$F$' + m.promptRow + ', 25000, 0.7)';
+    pack.getRange(m.targetRow, m.targetCol).setFormula(formula);
+    addLog('📝 Формула установлена → Распаковка!' + m.targetA1 + ' из Prompt_box!F' + m.promptRow, 'INFO');
+  }
+
+  SpreadsheetApp.getUi().alert('✅ Готово: формулы расставлены по целям из Prompt_box!B.\nПервая ячейка запустится при заполнении соответствующего A-столбца, далее — по фразе готовности.');
+}
+
+function prepareChainForA3() {
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getSheetByName('Распаковка');
+  if (!sheet) { SpreadsheetApp.getUi().alert('Лист "Распаковка" не найден'); return; }
+  var row = 3;
+  var startCol = 2;
+  var steps = 6;
+  var endCol = startCol + steps - 1;
+  var phrase = getCompletionPhrase() || COMPLETION_PHRASE;
+  var phraseEscaped = phrase.replace(/"/g, '""');
+
+  for (var col = startCol; col <= endCol; col++) {
+    var stepIndex = col - 1;
+    var promptRow = stepIndex + 1;
+    var target = sheet.getRange(row, col);
+    var promptRef = 'Prompt_box!$F$' + promptRow;
+    var formula;
+    if (col === 2) {
+      formula = '=GM_IF($A3<>"", ' + promptRef + ', 25000, 0.7)';
+    } else {
+      var prevColLetter = columnToLetter(col - 1);
+      formula = '=GM_IF(LEFT(' + prevColLetter + '3, LEN("' + phraseEscaped + '"))="' + phraseEscaped + '", ' + promptRef + ', 25000, 0.7)';
+    }
+    target.setFormula(formula);
+    addLog('📝 Формула ' + target.getA1Notation() + ' установлена', 'DEBUG');
+  }
+  SpreadsheetApp.getUi().alert('✅ Готово: формулы B3..G3 проставлены.\nЗаполните A3 — шаги пойдут по очереди.');
+}
+
+function clearChainForA3() {
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getSheetByName('Распаковка');
+  if (!sheet) { SpreadsheetApp.getUi().alert('Лист "Распаковка" не найден'); return; }
+  sheet.getRange(3, 2, 1, 6).clearContent();
+  SpreadsheetApp.getUi().alert('🧹 Очищено: B3..G3');
+}
+
+function importVkPosts() {
+  addLog('→ Импорт VK-постов с фильтрацией', 'INFO');
+  var ss = SpreadsheetApp.getActive();
+  var params = ss.getSheetByName('Параметры');
+  if (!params) { addLog('❌ Нет листа "Параметры"', 'ERROR'); SpreadsheetApp.getUi().alert('Лист "Параметры" не найден!'); return; }
+  var owner = params.getRange('B1').getValue();
+  var count = params.getRange('B2').getValue();
+  if (!owner || !count) { addLog('❌ Не указаны owner или count', 'ERROR'); SpreadsheetApp.getUi().alert('Введите owner и count на листе "Параметры"'); return; }
+  var url = VK_PARSER_URL + '?owner=' + encodeURIComponent(owner) + '&count=' + encodeURIComponent(count);
+  try {
+    var resp = UrlFetchApp.fetch(url);
+    var arr = JSON.parse(resp.getContentText());
+  } catch (e) {
+    addLog('❌ Ошибка запроса VK: ' + e.message, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка запроса VK Parser: ' + e);
+    return;
+  }
+  if (!Array.isArray(arr)) { addLog('❌ Неверный массив от VK', 'ERROR'); SpreadsheetApp.getUi().alert('Неверный формат данных от VK Parser'); return; }
+
+  var headers = [
+    'Дата', 'Ссылка на пост', 'Текст поста', 'Номер поста',
+    'Стоп-слова', 'Отфильтрованные посты', 'Новый номер',
+    'Позитивные слова', 'Посты с позитивными словами', 'Новый номер (позитивные)'
+  ];
+  var out = [headers];
+  arr.forEach(function(o, i) {
+    var number = o.number !== undefined ? o.number : i + 1;
+    out.push([o.date, o.link, o.text, number, '', '', '', '', '', '']);
+  });
+
+  var sheet = ss.getSheetByName('посты');
+  if (!sheet) { addLog('❌ Лист "посты" не найден!', 'ERROR'); SpreadsheetApp.getUi().alert('Создайте лист "посты".'); return; }
+
+  sheet.clear();
+  sheet.getRange(1, 1, out.length, headers.length).setValues(out);
+  applyUniformFormatting(sheet);
+  createStopWordsFormulas(sheet, out.length);
+  addLog('✅ Импортировано ' + (out.length-1) + ' постов', 'INFO');
+  SpreadsheetApp.getUi().alert('Импорт завершён: ' + (out.length - 1) + ' постов. Формулы фильтрации добавлены.');
+}
+
+function createStopWordsFormulas(sheet, totalRows) {
+  try {
+    addLog('→ Создание формул фильтрации', 'INFO');
+    var stopWordsRange = '$E$2:$E$100';
+    for (var row = 2; row <= totalRows; row++) {
+      var formulaF = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + stopWordsRange + ', C' + row + ')))*(' + stopWordsRange + '<>"")) > 0, "", C' + row + ')';
+      sheet.getRange(row, 6).setFormula(formulaF);
+      var formulaG = '=IF(F' + row + '<>"", COUNTA(F$2:F' + row + '), "")';
+      sheet.getRange(row, 7).setFormula(formulaG);
+    }
+    var positiveWordsRange = '$H$2:$H$100';
+    for (var row = 2; row <= totalRows; row++) {
+      var formulaI = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + positiveWordsRange + ', C' + row + ')))*(' + positiveWordsRange + '<>"")) > 0, C' + row + ', "")';
+      sheet.getRange(row, 9).setFormula(formulaI);
+      var formulaJ = '=IF(I' + row + '<>"", COUNTA(I$2:I' + row + '), "")';
+      sheet.getRange(row, 10).setFormula(formulaJ);
+    }
+    sheet.getRange(1, 5, 1, 3).setFontWeight('bold').setBackground('#FFF2CC');
+    sheet.getRange(1, 8, 1, 3).setFontWeight('bold').setBackground('#D9EAD3');
+    sheet.autoResizeColumns(5, 6);
+    addLog('✅ Формулы фильтрации созданы', 'INFO');
+  } catch (e) {
+    addLog('❌ Ошибка создания формул: ' + e.message, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка создания формул: ' + e.message);
+  }
+}
+
 function refreshCurrentGMCell() {
   try {
-    SpreadsheetApp.getUi().alert('🎯 Функция refreshCurrentGMCell() находится в разработке');
-    addLog('⚠️ refreshCurrentGMCell() - Not yet implemented', 'WARN');
+    var ss = SpreadsheetApp.getActive();
+    var range = ss.getActiveRange();
+    if (!range) { SpreadsheetApp.getUi().alert('Выберите ячейку на листе "Распаковка"'); return; }
+    var cell = range.getCell(1, 1);
+    var sheet = cell.getSheet();
+    if (sheet.getName() !== 'Распаковка') { SpreadsheetApp.getUi().alert('Выберите ячейку на листе "Распаковка"'); return; }
+    var row = cell.getRow();
+    var col = cell.getColumn();
+
+    var formula = cell.getFormula();
+    var hasGm = formula && (/^\s*=\s*GM_IF\s*\(/i.test(formula) || /\bGM\s*\(/i.test(formula));
+    if (!hasGm) {
+      var promptSheet = ss.getSheetByName('Prompt_box');
+      if (promptSheet) {
+        var lastRow = Math.max(2, promptSheet.getLastRow());
+        var targets = promptSheet.getRange(2, 2, lastRow - 1, 1).getDisplayValues();
+        var mappings = [];
+        for (var r = 2; r <= lastRow; r++) {
+          var tstr = String(targets[r - 2][0] || '').trim();
+          if (!tstr) continue;
+          try {
+            var parsed = parseTargetA1(tstr);
+            mappings.push({ promptRow: r, targetA1: parsed.a1, targetRow: parsed.row, targetCol: parsed.col });
+          } catch (e) {}
+        }
+        if (mappings.length) {
+          var currentA1 = columnToLetter(col) + row;
+          var idx = -1;
+          for (var i = 0; i < mappings.length; i++) {
+            if (mappings[i].targetA1 === currentA1) { idx = i; break; }
+          }
+          if (idx >= 0) {
+            var phrase = getCompletionPhrase() || COMPLETION_PHRASE;
+            var phraseEscaped = phrase.replace(/"/g, '""');
+            var cond;
+            if (idx === 0) {
+              cond = '$A3<>""';
+            } else {
+              var prev = mappings[idx - 1];
+              cond = 'LEFT(' + prev.targetA1 + ', LEN("' + phraseEscaped + '"))="' + phraseEscaped + '"';
+            }
+            var promptRef = 'Prompt_box!$F$' + mappings[idx].promptRow;
+            formula = '=GM_IF(' + cond + ', ' + promptRef + ', 25000, 0.7)';
+          }
+        }
+      }
+    }
+    if (!formula) { SpreadsheetApp.getUi().alert('Нечего обновлять: в ячейке нет GM-формулы и нет соответствия в Prompt_box!B'); return; }
+
+    cell.clearContent();
+    SpreadsheetApp.flush();
+    Utilities.sleep(50);
+    cell.setFormula(formula);
+    SpreadsheetApp.flush();
+    addLog('🔁 Обновлена ячейка ' + cell.getA1Notation(), 'INFO');
   } catch (e) {
-    SpreadsheetApp.getUi().alert('Error: ' + e.message);
+    addLog('❌ Ошибка обновления ячейки: ' + e.message, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
   }
 }
-
-/**
- * PLACEHOLDER: Clear B3..G3 cache
- * TODO: Restore clearChainForA3() from old/Main.txt
- */
-function clearChainForA3() {
-  try {
-    SpreadsheetApp.getUi().alert('🎯 Функция clearChainForA3() находится в разработке');
-    addLog('⚠️ clearChainForA3() - Not yet implemented', 'WARN');
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Error: ' + e.message);
-  }
-}
-
-/**
- * PLACEHOLDER: Import VK posts with filtering
- * TODO: Restore importVkPosts() from old/Main.txt with VK_PARSER_URL
- * This function should:
- * 1. Get owner and count from Параметры sheet
- * 2. Call VK_PARSER_URL endpoint
- * 3. Parse posts and filter with stop-words
- * 4. Insert into посты sheet with formulas
- */
-function importVkPosts() {
-  try {
-    SpreadsheetApp.getUi().alert('🎯 Импорт VK постов находится в разработке');
-    addLog('⚠️ importVkPosts() - Not yet implemented', 'WARN');
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Error: ' + e.message);
-  }
-}
-
-// NOTE: The following functions are implemented in other files:
-// - openCollectConfigUI() in CollectConfig.gs
-// - refreshCellWithConfig() in CollectConfig.gs  
-// - openTemplatesUI() in CollectConfig.gs
-// - showCollectConfigHelp() in CollectConfig.gs
-// - ocrRun() in OcrRunV2.gs
