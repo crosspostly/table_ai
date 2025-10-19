@@ -318,27 +318,40 @@ function checkLicenseStatusUI() {
 
 /**
  * Initialize menu on Sheet open
+ * RESTORED: Real functional menu for v3.0.1
  */
 function onOpen() {
   try {
     const ui = SpreadsheetApp.getUi();
-    const menu = ui.createMenu('🤖 Table AI');
     
-    // Main features
-    menu.addItem('📝 Gemini: Set API Key', 'initGeminiKey')
-      .addItem('🔍 Check License Status', 'checkLicenseStatusUI')
+    ui.createMenu('🤖 Table AI')
+      .addItem('▶️ Подготовить формулы (умный режим)', 'prepareChainSmart')
+      .addItem('🔁 Обновить текущую ячейку (GM)', 'refreshCurrentGMCell')
       .addSeparator()
-      .addItem('⚙️ Settings', 'openSettingsUI')
-      .addItem('📋 Logs', 'showLogsDialog')
-      .addItem('💾 Export Logs', 'exportLogsToSheet')
-      .addSeparator();
+      .addItem('🧹 Очистить B3..G3', 'clearChainForA3')
+      .addSeparator()
+      .addSubMenu(ui.createMenu('🎯 AI Конструктор')
+        .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
+        .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
+        .addSeparator()
+        .addItem('🗂️ Управление шаблонами', 'openTemplatesUI')
+        .addItem('❓ Справка', 'showCollectConfigHelp')
+      )
+      .addSeparator()
+      .addItem('📥 Импорт VK постов', 'importVkPosts')
+      .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
+      .addSeparator()
+      .addItem('⚙️ Настройки', 'openSettingsUI')
+      .addToUi();
     
     if (DEV_MODE) {
-      menu.addItem('🧪 DEV: Self Test', 'runDevSelfTest')
-        .addItem('🧹 DEV: Cleanup Triggers', 'cleanupOldTriggers');
+      ui.createMenu('🧰 DEV')
+        .addItem('📝 Показать логи', 'showLogsDialog')
+        .addItem('⬇️ Экспорт логов', 'exportLogsToSheet')
+        .addItem('🗑 Очистить логи', 'clearLogs')
+        .addToUi();
     }
     
-    menu.addToUi();
     addLog('✅ Menu initialized', 'INFO');
   } catch (e) {
     console.error('Error initializing menu:', e.message);
@@ -793,3 +806,71 @@ function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
     return 'Error: ' + e.message;
   }
 }
+
+// ============================================================
+// MENU FUNCTIONS - Stubs for functions defined in other files
+// ============================================================
+
+/**
+ * PLACEHOLDER: Prepare formulas in smart mode
+ * TODO: Restore prepareChainSmart() from old/Main.txt
+ */
+function prepareChainSmart() {
+  try {
+    SpreadsheetApp.getUi().alert('🎯 Функция prepareChainSmart() находится в разработке');
+    addLog('⚠️ prepareChainSmart() - Not yet implemented', 'WARN');
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Error: ' + e.message);
+  }
+}
+
+/**
+ * PLACEHOLDER: Refresh current GM cell
+ * TODO: Restore refreshCurrentGMCell() from old/Main.txt
+ */
+function refreshCurrentGMCell() {
+  try {
+    SpreadsheetApp.getUi().alert('🎯 Функция refreshCurrentGMCell() находится в разработке');
+    addLog('⚠️ refreshCurrentGMCell() - Not yet implemented', 'WARN');
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Error: ' + e.message);
+  }
+}
+
+/**
+ * PLACEHOLDER: Clear B3..G3 cache
+ * TODO: Restore clearChainForA3() from old/Main.txt
+ */
+function clearChainForA3() {
+  try {
+    SpreadsheetApp.getUi().alert('🎯 Функция clearChainForA3() находится в разработке');
+    addLog('⚠️ clearChainForA3() - Not yet implemented', 'WARN');
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Error: ' + e.message);
+  }
+}
+
+/**
+ * PLACEHOLDER: Import VK posts with filtering
+ * TODO: Restore importVkPosts() from old/Main.txt with VK_PARSER_URL
+ * This function should:
+ * 1. Get owner and count from Параметры sheet
+ * 2. Call VK_PARSER_URL endpoint
+ * 3. Parse posts and filter with stop-words
+ * 4. Insert into посты sheet with formulas
+ */
+function importVkPosts() {
+  try {
+    SpreadsheetApp.getUi().alert('🎯 Импорт VK постов находится в разработке');
+    addLog('⚠️ importVkPosts() - Not yet implemented', 'WARN');
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Error: ' + e.message);
+  }
+}
+
+// NOTE: The following functions are implemented in other files:
+// - openCollectConfigUI() in CollectConfig.gs
+// - refreshCellWithConfig() in CollectConfig.gs  
+// - openTemplatesUI() in CollectConfig.gs
+// - showCollectConfigHelp() in CollectConfig.gs
+// - ocrRun() in OcrRunV2.gs
