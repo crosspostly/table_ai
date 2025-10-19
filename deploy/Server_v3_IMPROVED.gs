@@ -430,7 +430,7 @@ function rateLimitOk_(token) {
   }
 }
 
-// Server logs to admin spreadsheet
+// Server logs to admin spreadsheet with trace IDs
 function serverLog_(info) {
   try {
     const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
@@ -438,12 +438,14 @@ function serverLog_(info) {
     const headerNeeded = sh.getLastRow() === 0;
 
     if (headerNeeded) {
-      sh.appendRow(['timestamp', 'action', 'ok', 'error', 'email', 'token', 'promptLen', 'ms', 'cached']);
+      sh.appendRow(['timestamp', 'traceId', 'action', 'ok', 'error', 'email', 'token', 'promptLen', 'ms', 'cached']);
     }
 
+    // TRACE: Generate unique trace ID for this log entry
+    const traceId = generateTraceId_('req');
     const ts = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
     const tokenMasked = maskToken_(info.token);
-    sh.appendRow([ts, info.action || '', info.ok ? '1' : '0', info.error || '', info.email || '', tokenMasked, info.promptLen || 0, info.ms || 0, info.cached ? '1' : '0']);
+    sh.appendRow([ts, traceId, info.action || '', info.ok ? '1' : '0', info.error || '', info.email || '', tokenMasked, info.promptLen || 0, info.ms || 0, info.cached ? '1' : '0']);
   } catch (e) {
     // ignore logging errors
   }
