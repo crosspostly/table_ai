@@ -4,13 +4,13 @@
 
 ---
 
-## 📊 THE MATH
+## 📊 THE MATH (VERIFIED WITH wc -l)
 
 | Component | Before | After | Change |
 |-----------|--------|-------|--------|
-| Main.gs | 1048 lines | 400 lines | **-648 lines (-62%)** |
-| server.gs | 293 lines | 370 lines | **+77 lines (+26%)** |
-| **TOTAL** | **1341 lines** | **770 lines** | **-571 lines (-43%)** |
+| Main.gs | 1048 lines | 567 lines | **-481 lines (-46%)** |
+| server.gs | 293 lines | 386 lines | **+93 lines (+32%)** |
+| **TOTAL** | **1341 lines** | **953 lines** | **-388 lines (-29%)** |
 
 ---
 
