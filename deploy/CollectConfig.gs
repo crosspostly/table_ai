@@ -42,6 +42,9 @@ function getLog() {
 // ============================================================================
 function openCollectConfigUI() {
   try {
+    // Ensure we trigger OAuth consent for user email if needed (required for templates/presets)
+    ensureEmailAuth();
+
     const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi')
       .setWidth(700)
       .setTitle('🎯 AI Конструктор v3.0');
@@ -89,6 +92,23 @@ function getCollectConfigInitData() {
     addLog(`❌ Ошибка инициализации: ${error.message}`, 'ERROR');
     throw error;
   }
+}
+
+// ============================================================================
+// AUTHORIZATION HELPER — TRIGGER OAUTH FOR userinfo.email SCOPE
+// ============================================================================
+/**
+ * Ensures the script is authorized to access the user's email
+ * by touching Session.getActiveUser().getEmail() without swallowing errors.
+ * This intentionally has no try/catch so that Apps Script shows an OAuth prompt
+ * if the scope hasn't been granted yet.
+ * @return {string} email or empty string (for some accounts)
+ */
+function ensureEmailAuth() {
+  // Touching this requires https://www.googleapis.com/auth/userinfo.email
+  // If not authorized, Apps Script will prompt the user automatically.
+  var email = Session.getActiveUser().getEmail();
+  return email || '';
 }
 
 // ============================================================================
