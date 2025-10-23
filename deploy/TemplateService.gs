@@ -79,6 +79,72 @@ function _saveTemplateStorageAndUnlock(lock, storage) {
 }
 
 /**
+ * Выполняет миграцию старого формата (по email) в общий 'default' namespace
+ * Безопасно объединяет все шаблоны пользователей в storage['default']
+ * Конфликты имён разрешаются добавлением суффикса " (email)" с инкрементом
+ * @private
+ * @param {Object} storage - Текущее хранилище шаблонов
+ * @return {boolean} Было ли внесено изменение (true если мигрировали)
+ */
+function _migrateTemplatesToDefaultIfNeeded(storage) {
+  if (!storage || typeof storage !== 'object') {
+    return false;
+  }
+
+  const allUserKeys = Object.keys(storage);
+  const nonDefaultKeys = [];
+  for (let i = 0; i < allUserKeys.length; i++) {
+    const key = allUserKeys[i];
+    if (key !== 'default' && storage[key] && typeof storage[key] === 'object') {
+      nonDefaultKeys.push(key);
+    }
+  }
+
+  if (nonDefaultKeys.length === 0) {
+    return false; // нечего мигрировать
+  }
+
+  const target = storage['default'] || {};
+  let changed = false;
+
+  // Объединяем все шаблоны из старых ключей в 'default'
+  for (let k = 0; k < nonDefaultKeys.length; k++) {
+    const userKey = nonDefaultKeys[k];
+    const userTemplates = storage[userKey] || {};
+    const templateNames = Object.keys(userTemplates);
+    for (let t = 0; t < templateNames.length; t++) {
+      const originalName = templateNames[t];
+      const templateValue = userTemplates[originalName];
+
+      let finalName = originalName;
+      if (Object.prototype.hasOwnProperty.call(target, finalName)) {
+        // Разрешаем конфликт имён: добавляем суффикс с email и, при необходимости, счётчик
+        const safeUserSuffix = ' (' + String(userKey).replace(/[^a-zA-Z0-9._@-]+/g, '_').slice(0, 30) + ')';
+        finalName = originalName + safeUserSuffix;
+        let counter = 2;
+        while (Object.prototype.hasOwnProperty.call(target, finalName)) {
+          finalName = originalName + safeUserSuffix + ' ' + counter;
+          counter++;
+        }
+      }
+
+      target[finalName] = templateValue;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    storage['default'] = target;
+    // Удаляем старые ключи
+    for (let j = 0; j < nonDefaultKeys.length; j++) {
+      delete storage[nonDefaultKeys[j]];
+    }
+  }
+
+  return changed;
+}
+
+/**
  * Валидация конфигурации шаблона
  * @private
  * @param {Object} config - Конфигурация для валидации
@@ -149,8 +215,23 @@ function getAllTemplates(user) {
   }
 
   const {lock, storage} = _getTemplateStorageWithLock();
+
+  // Одноразовая миграция старых данных (по email) в общий 'default'
+  let savedViaMigration = false;
+  try {
+    if (_migrateTemplatesToDefaultIfNeeded(storage)) {
+      _saveTemplateStorageAndUnlock(lock, storage); // также освобождает lock
+      savedViaMigration = true;
+    }
+  } catch (e) {
+    // В случае ошибки миграции просто продолжаем чтение без сохранения
+  }
+
   const userTemplates = storage[user] || {};
-  lock.releaseLock();
+
+  if (!savedViaMigration) {
+    lock.releaseLock();
+  }
 
   return userTemplates;
 }
