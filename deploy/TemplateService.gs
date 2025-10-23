@@ -128,12 +128,12 @@ function _validateTemplateConfig(config) {
 /**
  * Получить идентификатор текущего пользователя
  * @private
- * @return {string} Email пользователя или 'anonymous'
+ * @return {string} Всегда возвращает 'default' (общее хранилище для всех)
  */
 function _getCurrentUser() {
-  // Do not swallow auth errors: let Apps Script show consent for userinfo.email
-  const email = Session.getActiveUser().getEmail();
-  return email || 'anonymous';
+  // Используем общее хранилище для всех пользователей
+  // Это избегает проблем с разрешениями Session API
+  return 'default';
 }
 
 /**

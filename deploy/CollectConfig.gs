@@ -51,7 +51,7 @@ function openCollectConfigUI() {
     
     SpreadsheetApp.getUi().showModalDialog(html, 'AI Конструктор');
   } catch (error) {
-    SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
+    SpreadsheetApp.getUi().alert('❌ Ошибка открытия UI:\n\n' + error.message);
   }
 }
 
@@ -98,17 +98,13 @@ function getCollectConfigInitData() {
 // AUTHORIZATION HELPER — TRIGGER OAUTH FOR userinfo.email SCOPE
 // ============================================================================
 /**
- * Ensures the script is authorized to access the user's email
- * by touching Session.getActiveUser().getEmail() without swallowing errors.
- * This intentionally has no try/catch so that Apps Script shows an OAuth prompt
- * if the scope hasn't been granted yet.
- * @return {string} email or empty string (for some accounts)
+ * Получает идентификатор для шаблонов
+ * @return {string} Всегда 'default' (общее хранилище)
  */
 function ensureEmailAuth() {
-  // Touching this requires https://www.googleapis.com/auth/userinfo.email
-  // If not authorized, Apps Script will prompt the user automatically.
-  var email = Session.getActiveUser().getEmail();
-  return email || '';
+  // Используем общее хранилище для всех пользователей
+  // Это избегает проблем с разрешениями Session API
+  return 'default';
 }
 
 // ============================================================================
@@ -116,7 +112,7 @@ function ensureEmailAuth() {
 // ============================================================================
 function createDefaultTemplate() {
   try {
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const user = ensureEmailAuth();
     const templates = getAllTemplates(user);
     
     // Если шаблон уже есть - не создаём
@@ -495,7 +491,7 @@ function refreshCellWithConfig() {
     const range = sheet.getActiveRange();
     
     if (!range) {
-      ui.alert('⚠️ Выберите ячейку!');
+      ui.alert('⚠️ Выберите ячейку в таблице перед запуском!');
       return;
     }
     
@@ -527,7 +523,7 @@ function refreshCellWithConfig() {
     }
     
   } catch (error) {
-    SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
+    SpreadsheetApp.getUi().alert('❌ Ошибка выполнения:\n\n' + error.message);
   }
 }
 
@@ -536,7 +532,7 @@ function refreshCellWithConfig() {
 // ============================================================================
 function serverGetAllTemplates() {
   try {
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const user = ensureEmailAuth();
     const templates = getAllTemplates(user);
     
     const result = {};
@@ -556,7 +552,7 @@ function serverGetTemplate(templateName) {
       return null;
     }
     
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const user = ensureEmailAuth();
     const template = getTemplate(user, templateName);
     
     if (!template) {
@@ -571,7 +567,7 @@ function serverGetTemplate(templateName) {
 
 function serverGetTemplatesStats() {
   try {
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const user = ensureEmailAuth();
     return getTemplatesStats(user);
   } catch (e) {
     return {count: 0, totalSize: 0, templates: []};
@@ -580,7 +576,7 @@ function serverGetTemplatesStats() {
 
 function serverSaveTemplate(templateName, config) {
   try {
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const user = ensureEmailAuth();
     return saveTemplate(user, templateName, config);
   } catch (e) {
     return {success: false, message: e.message};
@@ -589,7 +585,7 @@ function serverSaveTemplate(templateName, config) {
 
 function serverDeleteTemplate(templateName) {
   try {
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const user = ensureEmailAuth();
     return deleteTemplate(user, templateName);
   } catch (e) {
     return {success: false, message: e.message};
@@ -647,7 +643,7 @@ function hasConfigForCurrentCell() {
 // ============================================================================
 function openTemplatesUI() {
   try {
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const user = ensureEmailAuth();
     const templates = getAllTemplates(user);
     const templateNames = Object.keys(templates);
     
@@ -676,7 +672,7 @@ function openTemplatesUI() {
       SpreadsheetApp.getUi().ButtonSet.OK
     );
   } catch (error) {
-    SpreadsheetApp.getUi().alert('Ошибка', 'Не удалось загрузить шаблоны: ' + error.message);
+    SpreadsheetApp.getUi().alert('Ошибка', 'Не удалось загрузить шаблоны: ' + error.message, SpreadsheetApp.getUi().ButtonSet.OK);
   }
 }
 
