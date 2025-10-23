@@ -21,6 +21,24 @@ const MAX_TEMPLATE_SIZE = 8000; // 8KB (запас от лимита 9KB)
 const MAX_TEMPLATES_PER_USER = 100; // Максимум шаблонов на пользователя
 const TEMPLATE_KEY_PREFIX = 'COLLECT_TPL_V2:'; // Пер-элементное хранилище
 
+// Dev logging toggle (inherits global DEV_MODE if available)
+const TPL_DEV_LOG = (typeof DEV_MODE === 'boolean') ? !!DEV_MODE : true;
+
+function tplLog(level, message, context) {
+  if (!TPL_DEV_LOG) return;
+  try {
+    const msg = '[TemplateService] ' + message + (context ? (' | ' + JSON.stringify(context)) : '');
+    if (typeof addSystemLog === 'function') {
+      addSystemLog(msg, level || 'DEBUG', 'TEMPLATE_SERVICE');
+    }
+    // Best-effort console for Stackdriver
+    const line = (level ? ('[' + level + '] ') : '') + msg;
+    if (level === 'ERROR') console.error(line);
+    else if (level === 'WARN') console.warn(line);
+    else console.log(line);
+  } catch (_e) {}
+}
+
 /**
  * Получает данные из storage с блокировкой для предотвращения race conditions
  * @private
@@ -52,6 +70,7 @@ function _getTemplateStorageWithLock() {
     }
   }
 
+  tplLog('DEBUG', '_getTemplateStorageWithLock(): storage loaded', {hasMonolith: !!jsonString});
   return {lock, storage};
 }
 
@@ -72,6 +91,7 @@ function _saveTemplateStorageAndUnlock(lock, storage) {
     }
 
     properties.setProperty(TEMPLATES_STORAGE_KEY, jsonString);
+    tplLog('DEBUG', '_saveTemplateStorageAndUnlock(): monolith saved', {bytes: jsonString.length});
   } catch (e) {
     throw new Error('Ошибка сохранения в storage: ' + e.message);
   } finally {
@@ -113,6 +133,7 @@ function _migrateTemplatesToDefaultIfNeeded(storage) {
     const userKey = nonDefaultKeys[k];
     const userTemplates = storage[userKey] || {};
     const templateNames = Object.keys(userTemplates);
+    tplLog('DEBUG', 'Migrate user namespace → default', {userKey: userKey, count: templateNames.length});
     for (let t = 0; t < templateNames.length; t++) {
       const originalName = templateNames[t];
       const templateValue = userTemplates[originalName];
@@ -140,6 +161,7 @@ function _migrateTemplatesToDefaultIfNeeded(storage) {
     for (let j = 0; j < nonDefaultKeys.length; j++) {
       delete storage[nonDefaultKeys[j]];
     }
+    tplLog('INFO', 'Legacy namespaces migrated to default', {migratedNamespaces: nonDefaultKeys.length, totalTemplates: Object.keys(target).length});
   }
 
   return changed;
@@ -152,7 +174,9 @@ function _migrateTemplatesToDefaultIfNeeded(storage) {
 function _buildTemplateKey(user, templateName) {
   const userKey = String(user || 'default');
   const nameKey = String(templateName || '').slice(0, 200);
-  return TEMPLATE_KEY_PREFIX + userKey + ':' + nameKey;
+  const key = TEMPLATE_KEY_PREFIX + userKey + ':' + nameKey;
+  tplLog('DEBUG', '_buildTemplateKey()', {user: userKey, name: nameKey, key: key});
+  return key;
 }
 
 /**
@@ -168,6 +192,7 @@ function _listTemplateKeysForUser(props, user) {
       keys.push(k);
     }
   }
+  tplLog('DEBUG', '_listTemplateKeysForUser()', {user: user || 'default', count: keys.length});
   return keys;
 }
 
@@ -189,6 +214,7 @@ function _migrateMonolithToPerTemplateIfNeeded_(props) {
     } catch (_e) {
       // Если битые данные — сбрасываем монолит и выходим
       props.deleteProperty(TEMPLATES_STORAGE_KEY);
+      tplLog('WARN', 'Monolith storage corrupted — deleted');
       return true;
     }
 
@@ -200,6 +226,7 @@ function _migrateMonolithToPerTemplateIfNeeded_(props) {
     const userStore = storage['default'] || {};
     const names = Object.keys(userStore);
     const nowIso = new Date().toISOString();
+    tplLog('INFO', 'Migrating monolith → per-template', {count: names.length});
 
     for (let i = 0; i < names.length; i++) {
       const name = names[i];
@@ -317,6 +344,7 @@ function getAllTemplates(user) {
         result[name] = JSON.parse(raw);
       } catch (_e) {}
     }
+    tplLog('INFO', 'getAllTemplates()', {user: user, count: Object.keys(result).length});
     return result;
   } finally {
     lock.releaseLock();
@@ -343,8 +371,11 @@ function getTemplate(user, templateName) {
     const raw = props.getProperty(key);
     if (!raw) return null;
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      tplLog('INFO', 'getTemplate(): found', {user: user, name: templateName});
+      return parsed;
     } catch (_e) {
+      tplLog('WARN', 'getTemplate(): JSON parse failed', {user: user, name: templateName});
       return null;
     }
   } finally {
@@ -395,6 +426,7 @@ function saveTemplate(user, templateName, config) {
       const key = _buildTemplateKey(user, templateName);
       const exists = !!props.getProperty(key);
       if (!exists && existingKeys.length >= MAX_TEMPLATES_PER_USER) {
+        tplLog('WARN', 'saveTemplate(): limit reached', {user: user, name: templateName});
         return {
           success: false,
           message: 'Достигнут лимит шаблонов (' + MAX_TEMPLATES_PER_USER + '). Удалите неиспользуемые.',
@@ -419,6 +451,7 @@ function saveTemplate(user, templateName, config) {
 
       const payload = JSON.stringify(templateWithMeta);
       if (payload.length > 8900) {
+        tplLog('WARN', 'saveTemplate(): payload too large', {bytes: payload.length, user: user, name: templateName});
         return {
           success: false,
           message: 'Шаблон слишком большой для PropertiesService (лимит 9KB на запись)',
@@ -432,6 +465,7 @@ function saveTemplate(user, templateName, config) {
       if (typeof addSystemLog === 'function') {
         addSystemLog('Template saved: ' + templateName + ' (' + configSize + ' bytes)', 'INFO', 'TEMPLATE_SERVICE');
       }
+      tplLog('INFO', 'saveTemplate(): OK', {user: user, name: templateName, size: configSize});
 
       return {
         success: true,
@@ -442,6 +476,7 @@ function saveTemplate(user, templateName, config) {
       lock.releaseLock();
     }
   } catch (e) {
+    tplLog('ERROR', 'saveTemplate(): failed', {user: user, name: templateName, error: e && e.message});
     return {
       success: false,
       message: 'Ошибка сохранения: ' + e.message,
@@ -476,13 +511,16 @@ function deleteTemplate(user, templateName) {
         if (typeof addSystemLog === 'function') {
           addSystemLog('Template deleted: ' + templateName, 'INFO', 'TEMPLATE_SERVICE');
         }
+        tplLog('INFO', 'deleteTemplate(): OK', {user: user, name: templateName});
         return {success: true, message: 'Шаблон "' + templateName + '" удалён'};
       }
+      tplLog('WARN', 'deleteTemplate(): not found', {user: user, name: templateName});
       return {success: false, message: 'Шаблон "' + templateName + '" не найден'};
     } finally {
       lock.releaseLock();
     }
   } catch (e) {
+    tplLog('ERROR', 'deleteTemplate(): failed', {user: user, name: templateName, error: e && e.message});
     return {success: false, message: 'Ошибка удаления: ' + e.message};
   }
 }
@@ -540,6 +578,7 @@ function replaceAllTemplates(user, newTemplates) {
 
       // Записываем новые
       const names = Object.keys(newTemplates);
+      tplLog('INFO', 'replaceAllTemplates(): start', {user: user, count: names.length});
       for (let n = 0; n < names.length; n++) {
         const name = names[n];
         const template = newTemplates[name];
@@ -552,6 +591,7 @@ function replaceAllTemplates(user, newTemplates) {
         };
         const payload = JSON.stringify(entry);
         if (payload.length > 8900) {
+          tplLog('WARN', 'replaceAllTemplates(): payload too large', {name: name, bytes: payload.length});
           return {success: false, message: 'Шаблон "' + name + '" слишком большой для хранения (лимит 9KB)'};
         }
         props.setProperty(_buildTemplateKey(user, name), payload);
@@ -560,12 +600,14 @@ function replaceAllTemplates(user, newTemplates) {
       if (typeof addSystemLog === 'function') {
         addSystemLog('All templates replaced for user: ' + templateNames.length + ' templates', 'INFO', 'TEMPLATE_SERVICE');
       }
+      tplLog('INFO', 'replaceAllTemplates(): OK', {user: user, count: templateNames.length});
 
       return {success: true, message: 'Импортировано ' + templateNames.length + ' шаблонов', count: templateNames.length};
     } finally {
       lock.releaseLock();
     }
   } catch (e) {
+    tplLog('ERROR', 'replaceAllTemplates(): failed', {user: user, error: e && e.message});
     return {success: false, message: 'Ошибка импорта: ' + e.message};
   }
 }
