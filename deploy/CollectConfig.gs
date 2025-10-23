@@ -41,10 +41,6 @@ function getLog() {
 // ГЛАВНАЯ ФУНКЦИЯ: Открыть UI
 // ============================================================================
 function openCollectConfigUI() {
-  // Ensure we trigger OAuth consent for user email if needed (required for templates/presets)
-  // This call MUST be outside of try/catch so Apps Script shows the consent prompt.
-  ensureEmailAuth();
-
   try {
     const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi')
       .setWidth(700)
@@ -643,11 +639,8 @@ function hasConfigForCurrentCell() {
 // ПРОСТОЙ UI ДЛЯ УПРАВЛЕНИЯ ШАБЛОНАМИ
 // ============================================================================
 function openTemplatesUI() {
-  // Trigger OAuth consent if needed before accessing user email
-  ensureEmailAuth();
-
   try {
-    const user = ensureEmailAuth();
+    const user = 'default';
     const templates = getAllTemplates(user);
     const templateNames = Object.keys(templates);
     
