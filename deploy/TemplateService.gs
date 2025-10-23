@@ -131,12 +131,9 @@ function _validateTemplateConfig(config) {
  * @return {string} Email пользователя или 'anonymous'
  */
 function _getCurrentUser() {
-  try {
-    const email = Session.getActiveUser().getEmail();
-    return email || 'anonymous';
-  } catch (e) {
-    return 'anonymous';
-  }
+  // Do not swallow auth errors: let Apps Script show consent for userinfo.email
+  const email = Session.getActiveUser().getEmail();
+  return email || 'anonymous';
 }
 
 /**
