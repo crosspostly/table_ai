@@ -98,17 +98,13 @@ function getCollectConfigInitData() {
 // AUTHORIZATION HELPER — TRIGGER OAUTH FOR userinfo.email SCOPE
 // ============================================================================
 /**
- * Получает email пользователя для идентификации шаблонов
- * @return {string} email или 'default'
+ * Получает идентификатор для шаблонов
+ * @return {string} Всегда 'default' (общее хранилище)
  */
 function ensureEmailAuth() {
-  try {
-    // getEffectiveUser() не требует userinfo.email scope
-    var email = Session.getEffectiveUser().getEmail();
-    return email || 'default';
-  } catch (e) {
-    return 'default';
-  }
+  // Используем общее хранилище для всех пользователей
+  // Это избегает проблем с разрешениями Session API
+  return 'default';
 }
 
 // ============================================================================
