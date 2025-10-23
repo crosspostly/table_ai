@@ -128,12 +128,17 @@ function _validateTemplateConfig(config) {
 /**
  * Получить идентификатор текущего пользователя
  * @private
- * @return {string} Email пользователя или 'anonymous'
+ * @return {string} Email пользователя или 'default'
  */
 function _getCurrentUser() {
-  // Do not swallow auth errors: let Apps Script show consent for userinfo.email
-  const email = Session.getActiveUser().getEmail();
-  return email || 'anonymous';
+  try {
+    // Используем getEffectiveUser() - не требует дополнительных разрешений
+    const email = Session.getEffectiveUser().getEmail();
+    return email || 'default';
+  } catch (e) {
+    // Если не удалось получить email, используем общее хранилище
+    return 'default';
+  }
 }
 
 /**
