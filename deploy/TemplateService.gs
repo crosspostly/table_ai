@@ -19,6 +19,7 @@ const TEMPLATES_STORAGE_KEY = 'COLLECT_CONFIG_TEMPLATES';
 const TEMPLATES_LOCK_TIMEOUT = 30000; // 30 секунд
 const MAX_TEMPLATE_SIZE = 8000; // 8KB (запас от лимита 9KB)
 const MAX_TEMPLATES_PER_USER = 100; // Максимум шаблонов на пользователя
+const TEMPLATE_KEY_PREFIX = 'COLLECT_TPL_V2:'; // Пер-элементное хранилище
 
 /**
  * Получает данные из storage с блокировкой для предотвращения race conditions
@@ -145,6 +146,89 @@ function _migrateTemplatesToDefaultIfNeeded(storage) {
 }
 
 /**
+ * Построить ключ для хранения конкретного шаблона пользователя
+ * @private
+ */
+function _buildTemplateKey(user, templateName) {
+  const userKey = String(user || 'default');
+  const nameKey = String(templateName || '').slice(0, 200);
+  return TEMPLATE_KEY_PREFIX + userKey + ':' + nameKey;
+}
+
+/**
+ * Получить список ключей шаблонов для пользователя
+ * @private
+ */
+function _listTemplateKeysForUser(props, user) {
+  const all = props.getProperties();
+  const prefix = TEMPLATE_KEY_PREFIX + String(user || 'default') + ':';
+  const keys = [];
+  for (const k in all) {
+    if (Object.prototype.hasOwnProperty.call(all, k) && k.indexOf(prefix) === 0) {
+      keys.push(k);
+    }
+  }
+  return keys;
+}
+
+/**
+ * Миграция из монолитного свойства COLLECT_CONFIG_TEMPLATES в пер-элементное хранилище
+ * Также объединяет старые user-неймспейсы в 'default'
+ * Выполняется под lock
+ * @private
+ * @return {boolean} true если были изменения
+ */
+function _migrateMonolithToPerTemplateIfNeeded_(props) {
+  try {
+    const jsonString = props.getProperty(TEMPLATES_STORAGE_KEY);
+    if (!jsonString) return false;
+
+    let storage = {};
+    try {
+      storage = JSON.parse(jsonString) || {};
+    } catch (_e) {
+      // Если битые данные — сбрасываем монолит и выходим
+      props.deleteProperty(TEMPLATES_STORAGE_KEY);
+      return true;
+    }
+
+    // Объединим в 'default', если нужно
+    try {
+      _migrateTemplatesToDefaultIfNeeded(storage);
+    } catch (_e2) {}
+
+    const userStore = storage['default'] || {};
+    const names = Object.keys(userStore);
+    const nowIso = new Date().toISOString();
+
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      const entry = userStore[name];
+      const config = entry && entry.config ? entry.config : entry;
+      const templateWithMeta = {
+        config: config,
+        created: entry && entry.created ? entry.created : nowIso,
+        updated: nowIso,
+        version: '1.0',
+      };
+      const key = _buildTemplateKey('default', name);
+      props.setProperty(key, JSON.stringify(templateWithMeta));
+    }
+
+    // Удаляем монолитное свойство после успешной миграции
+    props.deleteProperty(TEMPLATES_STORAGE_KEY);
+
+    if (typeof addSystemLog === 'function') {
+      addSystemLog('Migrated templates to per-template storage (' + names.length + ')', 'INFO', 'TEMPLATE_SERVICE');
+    }
+    return true;
+  } catch (_e) {
+    // Не препятствуем работе при ошибке миграции
+    return false;
+  }
+}
+
+/**
  * Валидация конфигурации шаблона
  * @private
  * @param {Object} config - Конфигурация для валидации
@@ -214,26 +298,29 @@ function getAllTemplates(user) {
     throw new Error('Не удалось определить пользователя');
   }
 
-  const {lock, storage} = _getTemplateStorageWithLock();
-
-  // Одноразовая миграция старых данных (по email) в общий 'default'
-  let savedViaMigration = false;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(TEMPLATES_LOCK_TIMEOUT);
   try {
-    if (_migrateTemplatesToDefaultIfNeeded(storage)) {
-      _saveTemplateStorageAndUnlock(lock, storage); // также освобождает lock
-      savedViaMigration = true;
+    const props = PropertiesService.getScriptProperties();
+    // Одноразовая миграция из монолита
+    _migrateMonolithToPerTemplateIfNeeded_(props);
+
+    const keys = _listTemplateKeysForUser(props, user);
+    const prefix = TEMPLATE_KEY_PREFIX + String(user) + ':';
+    const result = {};
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const name = key.substring(prefix.length);
+      try {
+        const raw = props.getProperty(key);
+        if (!raw) continue;
+        result[name] = JSON.parse(raw);
+      } catch (_e) {}
     }
-  } catch (e) {
-    // В случае ошибки миграции просто продолжаем чтение без сохранения
-  }
-
-  const userTemplates = storage[user] || {};
-
-  if (!savedViaMigration) {
+    return result;
+  } finally {
     lock.releaseLock();
   }
-
-  return userTemplates;
 }
 
 /**
@@ -247,8 +334,22 @@ function getTemplate(user, templateName) {
     throw new Error('Требуются параметры user и templateName');
   }
 
-  const userTemplates = getAllTemplates(user);
-  return userTemplates[templateName] || null;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(TEMPLATES_LOCK_TIMEOUT);
+  try {
+    const props = PropertiesService.getScriptProperties();
+    _migrateMonolithToPerTemplateIfNeeded_(props);
+    const key = _buildTemplateKey(user, templateName);
+    const raw = props.getProperty(key);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch (_e) {
+      return null;
+    }
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -284,51 +385,62 @@ function saveTemplate(user, templateName, config) {
   }
 
   try {
-    const {lock, storage} = _getTemplateStorageWithLock();
+    const lock = LockService.getScriptLock();
+    lock.waitLock(TEMPLATES_LOCK_TIMEOUT);
+    try {
+      const props = PropertiesService.getScriptProperties();
+      _migrateMonolithToPerTemplateIfNeeded_(props);
 
-    // Инициализация хранилища пользователя
-    if (!storage[user]) {
-      storage[user] = {};
-    }
+      const existingKeys = _listTemplateKeysForUser(props, user);
+      const key = _buildTemplateKey(user, templateName);
+      const exists = !!props.getProperty(key);
+      if (!exists && existingKeys.length >= MAX_TEMPLATES_PER_USER) {
+        return {
+          success: false,
+          message: 'Достигнут лимит шаблонов (' + MAX_TEMPLATES_PER_USER + '). Удалите неиспользуемые.',
+        };
+      }
 
-    // Проверка количества шаблонов
-    const templateCount = Object.keys(storage[user]).length;
-    if (templateCount >= MAX_TEMPLATES_PER_USER && !storage[user][templateName]) {
-      lock.releaseLock();
-      return {
-        success: false,
-        message: 'Достигнут лимит шаблонов (' + MAX_TEMPLATES_PER_USER + '). Удалите неиспользуемые.',
+      const nowIso = new Date().toISOString();
+      let createdIso = nowIso;
+      if (exists) {
+        try {
+          const prev = JSON.parse(props.getProperty(key));
+          if (prev && prev.created) createdIso = prev.created;
+        } catch (_e) {}
+      }
+
+      const templateWithMeta = {
+        config: config,
+        created: createdIso,
+        updated: nowIso,
+        version: '1.0',
       };
+
+      const payload = JSON.stringify(templateWithMeta);
+      if (payload.length > 8900) {
+        return {
+          success: false,
+          message: 'Шаблон слишком большой для PropertiesService (лимит 9KB на запись)',
+        };
+      }
+
+      props.setProperty(key, payload);
+
+      const configSize = JSON.stringify(config).length;
+
+      if (typeof addSystemLog === 'function') {
+        addSystemLog('Template saved: ' + templateName + ' (' + configSize + ' bytes)', 'INFO', 'TEMPLATE_SERVICE');
+      }
+
+      return {
+        success: true,
+        message: 'Шаблон "' + templateName + '" сохранён',
+        size: configSize,
+      };
+    } finally {
+      lock.releaseLock();
     }
-
-    // Добавляем метаданные
-    const templateWithMeta = {
-      config: config,
-      created: storage[user][templateName] ? storage[user][templateName].created : new Date().toISOString(),
-      updated: new Date().toISOString(),
-      version: '1.0',
-    };
-
-    storage[user][templateName] = templateWithMeta;
-
-    _saveTemplateStorageAndUnlock(lock, storage);
-
-    const configSize = JSON.stringify(config).length;
-
-    // Логирование
-    if (typeof addSystemLog === 'function') {
-      addSystemLog(
-        'Template saved: ' + templateName + ' (' + configSize + ' bytes)',
-        'INFO',
-        'TEMPLATE_SERVICE',
-      );
-    }
-
-    return {
-      success: true,
-      message: 'Шаблон "' + templateName + '" сохранён',
-      size: configSize,
-    };
   } catch (e) {
     return {
       success: false,
@@ -352,39 +464,26 @@ function deleteTemplate(user, templateName) {
   }
 
   try {
-    const {lock, storage} = _getTemplateStorageWithLock();
-
-    if (storage[user] && storage[user][templateName]) {
-      delete storage[user][templateName];
-
-      // Удаляем пустой объект пользователя
-      if (Object.keys(storage[user]).length === 0) {
-        delete storage[user];
+    const lock = LockService.getScriptLock();
+    lock.waitLock(TEMPLATES_LOCK_TIMEOUT);
+    try {
+      const props = PropertiesService.getScriptProperties();
+      _migrateMonolithToPerTemplateIfNeeded_(props);
+      const key = _buildTemplateKey(user, templateName);
+      const existed = !!props.getProperty(key);
+      if (existed) {
+        props.deleteProperty(key);
+        if (typeof addSystemLog === 'function') {
+          addSystemLog('Template deleted: ' + templateName, 'INFO', 'TEMPLATE_SERVICE');
+        }
+        return {success: true, message: 'Шаблон "' + templateName + '" удалён'};
       }
-
-      _saveTemplateStorageAndUnlock(lock, storage);
-
-      // Логирование
-      if (typeof addSystemLog === 'function') {
-        addSystemLog('Template deleted: ' + templateName, 'INFO', 'TEMPLATE_SERVICE');
-      }
-
-      return {
-        success: true,
-        message: 'Шаблон "' + templateName + '" удалён',
-      };
-    } else {
+      return {success: false, message: 'Шаблон "' + templateName + '" не найден'};
+    } finally {
       lock.releaseLock();
-      return {
-        success: false,
-        message: 'Шаблон "' + templateName + '" не найден',
-      };
     }
   } catch (e) {
-    return {
-      success: false,
-      message: 'Ошибка удаления: ' + e.message,
-    };
+    return {success: false, message: 'Ошибка удаления: ' + e.message};
   }
 }
 
@@ -427,29 +526,47 @@ function replaceAllTemplates(user, newTemplates) {
   }
 
   try {
-    const {lock, storage} = _getTemplateStorageWithLock();
-    storage[user] = newTemplates;
-    _saveTemplateStorageAndUnlock(lock, storage);
+    const lock = LockService.getScriptLock();
+    lock.waitLock(TEMPLATES_LOCK_TIMEOUT);
+    try {
+      const props = PropertiesService.getScriptProperties();
+      _migrateMonolithToPerTemplateIfNeeded_(props);
 
-    // Логирование
-    if (typeof addSystemLog === 'function') {
-      addSystemLog(
-        'All templates replaced for user: ' + templateNames.length + ' templates',
-        'INFO',
-        'TEMPLATE_SERVICE',
-      );
+      // Удаляем все текущие шаблоны пользователя
+      const existingKeys = _listTemplateKeysForUser(props, user);
+      for (let i = 0; i < existingKeys.length; i++) {
+        props.deleteProperty(existingKeys[i]);
+      }
+
+      // Записываем новые
+      const names = Object.keys(newTemplates);
+      for (let n = 0; n < names.length; n++) {
+        const name = names[n];
+        const template = newTemplates[name];
+        const config = template && template.config ? template.config : template;
+        const entry = {
+          config: config,
+          created: (template && template.created) ? template.created : new Date().toISOString(),
+          updated: new Date().toISOString(),
+          version: '1.0',
+        };
+        const payload = JSON.stringify(entry);
+        if (payload.length > 8900) {
+          return {success: false, message: 'Шаблон "' + name + '" слишком большой для хранения (лимит 9KB)'};
+        }
+        props.setProperty(_buildTemplateKey(user, name), payload);
+      }
+
+      if (typeof addSystemLog === 'function') {
+        addSystemLog('All templates replaced for user: ' + templateNames.length + ' templates', 'INFO', 'TEMPLATE_SERVICE');
+      }
+
+      return {success: true, message: 'Импортировано ' + templateNames.length + ' шаблонов', count: templateNames.length};
+    } finally {
+      lock.releaseLock();
     }
-
-    return {
-      success: true,
-      message: 'Импортировано ' + templateNames.length + ' шаблонов',
-      count: templateNames.length,
-    };
   } catch (e) {
-    return {
-      success: false,
-      message: 'Ошибка импорта: ' + e.message,
-    };
+    return {success: false, message: 'Ошибка импорта: ' + e.message};
   }
 }
 
