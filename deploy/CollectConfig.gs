@@ -676,7 +676,7 @@ function openTemplatesUI() {
       SpreadsheetApp.getUi().ButtonSet.OK
     );
   } catch (error) {
-    SpreadsheetApp.getUi().alert('Ошибка', 'Не удалось загрузить шаблоны: ' + error.message);
+    SpreadsheetApp.getUi().alert('Ошибка', 'Не удалось загрузить шаблоны: ' + error.message, SpreadsheetApp.getUi().ButtonSet.OK);
   }
 }
 
