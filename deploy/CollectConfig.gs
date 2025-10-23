@@ -41,10 +41,11 @@ function getLog() {
 // ГЛАВНАЯ ФУНКЦИЯ: Открыть UI
 // ============================================================================
 function openCollectConfigUI() {
-  try {
-    // Ensure we trigger OAuth consent for user email if needed (required for templates/presets)
-    ensureEmailAuth();
+  // Ensure we trigger OAuth consent for user email if needed (required for templates/presets)
+  // This call MUST be outside of try/catch so Apps Script shows the consent prompt.
+  ensureEmailAuth();
 
+  try {
     const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi')
       .setWidth(700)
       .setTitle('🎯 AI Конструктор v3.0');
@@ -646,6 +647,9 @@ function hasConfigForCurrentCell() {
 // ПРОСТОЙ UI ДЛЯ УПРАВЛЕНИЯ ШАБЛОНАМИ
 // ============================================================================
 function openTemplatesUI() {
+  // Trigger OAuth consent if needed before accessing user email
+  ensureEmailAuth();
+
   try {
     const user = Session.getActiveUser().getEmail() || 'anonymous';
     const templates = getAllTemplates(user);
@@ -676,7 +680,7 @@ function openTemplatesUI() {
       SpreadsheetApp.getUi().ButtonSet.OK
     );
   } catch (error) {
-    SpreadsheetApp.getUi().alert('Ошибка', 'Не удалось загрузить шаблоны: ' + error.message);
+    SpreadsheetApp.getUi().alert('Ошибка', 'Не удалось загрузить шаблоны: ' + error.message, SpreadsheetApp.getUi().ButtonSet.OK);
   }
 }
 
