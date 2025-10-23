@@ -212,14 +212,11 @@
 - COMPLETION_PHRASE
 ```
 
-**UserProperties** (данные пользователя):
+**ScriptProperties** (шаблоны и настройки):
 ```javascript
-- COLLECT_CONFIG_TEMPLATES (JSON)
-  {
-    "Default": {...},
-    "Template1": {...}
-  }
-- COLLECT_CONFIG_[SheetName]_[CellAddress] (сохранённые конфигурации)
+- COLLECT_TPL_V2:default:<TemplateName>  // один ключ на шаблон
+   { config: {...}, created: ISO, updated: ISO, version: '1.0' }
+- COLLECT_CONFIG_[SheetName]_[CellAddress]  // сохранённые конфигурации для ячеек
 ```
 
 ### CacheService
