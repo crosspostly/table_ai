@@ -76,7 +76,7 @@ function clearLogs() {
   try {
     CacheService.getScriptCache().remove(LOGS_CACHE_KEY);
     addLog('✅ Logs cleared', 'INFO');
-    SpreadsheetApp.getUi().alert('Logs cleared.');
+    SpreadsheetApp.getUi().alert('Info', 'Logs cleared.', SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
     SpreadsheetApp.getUi().alert('Error clearing logs: ' + e.message);
   }
@@ -107,7 +107,7 @@ function exportLogsToSheet() {
     const cache = CacheService.getScriptCache();
     const logs = cache.get(LOGS_CACHE_KEY);
     if (!logs) {
-      SpreadsheetApp.getUi().alert('No logs to export.');
+      SpreadsheetApp.getUi().alert('Info', 'No logs to export.', SpreadsheetApp.getUi().ButtonSet.OK);
       return;
     }
     const logEntries = JSON.parse(logs);
@@ -118,7 +118,7 @@ function exportLogsToSheet() {
     sheet.getRange(1, 1, 1, 3).setFontWeight('bold').setBackground('#E8F0FE');
     sheet.autoResizeColumns(1, 3);
     addLog('✅ Logs exported', 'INFO');
-    SpreadsheetApp.getUi().alert('Logs exported to "Logs" sheet.');
+    SpreadsheetApp.getUi().alert('Info', 'Logs exported to "Logs" sheet.', SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
     addLog('❌ Error exporting logs: ' + e.message, 'ERROR');
     SpreadsheetApp.getUi().alert('Error exporting logs: ' + e.message);
@@ -500,7 +500,7 @@ function showActiveTriggersDialog() {
   try {
     const triggers = ScriptApp.getProjectTriggers();
     if (triggers.length === 0) {
-      SpreadsheetApp.getUi().alert('No active triggers');
+      SpreadsheetApp.getUi().alert('Info', 'No active triggers', SpreadsheetApp.getUi().ButtonSet.OK);
       return;
     }
     const list = triggers.map(t => `- ${t.getHandlerFunction()} (${t.getTriggerSource()})`).join('\n');

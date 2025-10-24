@@ -564,10 +564,27 @@ function serverGetTemplate(templateName) {
 
 function serverGetTemplatesStats() {
   try {
-    const user = ensureEmailAuth();
-    return getTemplatesStats(user);
+    const user = 'default';
+    const stats = getTemplatesStats(user);
+    // Гарантируем наличие всех полей для UI
+    if (!stats || typeof stats !== 'object') {
+      throw new Error('No stats');
+    }
+    const maxCount = (typeof MAX_TEMPLATES_PER_USER !== 'undefined') ? MAX_TEMPLATES_PER_USER : 100;
+    const maxSize = (typeof MAX_TEMPLATE_SIZE !== 'undefined') ? (MAX_TEMPLATE_SIZE * maxCount) : (8000 * maxCount);
+    return {
+      count: stats.count || 0,
+      maxCount: (typeof stats.maxCount === 'number') ? stats.maxCount : maxCount,
+      totalSize: stats.totalSize || 0,
+      maxSize: (typeof stats.maxSize === 'number') ? stats.maxSize : maxSize,
+      oldestTemplate: stats.oldestTemplate || null,
+      newestTemplate: stats.newestTemplate || null,
+      templates: Array.isArray(stats.templates) ? stats.templates : [],
+    };
   } catch (e) {
-    return {count: 0, totalSize: 0, templates: []};
+    const maxCount = (typeof MAX_TEMPLATES_PER_USER !== 'undefined') ? MAX_TEMPLATES_PER_USER : 100;
+    const maxSize = (typeof MAX_TEMPLATE_SIZE !== 'undefined') ? (MAX_TEMPLATE_SIZE * maxCount) : (8000 * maxCount);
+    return {count: 0, maxCount: maxCount, totalSize: 0, maxSize: maxSize, templates: []};
   }
 }
 
