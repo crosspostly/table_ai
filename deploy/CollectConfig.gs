@@ -109,7 +109,7 @@ function ensureEmailAuth() {
 // ============================================================================
 function createDefaultTemplate() {
   try {
-    const user = ensureEmailAuth();
+    const user = 'default';
     const templates = getAllTemplates(user);
     
     // Если шаблон уже есть - не создаём
@@ -529,7 +529,7 @@ function refreshCellWithConfig() {
 // ============================================================================
 function serverGetAllTemplates() {
   try {
-    const user = ensureEmailAuth();
+    const user = 'default';
     const templates = getAllTemplates(user);
     
     const result = {};
@@ -549,7 +549,7 @@ function serverGetTemplate(templateName) {
       return null;
     }
     
-    const user = ensureEmailAuth();
+    const user = 'default';
     const template = getTemplate(user, templateName);
     
     if (!template) {
@@ -590,7 +590,7 @@ function serverGetTemplatesStats() {
 
 function serverSaveTemplate(templateName, config) {
   try {
-    const user = ensureEmailAuth();
+    const user = 'default';
     return saveTemplate(user, templateName, config);
   } catch (e) {
     return {success: false, message: e.message};
@@ -599,7 +599,7 @@ function serverSaveTemplate(templateName, config) {
 
 function serverDeleteTemplate(templateName) {
   try {
-    const user = ensureEmailAuth();
+    const user = 'default';
     return deleteTemplate(user, templateName);
   } catch (e) {
     return {success: false, message: e.message};
