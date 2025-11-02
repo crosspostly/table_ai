@@ -544,10 +544,12 @@ function testServerConnection() {
   
   try {
     // Тест 2: POST запрос с минимальными данными
+    
     const testPayload = {
       action: 'status',
-      email: 'test@test.com',
-      token: 'test123'
+      email: 'sheepoff@gmail.com',
+      token: 'test',
+      sheetId: SpreadsheetApp.getActive().getId()
     };
     
     const postOptions = {
@@ -677,8 +679,7 @@ function onOpen() {
         .addItem('⬇️ Экспорт логов', 'exportLogsToSheet')
         .addItem('🗑 Очистить логи', 'clearLogs')
         .addItem('🔍 Тест сервера', 'testServerConnection')
-        .addItem('🧪 Dev Self Test', 'runDevSelfTest')
-        .addItem('🧪 Быстрый тест', 'quickTest')     
+        .addItem('🧪 Dev Self Test', 'runDevSelfTest')   
         .addToUi(); // ← ДОБАВЛЕН .addToUi()!
     }
 
@@ -809,41 +810,6 @@ function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
     return 'Error: ' + e.message;
   }
 }
-
-function quickTest() {
-  try {
-    addLog('🧪 QUICK TEST: Начинаем быстрый тест...', 'INFO');
-    
-    // Тест 1: Проверка настроек
-    const email = getLicenseEmail();
-    const token = getLicenseToken();
-    const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-    
-    addLog('📋 SETTINGS: email=' + (email || 'НЕТ') + ', token=' + (token ? token.substring(0, 4) + '****' : 'НЕТ') + ', apiKey=' + (apiKey ? 'ЕСТЬ' : 'НЕТ'), 'INFO');
-    
-    // Тест 2: Проверка сервера
-    addLog('🔍 Проверяем сервер...', 'INFO');
-    const status = serverStatus_();
-    addLog('🔍 SERVER STATUS RESULT: ' + JSON.stringify(status), 'INFO');
-    
-    // Тест 3: Простой GM запрос
-    if (status && status.ok) {
-      addLog('🤖 Тестовый GM запрос...', 'INFO');
-      const gmResult = GM('Привет! Ответь коротко.');
-      addLog('🤖 GM RESULT: ' + (gmResult || 'ПУСТО'), 'INFO');
-    }
-    
-    // Экспорт логов
-    exportLogsToSheet();
-    
-    SpreadsheetApp.getUi().alert('Быстрый тест завершен', 'Результаты в листе "Логи"', SpreadsheetApp.getUi().ButtonSet.OK);
-  } catch (e) {
-    addLog('❌ QUICK TEST ERROR: ' + e.message, 'ERROR');
-    exportLogsToSheet();
-    SpreadsheetApp.getUi().alert('Ошибка теста: ' + e.message);
-  }
-}
-
 
 // ====== onEdit: авто-очистка Markdown для строки 3 (B..G) ======
 function onEdit(e) {
@@ -976,65 +942,70 @@ function setLicenseCredentialsUI() {
   PropertiesService.getScriptProperties().setProperty('LICENSE_TOKEN', token);
   ui.alert('✅ Лицензия сохранена.');
 }
-function serverStatus_() {
+function serverStatus() {
   const email = getLicenseEmail();
   const token = getLicenseToken();
-  const sheetId = SpreadsheetApp.getActive().getId();
-  
+
   if (DEV_MODE) {
-    addLog('📤 STATUS REQUEST: email=' + email + ', token=' + (token ? token.substring(0, 4) + '****' : 'отсутствует') + ', sheetId=' + sheetId, 'DEBUG');
+    addLog(`STATUS REQUEST: email=${email}, token=${token ? token.substring(0, 4) + '****' : 'null'}`, 'DEBUG');
   }
-  
+
   const payload = {
-    action: 'status', 
-    email: email, 
+    action: 'status',
+    email: email,
     token: token,
-    sheetId: sheetId
+    sheetId
   };
-  
+
   const options = {
-    method: 'post', 
-    contentType: 'application/json', 
-    payload: JSON.stringify(payload), 
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };
-  
+
   try {
     const resp = UrlFetchApp.fetch(SERVER_URL, options);
     const code = resp.getResponseCode();
     const responseText = resp.getContentText();
     
     if (DEV_MODE) {
-      addLog('📥 STATUS RAW: HTTP=' + code + ', response=' + responseText.substring(0, 200) + '...', 'DEBUG');
+      addLog(`STATUS RAW: HTTP=${code}, response=${responseText.substring(0, 200)}...`, 'DEBUG');
     }
-    
+
     const data = JSON.parse(responseText);
     
     if (DEV_MODE) {
-      addLog('📥 STATUS RESULT: ok=' + (data && data.ok ? 'true' : 'false'), 'DEBUG');
-      if (data && data.message) {
-        addLog('📥 STATUS MESSAGE: ' + data.message, 'DEBUG');
-      }
-      if (data && data.quota) {
-        addLog('📥 STATUS QUOTA: ' + JSON.stringify(data.quota), 'DEBUG');
-      }
-      if (data && data.error) {
-        addLog('📥 STATUS ERROR: ' + data.error, 'ERROR');
-      }
+      addLog(`STATUS RESULT: ok=${data && data.ok ? 'true' : 'false'}`, 'DEBUG');
     }
-    
-    if (code !== 200) return {ok: false, error: (data && data.error) || ('HTTP_' + code)};
+
+    if (data && data.message) {
+      addLog(`STATUS MESSAGE: ${data.message}`, 'DEBUG');
+    }
+
+    if (data && data.quota) {
+      addLog(`STATUS QUOTA: ${JSON.stringify(data.quota)}`, 'DEBUG');
+    }
+
+    if (data && data.error) {
+      addLog(`STATUS ERROR: ${data.error}`, 'ERROR');
+    }
+
+    if (code !== 200) {
+      return {ok: false, error: (data && data.error) || `HTTP_${code}`};
+    }
+
     return data;
   } catch (e) {
-    addLog('❌ STATUS REQUEST FAILED: ' + e.message, 'ERROR');
-    return {ok: false, error: 'REQUEST_FAILED: ' + e.message};
+    addLog(`STATUS REQUEST FAILED: ${e.message}`, 'ERROR');
+    return {ok: false, error: `REQUEST_FAILED: ${e.message}`};
   }
 }
 
 
 function checkLicenseStatusUI() {
   try {
-    const st = serverStatus_();
+    const st = serverStatus();
     if (st.ok) SpreadsheetApp.getUi().alert('Лицензия', '✅ Активна' + (st.until ? (' до ' + st.until) : ''), SpreadsheetApp.getUi().ButtonSet.OK);
     else SpreadsheetApp.getUi().alert('Лицензия', '❌ ' + (st.error || 'Неизвестная ошибка'), SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
@@ -1107,77 +1078,85 @@ function saveSettingsData(data) {
   }
 }
 
-function serverGM_(prompt, maxTokens, temperature) {
+function serverGM(prompt, maxTokens, temperature) {
   const email = getLicenseEmail();
   const token = getLicenseToken();
   const apiKey = getGeminiApiKey();
-  const sheetId = SpreadsheetApp.getActive().getId();
-  
-  // DEV логирование отправляемых данных
+
+  // DEV логирование
   if (DEV_MODE) {
-    addLog('📤 SERVER REQUEST: action=gm, email=' + email + ', token=' + (token ? token.substring(0, 4) + '****' : 'отсутствует'), 'DEBUG');
-    addLog('📤 PAYLOAD: sheetId=' + sheetId + ', promptLen=' + (prompt ? prompt.length : 0) + ', maxTokens=' + maxTokens, 'DEBUG');
+    addLog(`SERVER REQUEST: action=gm, email=${email}, token=${token ? token.substring(0, 4) + '****' : 'null'}`, 'DEBUG');
+    addLog(`PAYLOAD: promptLen=${prompt ? prompt.length : 0}, maxTokens=${maxTokens}`, 'DEBUG');
+    
     if (prompt) {
-      addLog('📤 PROMPT START: ' + prompt.substring(0, 150) + '...', 'DEBUG');
+      addLog(`PROMPT START: ${prompt.substring(0, 150)}...`, 'DEBUG');
     }
   }
-  
+
   const payload = {
-    action: 'gm', 
-    email: email, 
-    token: token, 
-    apiKey: apiKey, 
-    prompt: prompt, 
-    maxTokens: maxTokens, 
+    action: 'gm',
+    email: email,
+    token: token,
+    apiKey: apiKey,
+    prompt: prompt,
+    maxTokens: maxTokens,
     temperature: temperature,
-    sheetId: sheetId
+    sheetId
   };
-  
+
   const options = {
-    method: 'post', 
-    contentType: 'application/json', 
-    payload: JSON.stringify(payload), 
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };
-  
+
   try {
-    addLog('🌐 Отправка запроса на: ' + SERVER_URL, 'DEBUG');
+    addLog(`📡 POST запрос на: ${SERVER_URL}`, 'DEBUG');
     const resp = UrlFetchApp.fetch(SERVER_URL, options);
     const code = resp.getResponseCode();
     const responseText = resp.getContentText();
-    
-    // DEV логирование сырого ответа
+
+    // DEV логирование
     if (DEV_MODE) {
-      addLog('📥 RAW RESPONSE: HTTP=' + code + ', length=' + responseText.length, 'DEBUG');
-      addLog('📥 RESPONSE START: ' + responseText.substring(0, 200) + '...', 'DEBUG');
+      addLog(`RAW RESPONSE: HTTP=${code}, length=${responseText.length}`, 'DEBUG');
+      addLog(`RESPONSE START: ${responseText.substring(0, 200)}...`, 'DEBUG');
     }
-    
+
     const data = JSON.parse(responseText);
-    
-    // DEV логирование структуры ответа
+
+    // DEV логирование
     if (DEV_MODE) {
-      addLog('📥 PARSED RESPONSE: ok=' + (data && data.ok ? 'true' : 'false'), 'DEBUG');
-      if (!data.ok && data.error) {
-        addLog('📥 SERVER ERROR: ' + data.error, 'ERROR');
-      }
-      if (data.ok && data.data) {
-        addLog('📥 GEMINI RESULT: length=' + data.data.length + ', start=' + data.data.substring(0, 100) + '...', 'DEBUG');
-      }
-      if (data.quota) {
-        addLog('📥 QUOTA INFO: ' + JSON.stringify(data.quota), 'DEBUG');
-      }
-      if (data.message) {
-        addLog('📥 LICENSE MESSAGE: ' + data.message, 'DEBUG');
-      }
+      addLog(`PARSED RESPONSE: ok=${data && data.ok ? 'true' : 'false'}`, 'DEBUG');
     }
-    
-    if (code !== 200) return {ok: false, error: (data && data.error) || ('HTTP_' + code)};
+
+    if (!data.ok && data.error) {
+      addLog(`SERVER ERROR: ${data.error}`, 'ERROR');
+    }
+
+    if (data.ok && data.data) {
+      addLog(`GEMINI RESULT: length=${data.data.length}, start=${data.data.substring(0, 100)}...`, 'DEBUG');
+    }
+
+    if (data.quota) {
+      addLog(`QUOTA INFO: ${JSON.stringify(data.quota)}`, 'DEBUG');
+    }
+
+    if (data.message) {
+      addLog(`LICENSE MESSAGE: ${data.message}`, 'DEBUG');
+    }
+
+    if (code !== 200) {
+      return {ok: false, error: (data && data.error) || `HTTP_${code}`};
+    }
+
     return data;
   } catch (e) {
-    addLog('❌ SERVER REQUEST FAILED: ' + e.message, 'ERROR');
-    return {ok: false, error: 'REQUEST_FAILED: ' + e.message};
+    addLog(`SERVER REQUEST FAILED: ${e.message}`, 'ERROR');
+    return {ok: false, error: `REQUEST_FAILED: ${e.message}`};
   }
 }
+
 function GM(prompt, maxTokens, temperature) {
   // Лицензия обязательна всегда: и в PROD, и в DEV. Если пустой email/token — блокируем.
   try {
@@ -1192,7 +1171,7 @@ function GM(prompt, maxTokens, temperature) {
       addLog('🔍 LICENSE CHECK: email=' + _email + ', token=' + (_token ? _token.substring(0, 4) + '****' : 'отсутствует'), 'DEBUG');
     }
     
-    const st0 = serverStatus_();
+    const st0 = serverStatus();
     if (!st0 || !st0.ok) {
       addLog('🚫 Отказ: лицензия неактивна или сервер недоступен. Статус: ' + (st0 && st0.error ? st0.error : 'UNKNOWN'), 'WARN');
       return 'Error: LICENSE_OR_SERVER';
