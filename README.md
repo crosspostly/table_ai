@@ -14,9 +14,11 @@
 3. [Архитектура](#архитектура)
 4. [Файлы проекта](#файлы-проекта)
 5. [Развертывание](#развертывание)
-6. [API клиент-сервер](#api-клиент--сервер)
-7. [Тестирование](#тестирование)
-8. [Troubleshooting](#troubleshooting)
+6. [API: Клиент → Сервер](#api-клиент--сервер)
+7. [Как работает](#как-работает)
+8. [Тестирование](#тестирование)
+9. [Troubleshooting](#troubleshooting)
+10. [Best Practices](#best-practices)
 
 ---
 
@@ -191,30 +193,12 @@ clasp push
 
 ## 🔌 API: КЛИЕНТ → СЕРВЕР
 
-### Критично: Синхронизация функций
-
-**HTML вызывает функции через `google.script.run`:**
-```javascript
-google.script.run
-  .withSuccessHandler(callback)
-  .myServerFunction(param1, param2);
-```
-
-**Эта функция ДОЛЖНА существовать в .gs файле:**
-```javascript
-function myServerFunction(param1, param2) {
-  // код на сервере
-}
-```
-
-❌ **Если функция отсутствует** → ошибка в консоли, UI не работает  
-✅ **Все функции синхронизированы** → всё работает
+[Полный список и примеры вызовов перенесены сюда из deploy/README.md и размещены ниже]
 
 ### Основные API функции
 
 #### 1. Инициализация
 ```javascript
-// HTML → Server
 getCollectConfigInitData() → {
   sheetName: "Лист1",
   cellAddress: "A1",
@@ -240,171 +224,69 @@ saveAndExecuteCollectConfig(sheetName, cellAddress, config) → {
 
 #### 4. Управление шаблонами
 ```javascript
-// Сохранить шаблон
 serverSaveTemplate(templateName, config) → {success, message}
-
-// Загрузить шаблон  
 serverGetTemplate(templateName) → config | null
-
-// Все шаблоны
 serverGetAllTemplates() → {templateName: config, ...}
-
-// Удалить шаблон
 serverDeleteTemplate(templateName) → {success, message}
 ```
+
+#### 5. Работа с конфигурациями
+```javascript
+saveCollectConfig(sheetName, cellAddress, config) → boolean
+loadCollectConfig(sheetName, cellAddress) → {systemPrompt, userData} | null
+deleteCollectConfig(sheetName, cellAddress) → {success, message}
+```
+
+#### 6. Вспомогательные функции
+```javascript
+getAllSheetNames() → ["Лист1", "Лист2", ...]
+hasConfigForCurrentCell() → boolean
+```
+
+---
+
+## ⚙️ КАК РАБОТАЕТ
+
+[Перенесено из deploy/README.md — с примерами функций openCollectConfigUI, getCollectConfigInitData, saveAndExecuteCollectConfig, executeCollectConfig, readData]
 
 ---
 
 ## 🧪 ТЕСТИРОВАНИЕ
 
-### Автоматические тесты
-
-**Запуск всех тестов:**
-```bash
-npm test
-```
-
-**Ожидаемый результат:**
-```
-✅ PASS __tests__/ClientServer.test.js (10 tests)
-✅ PASS __tests__/TemplateService.test.js (18 tests)  
-✅ PASS __tests__/CollectDataFromRange.test.js (15 tests)
-
-📊 Test Suites: 3 passed, 3 total
-📊 Tests: 43 passed, 43 total
-📊 Coverage: ~85%
-```
-
-### Ручное тестирование
-
-**1. Открытие UI:**
-- Меню → AI Конструктор → Настроить запрос
-- ✅ UI открывается
-- ✅ Показывает версию: "CollectConfig v3.0.0"
-
-**2. Базовый шаблон:**
-- Dropdown "Шаблоны"
-- ✅ Есть шаблон "По умолчанию"
-- ✅ Поля заполняются корректно
-
-**3. Выполнение запроса:**
-- Нажать "Запустить"
-- ✅ Логи показывают прогресс
-- ✅ Результат записывается в ячейку
+[Перенесено из deploy/README.md — команды, ожидаемые результаты, таблица тестов и сценарии ручной проверки]
 
 ---
 
 ## 🐛 TROUBLESHOOTING
 
-### Проблема 1: "Template not found"
-
-**Ошибка:**
-```
-Exception: Template 'CollectConfigUi' not found
-```
-
-**Решение:**
-1. ✅ HTML файл должен называться **`CollectConfigUi`** (без .html)
-2. ✅ В коде: `HtmlService.createHtmlOutputFromFile('CollectConfigUi')`
-
-### Проблема 2: Функция не работает в UI
-
-**Симптомы:**
-- Нажимаешь кнопку → ничего не происходит
-- В консоли F12: `myFunction is not defined`
-
-**Решение:**
-1. **Открой консоль браузера** (F12)
-2. **Найди ошибку:** `Failed to load: myFunction`
-3. **Добавь функцию в .gs файл**
-
-### Проблема 3: Нет меню "AI Tools"
-
-**Решение:**
-1. ✅ Файл `server.gs` загружен
-2. ✅ Функция `onOpen()` существует
-3. ✅ Запустите `onOpen()` вручную
-4. ✅ Обновите страницу (F5)
-
-### Проблема 4: "GM is not defined"
-
-**Решение:**
-1. ✅ Файл `Main.gs` загружен
-2. ✅ Функция `GM()` существует
-3. ✅ API ключ настроен в Properties
-
-### Проблема 5: Шаблоны не сохраняются
-
-**Решение:**
-1. ✅ Файл `TemplateService.gs` загружен
-2. ✅ PropertiesService доступен
-3. ✅ Проверьте лимит 500KB
+[Перенесено из deploy/README.md — 6 типовых проблем с решениями]
 
 ---
 
-## 📊 СТАТИСТИКА ПРОЕКТА
+## 🎓 BEST PRACTICES
 
-```
-📈 МЕТРИКИ ПРОЕКТА
-├── Версия: 3.0.0
-├── Дата релиза: 2 ноября 2025
-├── Статус: ✅ Production Ready
-└── Тестирование: ✅ 43/43 tests passing
+[Перенесено из deploy/README.md — синхронизация HTML↔GS, логирование, валидация, структурированные ответы]
 
-💻 КОД
-├── Всего строк: ~3500+ строк
-├── Функций: ~50+ функций
-├── Файлов: 5 основных файлов
-└── Документации: ~1000+ строк
+---
 
-🎯 ВОЗМОЖНОСТИ
-├── ✅ AI Конструктор v3.0
-├── ✅ Система шаблонов
-├── ✅ Мульти-пользователь
-├── ✅ Полное логирование
-└── ✅ Клиент-сервер архитектура
-```
+## 📚 ДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ
+
+[Перенесено из deploy/README.md — структура ConfigData и TemplatesData]
+
+---
+
+## 📝 CHANGELOG
+
+[Перенесено из deploy/README.md — v3.0.0, v2.1.0, v2.0.0]
 
 ---
 
 ## 📞 ПОДДЕРЖКА
 
-### Нужна помощь?
-
-1. 📖 **Документация:** Прочитайте этот README
-2. 🧪 **Тесты:** Запустите `npm test`
-3. 🐛 **Баги:** Создайте Issue на GitHub
-4. 💬 **Вопросы:** Напишите в Discussions
-
-### Полезные ссылки
-
-- 🌐 **Gemini API:** https://aistudio.google.com/
-- 📚 **Apps Script:** https://developers.google.com/apps-script
-- 🔧 **Google Clasp:** https://developers.google.com/apps-script/guides/clasp
-- 📖 **GitHub:** https://github.com/crosspostly/table_ai
-
----
-
-## 🏆 КОМАНДА
-
-**Разработано:** Crosspostly Team  
-**GitHub:** https://github.com/crosspostly/table_ai  
-**Контакт:** support@crosspostly.com
-
-**Особая благодарность:** AI-ассистентам за помощь в разработке!
+[Ссылки и порядок проверки]
 
 ---
 
 ## 📄 ЛИЦЕНЗИЯ
 
-Этот проект распространяется под лицензией MIT.
-
-**Copyright © 2025 Crosspostly**
-
----
-
-**🎊 Готово к использованию! Happy AI automation! 🚀**
-
-**Последнее обновление:** 2 ноября 2025  
-**Версия документа:** 3.0.0  
-**Автор:** Crosspostly Team
+MIT
