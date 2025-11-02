@@ -128,12 +128,15 @@ function _validateTemplateConfig(config) {
 /**
  * Получить идентификатор текущего пользователя
  * @private
- * @return {string} Всегда возвращает 'default' (общее хранилище для всех)
+ * @return {string} Email пользователя или 'anonymous'
  */
 function _getCurrentUser() {
-  // Используем общее хранилище для всех пользователей
-  // Это избегает проблем с разрешениями Session API
-  return 'default';
+  try {
+    const email = Session.getActiveUser().getEmail();
+    return email || 'anonymous';
+  } catch (e) {
+    return 'anonymous';
+  }
 }
 
 /**
