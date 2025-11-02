@@ -667,14 +667,19 @@ function onOpen() {
       .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
       .addSeparator()
       .addItem('⚙️ Настройки', 'openSettingsUI')
+      .addItem('🔒 Проверить лицензию', 'checkLicenseStatusUI')
       .addToUi();
 
+    // ✅ ИСПРАВЛЕНО DEV МЕНЮ:
     if (DEV_MODE) {
       ui.createMenu('🧰 DEV')
         .addItem('📝 Показать логи', 'showLogsDialog')
         .addItem('⬇️ Экспорт логов', 'exportLogsToSheet')
         .addItem('🗑 Очистить логи', 'clearLogs')
-        .addToUi();
+        .addItem('🔍 Тест сервера', 'testServerConnection')
+        .addItem('🧪 Dev Self Test', 'runDevSelfTest')
+        .addItem('🧪 Быстрый тест', 'quickTest')     
+        .addToUi(); // ← ДОБАВЛЕН .addToUi()!
     }
 
     addLog('✅ Меню загружено успешно', 'INFO');
@@ -684,56 +689,7 @@ function onOpen() {
   }
 }
 
-// ====== ЗАГЛУШКИ ДЛЯ ФУНКЦИЙ ИЗ ДРУГИХ ФАЙЛОВ ======
-function openCollectConfigUI() {
-  try {
-    addLog('🎯 Открытие AI Конструктора...', 'INFO');
-    // Эта функция должна быть в CollectConfig.gs
-    SpreadsheetApp.getUi().alert('AI Конструктор', 'Функция должна быть в CollectConfig.gs', SpreadsheetApp.getUi().ButtonSet.OK);
-  } catch (e) {
-    addLog('❌ Ошибка AI Конструктора: ' + e.message, 'ERROR');
-  }
-}
 
-function refreshCellWithConfig() {
-  try {
-    addLog('🔄 Обновление ячейки с конфигом...', 'INFO');
-    // Эта функция должна быть в CollectConfig.gs
-    SpreadsheetApp.getUi().alert('Обновление ячейки', 'Функция должна быть в CollectConfig.gs', SpreadsheetApp.getUi().ButtonSet.OK);
-  } catch (e) {
-    addLog('❌ Ошибка обновления ячейки: ' + e.message, 'ERROR');
-  }
-}
-
-function openTemplatesUI() {
-  try {
-    addLog('🗂️ Открытие управления шаблонами...', 'INFO');
-    // Эта функция должна быть в CollectConfig.gs
-    SpreadsheetApp.getUi().alert('Управление шаблонами', 'Функция должна быть в CollectConfig.gs', SpreadsheetApp.getUi().ButtonSet.OK);
-  } catch (e) {
-    addLog('❌ Ошибка управления шаблонами: ' + e.message, 'ERROR');
-  }
-}
-
-function showCollectConfigHelp() {
-  try {
-    addLog('❓ Показ справки AI Конструктора...', 'INFO');
-    // Эта функция должна быть в CollectConfig.gs
-    SpreadsheetApp.getUi().alert('Справка AI Конструктора', 'Функция должна быть в CollectConfig.gs', SpreadsheetApp.getUi().ButtonSet.OK);
-  } catch (e) {
-    addLog('❌ Ошибка справки: ' + e.message, 'ERROR');
-  }
-}
-
-function ocrRun() {
-  try {
-    addLog('🖼️ Запуск транскрибации отзывов...', 'INFO');
-    // Эта функция должна быть в ocrRunV2_client.gs
-    SpreadsheetApp.getUi().alert('Транскрибация отзывов', 'Функция должна быть в ocrRunV2_client.gs', SpreadsheetApp.getUi().ButtonSet.OK);
-  } catch (e) {
-    addLog('❌ Ошибка транскрибации: ' + e.message, 'ERROR');
-  }
-}
 
 // Быстрое обновление активной GM-ячейки: пересоздаём формулу, чтобы заново вызвать Gemini
 function refreshCurrentGMCell() {
@@ -741,12 +697,14 @@ function refreshCurrentGMCell() {
     const ss = SpreadsheetApp.getActive();
     const range = ss.getActiveRange();
     if (!range) {
-      SpreadsheetApp.getUi().alert('Информация', 'Выберите ячейку на листе "Распаковка"', SpreadsheetApp.getUi().ButtonSet.OK); return;
+      SpreadsheetApp.getUi().alert('Информация', 'Выберите ячейку на листе "Распаковка"', SpreadsheetApp.getUi().ButtonSet.OK); 
+      return;
     }
     const cell = range.getCell(1, 1);
     const sheet = cell.getSheet();
     if (sheet.getName() !== 'Распаковка') {
-      SpreadsheetApp.getUi().alert('Информация', 'Выберите ячейку на листе "Распаковка"', SpreadsheetApp.getUi().ButtonSet.OK); return;
+      SpreadsheetApp.getUi().alert('Информация', 'Выберите ячейку на листе "Распаковка"', SpreadsheetApp.getUi().ButtonSet.OK); 
+      return;
     }
     const row = cell.getRow();
     const col = cell.getColumn();
@@ -793,7 +751,8 @@ function refreshCurrentGMCell() {
       }
     }
     if (!formula) {
-      SpreadsheetApp.getUi().alert('Информация', 'Нечего обновлять: в ячейке нет GM-формулы и нет соответствия в Prompt_box!B', SpreadsheetApp.getUi().ButtonSet.OK); return;
+      SpreadsheetApp.getUi().alert('Информация', 'Нечего обновлять: в ячейке нет GM-формулы и нет соответствия в Prompt_box!B', SpreadsheetApp.getUi().ButtonSet.OK); 
+      return;
     }
 
     cell.clearContent();
@@ -807,6 +766,85 @@ function refreshCurrentGMCell() {
     SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
   }
 }
+function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
+  try {
+    let condVal = false;
+    // Нормализуем вход в одно скалярное значение
+    let raw = condition;
+    if (Array.isArray(raw)) {
+      raw = (raw[0] && raw[0].length ? raw[0][0] : raw[0] || '');
+    }
+    const t = typeof raw;
+    if (t === 'boolean') {
+      condVal = raw === true;
+    } else if (t === 'number') {
+      condVal = raw !== 0;
+    } else if (t === 'string') {
+      const s = raw.trim().toLowerCase();
+      // TRUE/ FALSE в любой локали: ИСТИНА/ЛОЖЬ; также 1/0; пустая строка → false
+      condVal = (s === 'true' || s === 'истина' || s === '1' || s === 'да');
+    } else {
+      condVal = !!raw;
+    }
+    
+    if (!condVal) {
+      if (DEV_MODE) {
+        addLog('GM_IF: условие false, пропускаем', 'DEBUG');
+      }
+      return '';
+    }
+    
+    if (Array.isArray(prompt)) prompt = prompt[0][0];
+    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) return '';
+    if (maxTokens == null) maxTokens = 25000;
+    if (temperature == null) temperature = 0.7;
+    
+    if (DEV_MODE) {
+      addLog('GM_IF: условие true, вызываем GM', 'DEBUG');
+    }
+    
+    return GM(prompt, maxTokens, temperature);
+  } catch (e) {
+    addLog('❌ GM_IF ошибка: ' + e.message, 'ERROR');
+    return 'Error: ' + e.message;
+  }
+}
+
+function quickTest() {
+  try {
+    addLog('🧪 QUICK TEST: Начинаем быстрый тест...', 'INFO');
+    
+    // Тест 1: Проверка настроек
+    const email = getLicenseEmail();
+    const token = getLicenseToken();
+    const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+    
+    addLog('📋 SETTINGS: email=' + (email || 'НЕТ') + ', token=' + (token ? token.substring(0, 4) + '****' : 'НЕТ') + ', apiKey=' + (apiKey ? 'ЕСТЬ' : 'НЕТ'), 'INFO');
+    
+    // Тест 2: Проверка сервера
+    addLog('🔍 Проверяем сервер...', 'INFO');
+    const status = serverStatus_();
+    addLog('🔍 SERVER STATUS RESULT: ' + JSON.stringify(status), 'INFO');
+    
+    // Тест 3: Простой GM запрос
+    if (status && status.ok) {
+      addLog('🤖 Тестовый GM запрос...', 'INFO');
+      const gmResult = GM('Привет! Ответь коротко.');
+      addLog('🤖 GM RESULT: ' + (gmResult || 'ПУСТО'), 'INFO');
+    }
+    
+    // Экспорт логов
+    exportLogsToSheet();
+    
+    SpreadsheetApp.getUi().alert('Быстрый тест завершен', 'Результаты в листе "Логи"', SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e) {
+    addLog('❌ QUICK TEST ERROR: ' + e.message, 'ERROR');
+    exportLogsToSheet();
+    SpreadsheetApp.getUi().alert('Ошибка теста: ' + e.message);
+  }
+}
+
+
 // ====== onEdit: авто-очистка Markdown для строки 3 (B..G) ======
 function onEdit(e) {
   const range = e.range;
