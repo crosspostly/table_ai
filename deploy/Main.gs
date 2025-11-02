@@ -239,38 +239,6 @@ function isCompletionReady(text) {
   return rdy;
 }
 
-// ====== НОВАЯ БЕЗОПАСНАЯ ЦЕПОЧКА ТОЛЬКО ДЛЯ A3 (B3..G3) через GM_IF ======
-function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
-  try {
-    let condVal = false;
-    // Нормализуем вход в одно скалярное значение
-    let raw = condition;
-    if (Array.isArray(raw)) {
-      raw = (raw[0] && raw[0].length ? raw[0][0] : raw[0] || '');
-    }
-    const t = typeof raw;
-    if (t === 'boolean') {
-      condVal = raw === true;
-    } else if (t === 'number') {
-      condVal = raw !== 0;
-    } else if (t === 'string') {
-      const s = raw.trim().toLowerCase();
-      // TRUE/ FALSE в любой локали: ИСТИНА/ЛОЖЬ; также 1/0; пустая строка → false
-      condVal = (s === 'true' || s === 'истина' || s === '1' || s === 'да');
-    } else {
-      condVal = !!raw;
-    }
-    if (!condVal) return '';
-    if (Array.isArray(prompt)) prompt = prompt[0][0];
-    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) return '';
-    if (maxTokens == null) maxTokens = 25000;
-    if (temperature == null) temperature = 0.7;
-    return GM(prompt, maxTokens, temperature);
-  } catch (e) {
-    addLog('❌ GM_IF ошибка: ' + e.message, 'ERROR');
-    return 'Error: ' + e.message;
-  }
-}
 function columnToLetter(column) {
   let temp; let letter = '';
   while (column > 0) {
@@ -552,43 +520,74 @@ function gmCachePut_(key, value, ttlSec) {
     CacheService.getScriptCache().put(key, value, ttl);
   } catch (e) {}
 }
-function GM(prompt, maxTokens = 25000, temperature = 0.7) {
-  addLog('→ GM: prompt=' + (prompt ? prompt.slice(0, 60)+'...' : 'нет') + ' (' + (prompt ? prompt.length : 0) + ')', 'INFO');
-  if (!prompt || typeof prompt !== 'string') throw new Error('Промпт должен быть непустой строкой.');
-  if (prompt.length > 50000) throw new Error('Промпт слишком длинный, сократите до 50000 символов.');
-
-  const apiKey = getGeminiApiKey();
-  const requestBody = {
-    contents: [{parts: [{text: prompt}]}],
-    generationConfig: {maxOutputTokens: maxTokens, temperature: temperature},
-  };
-  const options = {
-    method: 'POST',
-    contentType: 'application/json',
-    payload: JSON.stringify(requestBody),
-    muteHttpExceptions: true,
-  };
-
+function testServerConnection() {
+  addLog('🔍 Тестирование подключения к серверу...', 'INFO');
+  
   try {
-    const response = UrlFetchApp.fetch(GEMINI_API_URL + '?key=' + apiKey, options);
-    const responseData = JSON.parse(response.getContentText());
-    addLog('← GM: HTTP ' + response.getResponseCode(), 'DEBUG');
-    if (response.getResponseCode() !== 200) {
-      const message = responseData.error && responseData.error.message ? responseData.error.message : 'Unknown error';
-      addLog('❌ GM API ошибка: ' + message, 'ERROR');
-      return 'Error: ' + message;
+    // Тест 1: GET запрос (ping)
+    addLog('📡 GET запрос на: ' + SERVER_URL, 'DEBUG');
+    const getResp = UrlFetchApp.fetch(SERVER_URL + '?test=ping', {muteHttpExceptions: true});
+    const getCode = getResp.getResponseCode();
+    const getText = getResp.getContentText();
+    
+    addLog('📥 GET RESPONSE: HTTP=' + getCode, 'DEBUG');
+    addLog('📥 GET CONTENT: ' + getText.substring(0, 200) + '...', 'DEBUG');
+    
+    if (getCode === 200) {
+      addLog('✅ GET запрос успешен', 'INFO');
+    } else {
+      addLog('❌ GET запрос провален: ' + getCode, 'ERROR');
     }
-    const candidate = responseData.candidates && responseData.candidates[0];
-    const content = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
-    const result = content && content.text ? content.text : 'Ошибка обработки данных';
-    const processedResult = processGeminiResponse(result);
-    addLog('✅ GM: результат, длина=' + result.length + (processedResult !== result ? ', преобразован из Markdown' : ''), 'INFO');
-    return processedResult;
-  } catch (error) {
-    addLog('❌ GM исключение: ' + error.message, 'ERROR');
-    return 'Error: ' + error.message;
+  } catch (e) {
+    addLog('❌ GET запрос exception: ' + e.message, 'ERROR');
   }
+  
+  try {
+    // Тест 2: POST запрос с минимальными данными
+    const testPayload = {
+      action: 'status',
+      email: 'test@test.com',
+      token: 'test123'
+    };
+    
+    const postOptions = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(testPayload),
+      muteHttpExceptions: true
+    };
+    
+    addLog('📡 POST запрос на: ' + SERVER_URL, 'DEBUG');
+    addLog('📤 POST PAYLOAD: ' + JSON.stringify(testPayload), 'DEBUG');
+    
+    const postResp = UrlFetchApp.fetch(SERVER_URL, postOptions);
+    const postCode = postResp.getResponseCode();
+    const postText = postResp.getContentText();
+    
+    addLog('📥 POST RESPONSE: HTTP=' + postCode, 'DEBUG');
+    addLog('📥 POST CONTENT: ' + postText.substring(0, 300) + '...', 'DEBUG');
+    
+    if (postCode === 200) {
+      try {
+        const postData = JSON.parse(postText);
+        addLog('✅ POST запрос успешен, JSON валиден', 'INFO');
+        addLog('📥 POST DATA: ' + JSON.stringify(postData), 'DEBUG');
+      } catch (jsonErr) {
+        addLog('❌ POST ответ не JSON: ' + jsonErr.message, 'ERROR');
+      }
+    } else {
+      addLog('❌ POST запрос провален: ' + postCode, 'ERROR');
+    }
+  } catch (e2) {
+    addLog('❌ POST запрос exception: ' + e2.message, 'ERROR');
+  }
+  
+  // Экспортируем логи для просмотра
+  exportLogsToSheet();
+  
+  SpreadsheetApp.getUi().alert('Тестирование завершено', 'Результаты в листе "Логи"', SpreadsheetApp.getUi().ButtonSet.OK);
 }
+
 function initGeminiKey() {
   const ui = SpreadsheetApp.getUi();
   const help = 'Где взять ключ (коротко):\n' +
@@ -942,14 +941,59 @@ function setLicenseCredentialsUI() {
 function serverStatus_() {
   const email = getLicenseEmail();
   const token = getLicenseToken();
-  const payload = {action: 'status', email: email, token: token};
-  const options = {method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true};
-  const resp = UrlFetchApp.fetch(SERVER_URL, options);
-  const code = resp.getResponseCode();
-  const data = JSON.parse(resp.getContentText());
-  if (code !== 200) return {ok: false, error: (data && data.error) || ('HTTP_' + code)};
-  return data;
+  const sheetId = SpreadsheetApp.getActive().getId();
+  
+  if (DEV_MODE) {
+    addLog('📤 STATUS REQUEST: email=' + email + ', token=' + (token ? token.substring(0, 4) + '****' : 'отсутствует') + ', sheetId=' + sheetId, 'DEBUG');
+  }
+  
+  const payload = {
+    action: 'status', 
+    email: email, 
+    token: token,
+    sheetId: sheetId
+  };
+  
+  const options = {
+    method: 'post', 
+    contentType: 'application/json', 
+    payload: JSON.stringify(payload), 
+    muteHttpExceptions: true
+  };
+  
+  try {
+    const resp = UrlFetchApp.fetch(SERVER_URL, options);
+    const code = resp.getResponseCode();
+    const responseText = resp.getContentText();
+    
+    if (DEV_MODE) {
+      addLog('📥 STATUS RAW: HTTP=' + code + ', response=' + responseText.substring(0, 200) + '...', 'DEBUG');
+    }
+    
+    const data = JSON.parse(responseText);
+    
+    if (DEV_MODE) {
+      addLog('📥 STATUS RESULT: ok=' + (data && data.ok ? 'true' : 'false'), 'DEBUG');
+      if (data && data.message) {
+        addLog('📥 STATUS MESSAGE: ' + data.message, 'DEBUG');
+      }
+      if (data && data.quota) {
+        addLog('📥 STATUS QUOTA: ' + JSON.stringify(data.quota), 'DEBUG');
+      }
+      if (data && data.error) {
+        addLog('📥 STATUS ERROR: ' + data.error, 'ERROR');
+      }
+    }
+    
+    if (code !== 200) return {ok: false, error: (data && data.error) || ('HTTP_' + code)};
+    return data;
+  } catch (e) {
+    addLog('❌ STATUS REQUEST FAILED: ' + e.message, 'ERROR');
+    return {ok: false, error: 'REQUEST_FAILED: ' + e.message};
+  }
 }
+
+
 function checkLicenseStatusUI() {
   try {
     const st = serverStatus_();
@@ -1024,17 +1068,77 @@ function saveSettingsData(data) {
     return {success: false, message: 'Ошибка: ' + e.message};
   }
 }
+
 function serverGM_(prompt, maxTokens, temperature) {
   const email = getLicenseEmail();
   const token = getLicenseToken();
   const apiKey = getGeminiApiKey();
-  const payload = {action: 'gm', email: email, token: token, apiKey: apiKey, prompt: prompt, maxTokens: maxTokens, temperature: temperature};
-  const options = {method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true};
-  const resp = UrlFetchApp.fetch(SERVER_URL, options);
-  const code = resp.getResponseCode();
-  const data = JSON.parse(resp.getContentText());
-  if (code !== 200) return {ok: false, error: (data && data.error) || ('HTTP_' + code)};
-  return data;
+  const sheetId = SpreadsheetApp.getActive().getId();
+  
+  // DEV логирование отправляемых данных
+  if (DEV_MODE) {
+    addLog('📤 SERVER REQUEST: action=gm, email=' + email + ', token=' + (token ? token.substring(0, 4) + '****' : 'отсутствует'), 'DEBUG');
+    addLog('📤 PAYLOAD: sheetId=' + sheetId + ', promptLen=' + (prompt ? prompt.length : 0) + ', maxTokens=' + maxTokens, 'DEBUG');
+    if (prompt) {
+      addLog('📤 PROMPT START: ' + prompt.substring(0, 150) + '...', 'DEBUG');
+    }
+  }
+  
+  const payload = {
+    action: 'gm', 
+    email: email, 
+    token: token, 
+    apiKey: apiKey, 
+    prompt: prompt, 
+    maxTokens: maxTokens, 
+    temperature: temperature,
+    sheetId: sheetId
+  };
+  
+  const options = {
+    method: 'post', 
+    contentType: 'application/json', 
+    payload: JSON.stringify(payload), 
+    muteHttpExceptions: true
+  };
+  
+  try {
+    addLog('🌐 Отправка запроса на: ' + SERVER_URL, 'DEBUG');
+    const resp = UrlFetchApp.fetch(SERVER_URL, options);
+    const code = resp.getResponseCode();
+    const responseText = resp.getContentText();
+    
+    // DEV логирование сырого ответа
+    if (DEV_MODE) {
+      addLog('📥 RAW RESPONSE: HTTP=' + code + ', length=' + responseText.length, 'DEBUG');
+      addLog('📥 RESPONSE START: ' + responseText.substring(0, 200) + '...', 'DEBUG');
+    }
+    
+    const data = JSON.parse(responseText);
+    
+    // DEV логирование структуры ответа
+    if (DEV_MODE) {
+      addLog('📥 PARSED RESPONSE: ok=' + (data && data.ok ? 'true' : 'false'), 'DEBUG');
+      if (!data.ok && data.error) {
+        addLog('📥 SERVER ERROR: ' + data.error, 'ERROR');
+      }
+      if (data.ok && data.data) {
+        addLog('📥 GEMINI RESULT: length=' + data.data.length + ', start=' + data.data.substring(0, 100) + '...', 'DEBUG');
+      }
+      if (data.quota) {
+        addLog('📥 QUOTA INFO: ' + JSON.stringify(data.quota), 'DEBUG');
+      }
+      if (data.message) {
+        addLog('📥 LICENSE MESSAGE: ' + data.message, 'DEBUG');
+      }
+    }
+    
+    if (code !== 200) return {ok: false, error: (data && data.error) || ('HTTP_' + code)};
+    return data;
+  } catch (e) {
+    addLog('❌ SERVER REQUEST FAILED: ' + e.message, 'ERROR');
+    return {ok: false, error: 'REQUEST_FAILED: ' + e.message};
+  }
 }
 function GM(prompt, maxTokens, temperature) {
   // Лицензия обязательна всегда: и в PROD, и в DEV. Если пустой email/token — блокируем.
@@ -1045,10 +1149,19 @@ function GM(prompt, maxTokens, temperature) {
       addLog('🚫 Отказ: лицензия не задана (email/token пустые)', 'WARN');
       return 'Error: LICENSE_REQUIRED';
     }
+    
+    if (DEV_MODE) {
+      addLog('🔍 LICENSE CHECK: email=' + _email + ', token=' + (_token ? _token.substring(0, 4) + '****' : 'отсутствует'), 'DEBUG');
+    }
+    
     const st0 = serverStatus_();
     if (!st0 || !st0.ok) {
-      addLog('🚫 Отказ: лицензия неактивна или сервер недоступен', 'WARN');
+      addLog('🚫 Отказ: лицензия неактивна или сервер недоступен. Статус: ' + (st0 && st0.error ? st0.error : 'UNKNOWN'), 'WARN');
       return 'Error: LICENSE_OR_SERVER';
+    }
+    
+    if (DEV_MODE) {
+      addLog('✅ LICENSE OK: ' + (st0.message || 'активна') + (st0.quota ? ', квота: ' + JSON.stringify(st0.quota) : ''), 'DEBUG');
     }
   } catch (eLic) {
     addLog('🚫 Отказ: ошибка проверки лицензии: ' + eLic.message, 'WARN');
@@ -1057,33 +1170,51 @@ function GM(prompt, maxTokens, temperature) {
 
   if (maxTokens == null) maxTokens = 25000;
   if (temperature == null) temperature = 0.7;
-  addLog('→ GM (proxy): prompt=' + (prompt ? prompt.slice(0, 60)+'...' : 'нет') + ' (' + (prompt ? prompt.length : 0) + ')', 'INFO');
+  addLog('→ GM (proxy): prompt=' + (prompt ? prompt.slice(0, 60)+'...' : 'нет') + ' (' + (prompt ? prompt.length : 0) + ' символов)', 'INFO');
   if (!prompt || typeof prompt !== 'string') throw new Error('Промпт должен быть непустой строкой.');
   if (prompt.length > 50000) throw new Error('Промпт слишком длинный, сократите до 50000 символов.');
+  
   const key = gmCacheKey_(prompt, maxTokens, temperature);
-  const cached = gmCacheGet_(key); if (cached) {
-    addLog('⚡ GM cache-hit', 'DEBUG'); return cached;
+  const cached = gmCacheGet_(key); 
+  if (cached) {
+    addLog('⚡ GM cache-hit: найден кэшированный ответ', 'DEBUG'); 
+    return cached;
   }
+  
   const errKey = 'gm_err:' + key;
-  const lastErr = gmCacheGet_(errKey); if (lastErr) {
-    addLog('⏳ GM last-error cached, skip call', 'DEBUG'); return lastErr;
+  const lastErr = gmCacheGet_(errKey); 
+  if (lastErr) {
+    addLog('⏳ GM last-error cached, skip call', 'DEBUG'); 
+    return lastErr;
   }
-  let ok = false; let text = ''; let serr = null;
+  
+  let ok = false; 
+  let text = ''; 
+  let serr = null;
+  
   try {
+    addLog('🚀 Отправка запроса через serverGM_...', 'DEBUG');
     const r = serverGM_(prompt, maxTokens, temperature);
     if (r && r.ok) {
-      ok = true; text = r.data || '';
+      ok = true; 
+      text = r.data || '';
+      addLog('✅ Сервер вернул успешный ответ, длина: ' + text.length, 'DEBUG');
     } else {
       serr = (r && r.error) || 'SERVER_ERROR';
+      addLog('❌ Сервер вернул ошибку: ' + serr, 'WARN');
     }
   } catch (e) {
     serr = e.message;
+    addLog('❌ Исключение при вызове serverGM_: ' + serr, 'ERROR');
   }
+  
   if (ok) {
     const processed = processGeminiResponse(text);
     gmCachePut_(key, processed, 21600);
+    addLog('✅ GM успешно: ответ обработан и закэширован', 'INFO');
     return processed;
   }
+  
   if (DEV_MODE) {
     addLog('⚠️ DEV fallback → прямой Gemini. Причина: ' + (serr || 'UNKNOWN'), 'WARN');
     try {
@@ -1096,8 +1227,9 @@ function GM(prompt, maxTokens, temperature) {
       addLog('← GM (direct): HTTP ' + code, 'DEBUG');
       if (code !== 200) {
         const message = data && data.error && data.error.message ? data.error.message : 'Unknown error';
-        var msg = 'Error: ' + message;
+        const msg = 'Error: ' + message;
         gmCachePut_(errKey, msg, 60);
+        addLog('❌ Прямой Gemini: ' + message, 'ERROR');
         return msg;
       }
       const candidate = data.candidates && data.candidates[0];
@@ -1105,14 +1237,18 @@ function GM(prompt, maxTokens, temperature) {
       const txt = content && content.text ? content.text : '';
       const processed2 = processGeminiResponse(txt);
       gmCachePut_(key, processed2, 21600);
+      addLog('✅ Прямой Gemini успешно: ' + txt.length + ' символов', 'DEBUG');
       return processed2;
     } catch (e2) {
       const em = 'Error: ' + e2.message;
       gmCachePut_(errKey, em, 60);
+      addLog('❌ Прямой Gemini упал: ' + e2.message, 'ERROR');
       return em;
     }
   }
-  var msg = 'Error: ' + (serr || 'LICENSE_OR_SERVER');
+  
+  const msg = 'Error: ' + (serr || 'LICENSE_OR_SERVER');
   gmCachePut_(errKey, msg, 60);
+  addLog('❌ GM финальная ошибка: ' + msg, 'ERROR');
   return msg;
 }
