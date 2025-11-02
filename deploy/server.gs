@@ -88,10 +88,24 @@ function doPost(e) {
 
 // ===== License =====
 function checkLicense_(token, email) {
+  const lock = LockService.getScriptLock();
   try {
+    lock.waitLock(10000); // 10 секунд ожидания
+    
     if (!token) return {ok: false, error: 'NO_TOKEN'};
     if (!email) return {ok: false, error: 'NO_EMAIL'};
 
+    // Получаем ID текущей таблицы из запроса (если доступен)
+    let currentSheetId = null;
+    try {
+      // Пытаемся получить ID из контекста, если запрос идет из таблицы
+      currentSheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+    } catch (e) {
+      // В server.gs может не быть активной таблицы, получим ID другим способом
+      // ID будет передан в requestData или получен из referrer
+      console.log('Cannot get active spreadsheet in server context');
+    }
+    
     const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
     const sh = LICENSE_SHEET_NAME ? ss.getSheetByName(LICENSE_SHEET_NAME) : ss.getSheets()[0];
     if (!sh) return {ok: false, error: 'LICENSE_SHEET_NOT_FOUND'};
@@ -103,28 +117,40 @@ function checkLicense_(token, email) {
     const header = values[0].map(function(x) {
       return String(x || '').toLowerCase().trim();
     });
-    // Column detection (allow RU/EN aliases)
+
+    // Ищем колонки (поддерживаем и старый и новый формат)
     const colEmail = findHeader_(header, ['email', 'e-mail', 'почта', 'емейл']);
     const colToken = findHeader_(header, ['token', 'токен']);
     const colUntil = findHeader_(header, ['until', 'expiry', 'expires', 'дата окончания', 'окончание', 'срок', 'expireddate']);
     const colStatus = findHeader_(header, ['status', 'статус']);
+    
+    // Новые колонки для привязки листов
+    const colSheetIds = findHeader_(header, ['sheet_ids', 'sheets', 'айди таблиц', 'таблицы']);
+    const colCopiesCount = findHeader_(header, ['copies_count', 'copies', 'количество копий', 'копии']);
 
     if (colToken < 0 || colEmail < 0 || colStatus < 0) {
       return {ok: false, error: 'LICENSE_HEADERS_MISSING'};
     }
 
+    // Если нет колонок для привязки - работаем в старом режиме (без проверки листов)
+    const hasSheetBinding = (colSheetIds >= 0 && colCopiesCount >= 0);
+
     const emailL = String(email).toLowerCase().trim();
     const tokenS = String(token).trim();
     const now = new Date();
+
     for (let r = 1; r < values.length; r++) {
       const row = values[r];
       const em = String(row[colEmail] || '').toLowerCase().trim();
       const t = String(row[colToken] || '').trim();
+      
       if (t && em && t === tokenS && em === emailL) {
+        // Базовые проверки статуса
         const status = String(row[colStatus] || '').toLowerCase().trim();
         const active = (status === 'active' || status === 'активен' || status === 'активный');
         if (!active) return {ok: false, error: 'INACTIVE', row: r + 1};
 
+        // Проверка даты истечения
         let untilOk = true; let untilIso = null;
         if (colUntil >= 0) {
           const cell = row[colUntil];
@@ -135,14 +161,96 @@ function checkLicense_(token, email) {
           }
         }
         if (!untilOk) return {ok: false, error: 'EXPIRED', until: untilIso, row: r + 1};
-        return {ok: true, until: untilIso, row: r + 1};
+
+        // Если нет системы привязки листов - просто разрешаем
+        if (!hasSheetBinding) {
+          return {ok: true, until: untilIso, row: r + 1, message: 'NO_SHEET_BINDING'};
+        }
+
+        // Если нет ID текущей таблицы - разрешаем (может быть системный запрос)
+        if (!currentSheetId) {
+          return {ok: true, until: untilIso, row: r + 1, message: 'NO_SHEET_CONTEXT'};
+        }
+
+        // Работа с привязкой листов
+        const sheetIds = String(row[colSheetIds] || '').trim();
+        const copiesCount = parseInt(row[colCopiesCount] || '0');
+
+        // Если поле sheet_ids пустое - новая лицензия
+        if (!sheetIds) {
+          // Проверяем остались ли копии
+          if (copiesCount <= 0) {
+            return {
+              ok: false, 
+              error: 'NO_QUOTA_LEFT', 
+              message: 'Количество копий исчерпано. Обратитесь к создателю для обновления лицензии: https://vk.com/daoqub',
+              row: r + 1,
+              quota: {remaining: 0, total: copiesCount}
+            };
+          }
+          
+          // Привязываем текущую таблицу
+          try {
+            const sheetName = SpreadsheetApp.openById(currentSheetId).getName();
+            const bindingInfo = currentSheetId + '\n' + sheetName + ' (' + new Date().toLocaleDateString() + ')';
+            const newCopiesCount = copiesCount - 1;
+            
+            // Обновляем лицензионную таблицу
+            sh.getRange(r + 1, colSheetIds + 1).setValue(bindingInfo);
+            sh.getRange(r + 1, colCopiesCount + 1).setValue(newCopiesCount);
+            
+            return {
+              ok: true, 
+              until: untilIso, 
+              row: r + 1, 
+              message: 'SHEET_BOUND',
+              quota: {remaining: newCopiesCount, total: copiesCount, used: 1}
+            };
+          } catch (e) {
+            return {ok: false, error: 'SHEET_BINDING_ERROR: ' + e.message, row: r + 1};
+          }
+        } else {
+          // Проверяем привязан ли текущий лист
+          const boundSheetIds = sheetIds.split('\n')
+            .map(function(line) { return line.trim(); })
+            .filter(function(line) { return line.length > 0; })
+            .map(function(line) { 
+              // Извлекаем ID (первая часть до пробела или переноса)
+              return line.split(' ')[0].split('\t')[0]; 
+            });
+          
+          if (boundSheetIds.indexOf(currentSheetId) !== -1) {
+            // Лист уже привязан - разрешаем
+            const usedCopies = boundSheetIds.length;
+            const totalCopies = copiesCount + usedCopies;
+            return {
+              ok: true, 
+              until: untilIso, 
+              row: r + 1, 
+              message: 'SHEET_ALLOWED',
+              quota: {remaining: copiesCount, total: totalCopies, used: usedCopies}
+            };
+          } else {
+            // Лист не привязан к этой лицензии
+            return {
+              ok: false, 
+              error: 'SHEET_BOUND_TO_OTHER',
+              message: 'Эта лицензия привязана к другому аккаунту Google Sheets. Обратитесь к создателю: https://vk.com/daoqub',
+              row: r + 1
+            };
+          }
+        }
       }
     }
+    
     return {ok: false, error: 'NOT_FOUND'};
   } catch (e) {
     return {ok: false, error: 'LICENSE_ERROR: ' + e.message};
+  } finally {
+    lock.releaseLock();
   }
 }
+
 
 function findHeader_(headerArr, keys) {
   for (let i = 0; i < headerArr.length; i++) {
