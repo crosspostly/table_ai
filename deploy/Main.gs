@@ -85,7 +85,7 @@ function exportLogsToSheet() {
     const logs = cache.get(LOGS_CACHE_KEY);
     if (!logs) {
       addLog('❌ Нет логов для экспорта', 'WARN');
-      SpreadsheetApp.getUi().alert('Логи отсутствуют.');
+      SpreadsheetApp.getUi().alert('Информация', 'Логи отсутствуют.', SpreadsheetApp.getUi().ButtonSet.OK);
       return;
     }
     const logEntries = JSON.parse(logs);
@@ -96,7 +96,7 @@ function exportLogsToSheet() {
     sheet.getRange(1, 1, 1, 3).setFontWeight('bold').setBackground('#E8F0FE');
     sheet.autoResizeColumns(1, 3);
     addLog('✅ Логи экспортированы в лист "Логи"', 'INFO');
-    SpreadsheetApp.getUi().alert('Готово: логи экспортированы в "Логи".');
+    SpreadsheetApp.getUi().alert('Информация', 'Готово: логи экспортированы в "Логи".', SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
     addLog('❌ Ошибка экспорта логов: ' + e.message, 'ERROR');
     SpreadsheetApp.getUi().alert('Ошибка экспорта логов: ' + e.message);
@@ -106,7 +106,7 @@ function clearLogs() {
   try {
     CacheService.getScriptCache().remove(LOGS_CACHE_KEY);
     addLog('✅ Логи очищены', 'INFO');
-    SpreadsheetApp.getUi().alert('Логи очищены.');
+    SpreadsheetApp.getUi().alert('Информация', 'Логи очищены.', SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
     SpreadsheetApp.getUi().alert('Ошибка очистки логов: ' + e.message);
   }
@@ -336,10 +336,10 @@ function prepareChainFromPromptBox() {
   const prompt = ss.getSheetByName('Prompt_box');
   const pack = ss.getSheetByName('Распаковка');
   if (!prompt) {
-    SpreadsheetApp.getUi().alert('Лист "Prompt_box" не найден'); return;
+    SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Prompt_box" не найден', SpreadsheetApp.getUi().ButtonSet.OK); return;
   }
   if (!pack) {
-    SpreadsheetApp.getUi().alert('Лист "Распаковка" не найден'); return;
+    SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Распаковка" не найден', SpreadsheetApp.getUi().ButtonSet.OK); return;
   }
 
   const lastRow = Math.max(2, prompt.getLastRow());
@@ -357,7 +357,7 @@ function prepareChainFromPromptBox() {
   }
 
   if (!mappings.length) {
-    SpreadsheetApp.getUi().alert('Нет целевых ячеек в Prompt_box!B, ничего не сделано.'); return;
+    SpreadsheetApp.getUi().alert('Информация', 'Нет целевых ячеек в Prompt_box!B, ничего не сделано.', SpreadsheetApp.getUi().ButtonSet.OK); return;
   }
 
   const phrase = getCompletionPhrase() || COMPLETION_PHRASE;
@@ -385,7 +385,7 @@ function prepareChainForA3() {
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName('Распаковка');
   if (!sheet) {
-    SpreadsheetApp.getUi().alert('Лист "Распаковка" не найден'); return;
+    SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Распаковка" не найден', SpreadsheetApp.getUi().ButtonSet.OK); return;
   }
   const row = 3;
   const startCol = 2; // B
@@ -409,16 +409,16 @@ function prepareChainForA3() {
     target.setFormula(formula);
     addLog('📝 Формула ' + target.getA1Notation() + ' установлена', 'DEBUG');
   }
-  SpreadsheetApp.getUi().alert('✅ Готово: формулы B3..G3 проставлены.\nЗаполните A3 — шаги пойдут по очереди.');
+  SpreadsheetApp.getUi().alert('Готово', '✅ Готово: формулы B3..G3 проставлены.\nЗаполните A3 — шаги пойдут по очереди.', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 function clearChainForA3() {
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName('Распаковка');
   if (!sheet) {
-    SpreadsheetApp.getUi().alert('Лист "Распаковка" не найден'); return;
+    SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Распаковка" не найден', SpreadsheetApp.getUi().ButtonSet.OK); return;
   }
   sheet.getRange(3, 2, 1, 6).clearContent(); // B3..G3
-  SpreadsheetApp.getUi().alert('🧹 Очищено: B3..G3');
+  SpreadsheetApp.getUi().alert('Информация', '🧹 Очищено: B3..G3', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 // ====== VK PARSER + фильтрация ======
@@ -427,12 +427,12 @@ function importVkPosts() {
   const ss = SpreadsheetApp.getActive();
   const params = ss.getSheetByName('Параметры');
   if (!params) {
-    addLog('❌ Нет листа "Параметры"', 'ERROR'); SpreadsheetApp.getUi().alert('Лист "Параметры" не найден!'); return;
+    addLog('❌ Нет листа "Параметры"', 'ERROR'); SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Параметры" не найден!', SpreadsheetApp.getUi().ButtonSet.OK); return;
   }
   const owner = params.getRange('B1').getValue();
   const count = params.getRange('B2').getValue();
   if (!owner || !count) {
-    addLog('❌ Не указаны owner или count', 'ERROR'); SpreadsheetApp.getUi().alert('Введите owner и count на листе "Параметры"'); return;
+    addLog('❌ Не указаны owner или count', 'ERROR'); SpreadsheetApp.getUi().alert('Ошибка', 'Введите owner и count на листе "Параметры"', SpreadsheetApp.getUi().ButtonSet.OK); return;
   }
   const url = VK_PARSER_URL + '?owner=' + encodeURIComponent(owner) + '&count=' + encodeURIComponent(count);
   try {
@@ -444,7 +444,7 @@ function importVkPosts() {
     return;
   }
   if (!Array.isArray(arr)) {
-    addLog('❌ Неверный массив от VK', 'ERROR'); SpreadsheetApp.getUi().alert('Неверный формат данных от VK Parser'); return;
+    addLog('❌ Неверный массив от VK', 'ERROR'); SpreadsheetApp.getUi().alert('Ошибка', 'Неверный формат данных от VK Parser', SpreadsheetApp.getUi().ButtonSet.OK); return;
   }
 
   const headers = [
@@ -460,7 +460,7 @@ function importVkPosts() {
 
   const sheet = ss.getSheetByName('посты');
   if (!sheet) {
-    addLog('❌ Лист "посты" не найден!', 'ERROR'); SpreadsheetApp.getUi().alert('Создайте лист "посты".'); return;
+    addLog('❌ Лист "посты" не найден!', 'ERROR'); SpreadsheetApp.getUi().alert('Ошибка', 'Создайте лист "посты".', SpreadsheetApp.getUi().ButtonSet.OK); return;
   }
 
   sheet.clear();
@@ -517,6 +517,8 @@ function createStopWordsFormulas(sheet, totalRows) {
     SpreadsheetApp.getUi().alert('Ошибка создания формул: ' + e.message);
   }
 }
+
+function getGeminiApiKey() {
   const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) throw new Error('API-ключ Gemini не установлен. Меню: 🤖 Table AI → Установить API ключ Gemini');
   return key;
@@ -646,36 +648,92 @@ function applyUniformFormatting(sheet) {
 
 // ====== Меню ======
 function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  ui.createMenu('🤖 Table AI')
-    .addItem('▶️ Подготовить формулы (умный режим)', 'prepareChainSmart')
-    .addItem('🔁 Обновить текущую ячейку (GM)', 'refreshCurrentGMCell')
-    .addSeparator()
-    .addItem('🧹 Очистить B3..G3', 'clearChainForA3')
-    .addSeparator()
-    .addSubMenu(ui.createMenu('🎯 AI Конструктор')
-      .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
-      .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
+  try {
+    const ui = SpreadsheetApp.getUi();
+    ui.createMenu('🤖 Table AI')
+      .addItem('▶️ Подготовить формулы (умный режим)', 'prepareChainSmart')
+      .addItem('🔁 Обновить текущую ячейку (GM)', 'refreshCurrentGMCell')
       .addSeparator()
-      .addItem('🗂️ Управление шаблонами', 'openTemplatesUI')
-      .addItem('❓ Справка', 'showCollectConfigHelp'),
-    )
-    .addSeparator()
-    .addItem('📥 Импорт VK постов', 'importVkPosts')
-    .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
-    .addSeparator()
-    .addItem('⚙️ Настройки', 'openSettingsUI')
-    .addToUi();
-
-  if (DEV_MODE) {
-    ui.createMenu('🧰 DEV')
-      .addItem('📝 Показать логи', 'showLogsDialog')
-      .addItem('⬇️ Экспорт логов', 'exportLogsToSheet')
-      .addItem('🗑 Очистить логи', 'clearLogs')
+      .addItem('🧹 Очистить B3..G3', 'clearChainForA3')
+      .addSeparator()
+      .addSubMenu(ui.createMenu('🎯 AI Конструктор')
+        .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
+        .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
+        .addSeparator()
+        .addItem('🗂️ Управление шаблонами', 'openTemplatesUI')
+        .addItem('❓ Справка', 'showCollectConfigHelp'),
+      )
+      .addSeparator()
+      .addItem('📥 Импорт VK постов', 'importVkPosts')
+      .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
+      .addSeparator()
+      .addItem('⚙️ Настройки', 'openSettingsUI')
       .addToUi();
-  }
 
-  // Убрали устаревшую «горячую кнопку» (setupOcrHotButton) по просьбе пользователя
+    if (DEV_MODE) {
+      ui.createMenu('🧰 DEV')
+        .addItem('📝 Показать логи', 'showLogsDialog')
+        .addItem('⬇️ Экспорт логов', 'exportLogsToSheet')
+        .addItem('🗑 Очистить логи', 'clearLogs')
+        .addToUi();
+    }
+
+    addLog('✅ Меню загружено успешно', 'INFO');
+  } catch (e) {
+    addLog('❌ Ошибка загрузки меню: ' + e.message, 'ERROR');
+    console.error('Menu error:', e);
+  }
+}
+
+// ====== ЗАГЛУШКИ ДЛЯ ФУНКЦИЙ ИЗ ДРУГИХ ФАЙЛОВ ======
+function openCollectConfigUI() {
+  try {
+    addLog('🎯 Открытие AI Конструктора...', 'INFO');
+    // Эта функция должна быть в CollectConfig.gs
+    SpreadsheetApp.getUi().alert('AI Конструктор', 'Функция должна быть в CollectConfig.gs', SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e) {
+    addLog('❌ Ошибка AI Конструктора: ' + e.message, 'ERROR');
+  }
+}
+
+function refreshCellWithConfig() {
+  try {
+    addLog('🔄 Обновление ячейки с конфигом...', 'INFO');
+    // Эта функция должна быть в CollectConfig.gs
+    SpreadsheetApp.getUi().alert('Обновление ячейки', 'Функция должна быть в CollectConfig.gs', SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e) {
+    addLog('❌ Ошибка обновления ячейки: ' + e.message, 'ERROR');
+  }
+}
+
+function openTemplatesUI() {
+  try {
+    addLog('🗂️ Открытие управления шаблонами...', 'INFO');
+    // Эта функция должна быть в CollectConfig.gs
+    SpreadsheetApp.getUi().alert('Управление шаблонами', 'Функция должна быть в CollectConfig.gs', SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e) {
+    addLog('❌ Ошибка управления шаблонами: ' + e.message, 'ERROR');
+  }
+}
+
+function showCollectConfigHelp() {
+  try {
+    addLog('❓ Показ справки AI Конструктора...', 'INFO');
+    // Эта функция должна быть в CollectConfig.gs
+    SpreadsheetApp.getUi().alert('Справка AI Конструктора', 'Функция должна быть в CollectConfig.gs', SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e) {
+    addLog('❌ Ошибка справки: ' + e.message, 'ERROR');
+  }
+}
+
+function ocrRun() {
+  try {
+    addLog('🖼️ Запуск транскрибации отзывов...', 'INFO');
+    // Эта функция должна быть в ocrRunV2_client.gs
+    SpreadsheetApp.getUi().alert('Транскрибация отзывов', 'Функция должна быть в ocrRunV2_client.gs', SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e) {
+    addLog('❌ Ошибка транскрибации: ' + e.message, 'ERROR');
+  }
 }
 
 // Быстрое обновление активной GM-ячейки: пересоздаём формулу, чтобы заново вызвать Gemini
@@ -684,12 +742,12 @@ function refreshCurrentGMCell() {
     const ss = SpreadsheetApp.getActive();
     const range = ss.getActiveRange();
     if (!range) {
-      SpreadsheetApp.getUi().alert('Выберите ячейку на листе "Распаковка"'); return;
+      SpreadsheetApp.getUi().alert('Информация', 'Выберите ячейку на листе "Распаковка"', SpreadsheetApp.getUi().ButtonSet.OK); return;
     }
     const cell = range.getCell(1, 1);
     const sheet = cell.getSheet();
     if (sheet.getName() !== 'Распаковка') {
-      SpreadsheetApp.getUi().alert('Выберите ячейку на листе "Распаковка"'); return;
+      SpreadsheetApp.getUi().alert('Информация', 'Выберите ячейку на листе "Распаковка"', SpreadsheetApp.getUi().ButtonSet.OK); return;
     }
     const row = cell.getRow();
     const col = cell.getColumn();
@@ -736,7 +794,7 @@ function refreshCurrentGMCell() {
       }
     }
     if (!formula) {
-      SpreadsheetApp.getUi().alert('Нечего обновлять: в ячейке нет GM-формулы и нет соответствия в Prompt_box!B'); return;
+      SpreadsheetApp.getUi().alert('Информация', 'Нечего обновлять: в ячейке нет GM-формулы и нет соответствия в Prompt_box!B', SpreadsheetApp.getUi().ButtonSet.OK); return;
     }
 
     cell.clearContent();
@@ -750,10 +808,6 @@ function refreshCurrentGMCell() {
     SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
   }
 }
-
-// ====== Тест Markdown ======
-}
-
 // ====== onEdit: авто-очистка Markdown для строки 3 (B..G) ======
 function onEdit(e) {
   const range = e.range;
@@ -807,7 +861,7 @@ function runDevSelfTest() {
       snapshot.push(rSheet.getRange(3, c).getFormula());
     }
     prepareChainForA3();
-    const expectedB3 = '=GM_IF($A3<>"", Prompt_box!$F$2, 12500, 0.7)';
+    const expectedB3 = '=GM_IF($A3<>"", Prompt_box!$F$2, 25000, 0.7)';
     const gotB3 = rSheet.getRange(3, 2).getFormula();
     if (gotB3 !== expectedB3) failures.push('B3 формула некорректна: '+gotB3);
     clearChainForA3();
@@ -835,8 +889,8 @@ function runDevSelfTest() {
 
     const phrase2 = getCompletionPhrase() || COMPLETION_PHRASE;
     const phraseEsc2 = phrase2.replace(/"/g, '""');
-    const expB3 = '=GM_IF($A3<>"", Prompt_box!$F$2, 12500, 0.7)';
-    const expC3 = '=GM_IF(LEFT(B3, LEN("' + phraseEsc2 + '"))="' + phraseEsc2 + '", Prompt_box!$F$3, 12500, 0.7)';
+    const expB3 = '=GM_IF($A3<>"", Prompt_box!$F$2, 25000, 0.7)';
+    const expC3 = '=GM_IF(LEFT(B3, LEN("' + phraseEsc2 + '"))="' + phraseEsc2 + '", Prompt_box!$F$3, 25000, 0.7)';
     const gotB3_2 = rSheet2.getRange(3, 2).getFormula();
     const gotC3_2 = rSheet2.getRange(3, 3).getFormula();
     if (gotB3_2 !== expB3) failures.push('Smart-режим: формула B3 некорректна: ' + gotB3_2);
@@ -857,7 +911,7 @@ function runDevSelfTest() {
     SpreadsheetApp.getUi().alert('❌ DEV-тесты: есть проблемы', failures.join('\n'));
   } else {
     addLog('✅ DEV-тесты: всё зелёное', 'INFO');
-    SpreadsheetApp.getUi().alert('✅ DEV-тесты пройдены');
+    SpreadsheetApp.getUi().alert('Готово', '✅ DEV-тесты пройдены', SpreadsheetApp.getUi().ButtonSet.OK);
   }
 }
 
