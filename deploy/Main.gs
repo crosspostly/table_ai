@@ -32,8 +32,19 @@ const MAX_RETRY_ATTEMPTS = 5;
 const RETRY_DELAY_INCREMENT = 10000;
 
 // ====== DEV ФЛАГ ======
-const DEV_MODE = true; // DEV: показывать DEV-меню/логи
+const DEV_MODE = false; // DEV: показывать DEV-меню/логи
+const DEVMODE = DEV_MODE;
 
+// В твоем мастер-листе добавь кнопку:
+function shareAsTemplate() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  // Создать копию с очищенными данными, но с кодом
+  const copy = ss.copy("VK→Telegram Crossposter Template");
+  
+  // URL для пользователей
+  const url = `https://docs.google.com/spreadsheets/d/${copy.getId()}/copy`;
+  SpreadsheetApp.getUi().alert("Template URL готов:", url);
+}
 // ====== ЛОГИРОВАНИЕ ======
 function addLog(msg, level = 'INFO') {
   try {
@@ -920,11 +931,22 @@ function runDevSelfTest() {
 
 // ===== LICENSE & SERVER PROXY (patch) =====
 function getLicenseEmail() {
-  return PropertiesService.getScriptProperties().getProperty('LICENSE_EMAIL') || '';
+  return PropertiesService.getScriptProperties().getProperty('LICENSEEMAIL') || '';
 }
 function getLicenseToken() {
-  return PropertiesService.getScriptProperties().getProperty('LICENSE_TOKEN') || '';
+  return PropertiesService.getScriptProperties().getProperty('LICENSETOKEN') || '';
 }
+function hasStoredLicense() {
+  try {
+    const email = PropertiesService.getScriptProperties().getProperty('LICENSEEMAIL');
+    const token = PropertiesService.getScriptProperties().getProperty('LICENSETOKEN');
+    return !!(email && token && String(email).trim() && String(token).trim());
+  } catch (e) {
+    addLog('hasStoredLicense: ' + e.message, 'WARN');
+    return false;
+  }
+}
+
 function setLicenseCredentialsUI() {
   const ui = SpreadsheetApp.getUi();
   const curEmail = getLicenseEmail();
@@ -938,71 +960,119 @@ function setLicenseCredentialsUI() {
   if (!email || !token) {
     ui.alert('Email и Токен обязательны.'); return;
   }
-  PropertiesService.getScriptProperties().setProperty('LICENSE_EMAIL', email);
-  PropertiesService.getScriptProperties().setProperty('LICENSE_TOKEN', token);
+  PropertiesService.getScriptProperties().setProperty('LICENSEEMAIL', email);
+  PropertiesService.getScriptProperties().setProperty('LICENSETOKEN', token);
   ui.alert('✅ Лицензия сохранена.');
 }
+
+function getScriptProp(key) {
+  return PropertiesService.getScriptProperties().getProperty(key);
+}
+
+function setScriptProp(key, value) {
+  PropertiesService.getScriptProperties().setProperty(key, String(value));
+}
+
+/**
+ * Однократное засидывание лицензии из листа "Параметры":
+ * - Читает email из G1 и token из H1
+ * - Пишет их в ScriptProperties как LICENSEEMAIL / LICENSE_TOKEN
+ * - НЕ трогает LICENSE_KEY (пусть создается/проверяется через текущую логику)
+ * Возвращает true, если данные записаны; false — если не нашлись или уже были.
+ */
+function seedLicenseCredentialsFromParametersSheet() {
+  try {
+    const scriptProps = PropertiesService.getScriptProperties();
+    const curEmail = scriptProps.getProperty('LICENSEEMAIL');
+    const curToken = scriptProps.getProperty('LICENSETOKEN');
+    if (curEmail && curToken) {
+      logEvent('DEBUG', 'script_props_lic_present', 'client', 'EMAIL/TOKEN already set');
+      return false;
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('Параметры');
+    if (!sheet) {
+      logEvent('DEBUG', 'params_sheet_missing', 'client', 'Sheet "Параметры" not found');
+      return false;
+    }
+
+    const email = String(sheet.getRange('G1').getDisplayValue() || '').trim();
+    const token = String(sheet.getRange('H1').getDisplayValue() || '').trim();
+    if (!email || !token) {
+      logEvent('DEBUG', 'params_cells_empty', 'client', `G1 or H1 empty (G1="${email}", H1="${token ? '***' : ''}')`);
+      return false;
+    }
+
+    scriptProps.setProperty('LICENSEEMAIL', email);
+    scriptProps.setProperty('LICENSETOKEN', token);
+    logEvent('INFO', 'license_credentials_seeded', 'client', `Email=${email}, Token=${token.substring(0,4)}***`);
+    return true;
+
+  } catch (e) {
+    logEvent('WARN', 'seed_license_from_params_error', 'client', e.message);
+    return false;
+  }
+}
+
 function serverStatus() {
+  // 0) Если лицензии нет — один раз попробовать засидить из Параметры!G1/H1
+  if (!hasStoredLicense()) {
+    seedLicenseCredentialsFromParametersSheet();
+  }
+
+  // 1) Читаем значения из ScriptProperties (после возможного seed)
   const email = getLicenseEmail();
   const token = getLicenseToken();
   const sheetId = SpreadsheetApp.getActive().getId();
 
   if (DEV_MODE) {
-    addLog(`STATUS REQUEST: email=${email}, token=${token ? token.substring(0, 4) + '****' : 'null'}`, 'DEBUG');
+    addLog(`STATUS REQUEST: email=${email}, token=${token ? token.substring(0, 4) : null}`, 'DEBUG');
   }
 
   const payload = {
     action: 'status',
     email: email,
     token: token,
-    sheetId: sheetId
+    sheetId: sheetId,
   };
 
   const options = {
     method: 'post',
     contentType: 'application/json',
     payload: JSON.stringify(payload),
-    muteHttpExceptions: true
+    muteHttpExceptions: true,
   };
 
   try {
     const resp = UrlFetchApp.fetch(SERVER_URL, options);
     const code = resp.getResponseCode();
     const responseText = resp.getContentText();
-    
+
     if (DEV_MODE) {
-      addLog(`STATUS RAW: HTTP=${code}, response=${responseText.substring(0, 200)}...`, 'DEBUG');
+      addLog(`STATUS RAW: HTTP ${code}`, 'DEBUG');
+      addLog(`STATUS CONTENT: ${responseText.substring(0, 200)}...`, 'DEBUG');
     }
 
     const data = JSON.parse(responseText);
-    
+
     if (DEV_MODE) {
-      addLog(`STATUS RESULT: ok=${data && data.ok ? 'true' : 'false'}`, 'DEBUG');
-    }
-
-    if (data && data.message) {
-      addLog(`STATUS MESSAGE: ${data.message}`, 'DEBUG');
-    }
-
-    if (data && data.quota) {
-      addLog(`STATUS QUOTA: ${JSON.stringify(data.quota)}`, 'DEBUG');
-    }
-
-    if (data && data.error) {
-      addLog(`STATUS ERROR: ${data.error}`, 'ERROR');
+      addLog(`STATUS RESULT ok=${data.ok ? true : false}`, 'DEBUG');
+      if (data && data.message) addLog(`STATUS MESSAGE: ${data.message}`, 'DEBUG');
+      if (data && data.quota) addLog(`STATUS QUOTA: ${JSON.stringify(data.quota)}`, 'DEBUG');
+      if (data && data.error) addLog(`STATUS ERROR: ${data.error}`, 'ERROR');
     }
 
     if (code !== 200) {
-      return {ok: false, error: (data && data.error) || `HTTP_${code}`};
+      return { ok: false, error: data ? data.error : `HTTP ${code}` };
     }
-
     return data;
+
   } catch (e) {
     addLog(`STATUS REQUEST FAILED: ${e.message}`, 'ERROR');
-    return {ok: false, error: `REQUEST_FAILED: ${e.message}`};
+    return { ok: false, error: `REQUEST_FAILED: ${e.message}` };
   }
 }
-
 
 function checkLicenseStatusUI() {
   try {
@@ -1033,8 +1103,8 @@ function getSettingsData() {
     const props = PropertiesService.getScriptProperties();
     return {
       apiKey: props.getProperty('GEMINI_API_KEY') || '',
-      email: props.getProperty('LICENSE_EMAIL') || '',
-      token: props.getProperty('LICENSE_TOKEN') || ''
+      email: props.getProperty('LICENSEEMAIL') || '',
+      token: props.getProperty('LICENSETOKEN') || ''
     };
   } catch (e) {
     addLog('❌ Ошибка чтения настроек: ' + e.message, 'ERROR');
@@ -1159,6 +1229,10 @@ function serverGM(prompt, maxTokens, temperature) {
 }
 
 function GM(prompt, maxTokens, temperature) {
+  // Мягкий seed (не перезаписывает, только если пусто)
+  if (!hasStoredLicense()) {
+    seedLicenseCredentialsFromParametersSheet();
+  }
   // Лицензия обязательна всегда: и в PROD, и в DEV. Если пустой email/token — блокируем.
   try {
     const _email = getLicenseEmail();
