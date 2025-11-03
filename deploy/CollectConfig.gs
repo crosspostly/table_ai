@@ -1,1133 +1,748 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <base target="_top">
-  <meta charset="UTF-8">
-  <style>
-    body {
-      font-family: 'Google Sans', Arial, sans-serif;
-      padding: 20px;
-      margin: 0;
-      background: #f8f9fa;
-    }
-    
-    .container {
-      max-width: 600px;
-      margin: 0 auto;
-      background: white;
-      padding: 24px;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-    }
-    
-    h2 {
-      margin: 0 0 8px 0;
-      color: #202124;
-      font-size: 22px;
-      font-weight: 400;
-    }
-    
-    .cell-info {
-      background: #e8f0fe;
-      padding: 12px;
-      border-radius: 4px;
-      margin-bottom: 24px;
-      color: #1967d2;
-      font-weight: 500;
-    }
-    
-    .section {
-      margin-bottom: 24px;
-    }
-    
-    .section-title {
-      font-weight: 500;
-      margin-bottom: 12px;
-      color: #5f6368;
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    
-    .templates-section {
-      background: #f1f3f4;
-      padding: 16px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-    }
-    
-    hr {
-      border: none;
-      border-top: 1px solid #dadce0;
-      margin: 14px 0;
-    }
-    
-    .stats {
-      font-size: 11px;
-      color: #5f6368;
-      margin-top: 8px;
-      padding: 6px 8px;
-      background: white;
-      border-radius: 4px;
-    }
-    
-    .btn-small {
-      padding: 6px 10px !important;
-      font-size: 12px !important;
-    }
-    
-    .cell-preview {
-      margin-top: 4px;
-      padding: 8px;
-      background: #f8f9fa;
-      border-left: 3px solid #1a73e8;
-      border-radius: 4px;
-      font-size: 12px;
-      color: #5f6368;
-      font-family: 'Courier New', monospace;
-      white-space: pre-wrap;
-      word-break: break-word;
-      max-height: 60px;
-      overflow-y: auto;
-    }
-    
-    .cell-preview.empty {
-      color: #9aa0a6;
-      font-style: italic;
-    }
-    
-    .cell-preview.error {
-      border-left-color: #ea4335;
-      color: #d93025;
-    }
-    
-    .input-group {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 4px;
-    }
-    
-    .checkbox-group {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 4px;
-      margin-bottom: 8px;
-      font-size: 13px;
-      color: #5f6368;
-    }
-    
-    .checkbox-group input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      cursor: pointer;
-    }
-    
-    .checkbox-group label {
-      cursor: pointer;
-      user-select: none;
-    }
-    
-    select, input[type="text"] {
-      padding: 10px 12px;
-      border: 1px solid #dadce0;
-      border-radius: 4px;
-      font-size: 14px;
-      font-family: inherit;
-      transition: border-color 0.2s;
-    }
-    
-    select:focus, input[type="text"]:focus {
-      outline: none;
-      border-color: #1a73e8;
-    }
-    
-    select {
-      flex: 1;
-    }
-    
-    input[type="text"] {
-      flex: 0 0 120px;
-    }
-    
-    .data-item {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 8px;
-      align-items: center;
-    }
-    
-    .data-item select {
-      flex: 1;
-    }
-    
-    .data-item input {
-      flex: 0 0 120px;
-    }
-    
-    .remove-btn {
-      background: #fff;
-      border: 1px solid #dadce0;
-      color: #5f6368;
-      padding: 8px 12px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: all 0.2s;
-    }
-    
-    .remove-btn:hover {
-      background: #f8f9fa;
-      border-color: #d93025;
-      color: #d93025;
-    }
-    
-    .add-btn {
-      background: #fff;
-      border: 1px solid #1a73e8;
-      color: #1a73e8;
-      padding: 10px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      transition: all 0.2s;
-      width: 100%;
-    }
-    
-    .add-btn:hover {
-      background: #e8f0fe;
-    }
-    
-    .actions {
-      display: flex;
-      gap: 12px;
-      margin-top: 24px;
-    }
-    
-    .btn {
-      flex: 1;
-      padding: 12px 24px;
-      border: none;
-      border-radius: 4px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    
-    .btn-primary {
-      background: #1a73e8;
-      color: white;
-    }
-    
-    .btn-primary:hover {
-      background: #1765cc;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.15);
-    }
-    
-    .btn-secondary {
-      background: #fff;
-      color: #5f6368;
-      border: 1px solid #dadce0;
-    }
-    
-    .btn-secondary:hover {
-      background: #f8f9fa;
-    }
-    
-    .btn-danger {
-      background: #fff;
-      color: #d93025;
-      border: 1px solid #dadce0;
-    }
-    
-    .btn-danger:hover {
-      background: #fce8e6;
-      border-color: #d93025;
-    }
-    
-    .status {
-      padding: 12px;
-      border-radius: 4px;
-      margin-top: 16px;
-      display: none;
-      font-size: 14px;
-    }
-    
-    .log-panel {
-      margin-top: 20px;
-      padding: 16px;
-      background: #f8f9fa;
-      border-radius: 8px;
-      border: 1px solid #dadce0;
-      max-height: 400px;
-      overflow-y: auto;
-    }
-    
-    .log-panel h3 {
-      margin: 0 0 12px 0;
-      font-size: 14px;
-      font-weight: 500;
-      color: #5f6368;
-    }
-    
-    .log-entry {
-      font-size: 12px;
-      font-family: 'Courier New', monospace;
-      padding: 6px 8px;
-      margin-bottom: 4px;
-      border-radius: 4px;
-      background: white;
-      border-left: 3px solid #dadce0;
-    }
-    
-    .log-entry.info {
-      border-left-color: #1a73e8;
-      color: #1967d2;
-    }
-    
-    .log-entry.success {
-      border-left-color: #34a853;
-      color: #137333;
-    }
-    
-    .log-entry.warn {
-      border-left-color: #fbbc04;
-      color: #ea8600;
-    }
-    
-    .log-entry.error {
-      border-left-color: #ea4335;
-      color: #c5221f;
-    }
-    
-    .status.info {
-      display: block;
-      background: #e8f0fe;
-      color: #1967d2;
-      border-left: 4px solid #1a73e8;
-    }
-    
-    .status.success {
-      display: block;
-      background: #e6f4ea;
-      color: #137333;
-      border-left: 4px solid #34a853;
-    }
-    
-    .status.error {
-      display: block;
-      background: #fce8e6;
-      color: #c5221f;
-      border-left: 4px solid #ea4335;
-    }
-    
-    .log-panel {
-      margin-top: 20px;
-      padding: 16px;
-      background: #f8f9fa;
-      border-radius: 8px;
-      border: 1px solid #dadce0;
-      max-height: 400px;
-      overflow-y: auto;
-    }
-    
-    .log-panel h3 {
-      margin: 0 0 12px 0;
-      font-size: 14px;
-      font-weight: 500;
-      color: #5f6368;
-    }
-    
-    .log-entry {
-      font-size: 12px;
-      font-family: 'Courier New', monospace;
-      padding: 6px 8px;
-      margin-bottom: 4px;
-      border-radius: 4px;
-      background: white;
-      border-left: 3px solid #dadce0;
-    }
-    
-    .log-entry.info {
-      border-left-color: #1a73e8;
-      color: #1967d2;
-    }
-    
-    .log-entry.success {
-      border-left-color: #34a853;
-      color: #137333;
-    }
-    
-    .log-entry.warn {
-      border-left-color: #fbbc04;
-      color: #ea8600;
-    }
-    
-    .log-entry.error {
-      border-left-color: #ea4335;
-      color: #c5221f;
-    }
+/**
+ * ============================================================================
+ * COLLECT CONFIG - ПОЛНОСТЬЮ НОВАЯ ВЕРСИЯ С НУЛЯ
+ * ============================================================================
+ * Версия: 3.0.0
+ * Дата: 2025-10-18 18:20:00
+ * 
+ * ЦЕЛЬ: ПРОСТОТА И НАДЁЖНОСТЬ!
+ * ============================================================================
+ */
 
-    
-    .loading {
-      text-align: center;
-      color: #5f6368;
-      padding: 20px;
-    }
-    
-    .spinner {
-      display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 2px solid #dadce0;
-      border-top-color: #1a73e8;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-    }
-    
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>🎯 AI Конструктор</h2>
-    <div class="section">
-  <div class="section-title">📌 Целевая ячейка (куда записать результат)</div>
-  <div class="input-group">
-    <select id="targetSheetName">
-      <option value="">Выберите лист...</option>
-    </select>
-    <input type="text" id="targetCellAddress" placeholder="A1" style="flex: 0 0 100px;" />
-    <button class="btn btn-secondary btn-small" onclick="validateTargetCell()">✅ Проверить</button>
-  </div>
-  <div id="targetCellStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></div>
-  </div>
+const COLLECT_CONFIG_VERSION = '3.0.0';
+const COLLECT_CONFIG_LAST_UPDATE = '2025-10-18 18:20:00';
 
-    <!-- TEMPLATES SECTION -->
-    <div class="section templates-section">
-      <div class="section-title">📋 Шаблоны конфигураций</div>
-      
-      <div class="input-group">
-        <select id="templateSelect">
-          <option value="">-- Выберите шаблон --</option>
-        </select>
-        <button class="btn btn-secondary btn-small" onclick="loadSelectedTemplate()">📂 Загрузить</button>
-      </div>
-      
-      <hr>
-      
-      <div class="input-group">
-        <input type="text" id="templateNameInput" placeholder="Имя нового или обновленного шаблона..." />
-        <button class="btn btn-secondary btn-small" onclick="saveAsTemplate()">💾 Сохранить</button>
-        <button class="btn btn-danger btn-small" onclick="deleteSelectedTemplate()">❌</button>
-      </div>
-      
-      <div class="stats" id="templateStats">Шаблонов: 0</div>
-    </div>
-    
-    <!-- System Prompt -->
-    <div class="section">
-      <div class="section-title">📍 System Prompt (инструкция для AI)</div>
-      <div class="input-group">
-        <select id="systemSheet" onchange="updateSystemPreview()">
-          <option value="">Выберите лист...</option>
-        </select>
-        <input type="text" id="systemCell" placeholder="A1 или C" onblur="updateSystemPreview()" />
-      </div>
-      <div class="checkbox-group">
-        <input type="checkbox" id="systemWholeColumn" onchange="handleColumnCheckbox('system')" />
-        <label for="systemWholeColumn">📊 Выбрать весь столбец (C → C1:C)</label>
-      </div>
-      <div id="systemPreview" class="cell-preview" style="display:none;"></div>
-    </div>
-    
-    <!-- User Data -->
-    <div class="section">
-      <div class="section-title">📦 User Data (данные для обработки)</div>
-      <div id="userDataList"></div>
-      <button class="add-btn" onclick="addUserDataRow()">+ Добавить данные</button>
-    </div>
-    
-    <!-- Actions -->
-    <div class="actions">
-      <button class="btn btn-primary" onclick="runConfig()">🚀 Запустить</button>
-      <button class="btn btn-danger" onclick="resetConfig()">🔄 Сбросить</button>
-    </div>
-    
-    <div class="status" id="status"></div>
-    
-    <!-- LOG PANEL -->
-    <div class="log-panel" id="logPanel" style="display:none;">
-      <h3>📋 Детальное логирование</h3>
-      <div id="logEntries"></div>
-    </div>
-  </div>
+// ============================================================================
+// ГЛОБАЛЬНЫЙ ЛОГ (для передачи в UI)
+// ============================================================================
+var GLOBAL_LOG = [];
 
-  <script>
-    // ============================================================================
-    // СИСТЕМА ЛОГИРОВАНИЯ
-    // ============================================================================
-    
-    function addLogEntry(message, level) {
-      level = level || 'info';
-      const panel = document.getElementById('logPanel');
-      const entries = document.getElementById('logEntries');
-      
-      if (!panel || !entries) return; // Защита
-      
-      // Показываем панель
-      panel.style.display = 'block';
-      
-      // Создаём запись
-      const entry = document.createElement('div');
-      entry.className = 'log-entry ' + level.toLowerCase();
-      const timestamp = new Date().toLocaleTimeString('ru-RU');
-      entry.textContent = '[' + timestamp + '] ' + message;
-      
-      // Добавляем в начало списка
-      entries.insertBefore(entry, entries.firstChild);
-      
-      // Ограничиваем количество логов (последние 50)
-      while (entries.children.length > 50) {
-        entries.removeChild(entries.lastChild);
-      }
-      
-      // Автопрокрутка вверх к новым логам
-      panel.scrollTop = 0;
-    }
-    
-    function clearLogs() {
-      const entries = document.getElementById('logEntries');
-      if (entries) entries.innerHTML = '';
-    }
-    
-
-    let sheetName = '';
-    let cellAddress = '';
-    let sheets = [];
-    
-    // Инициализация
-    google.script.run
-      .withSuccessHandler(initialize)
-      .withFailureHandler(showError)
-      .getCollectConfigInitData();
-    
-
-
-function initialize(data) {
-  sheetName = data.sheetName;
-  cellAddress = data.cellAddress;
-  sheets = data.sheets;
-  
-  // Заполняем выпадающий список листов для целевой ячейки
-  const targetSheetSelect = document.getElementById('targetSheetName');
-  sheets.forEach(function(sheet) {
-    const option = document.createElement('option');
-    option.value = sheet;
-    option.textContent = sheet;
-    if (sheet === sheetName) option.selected = true;
-    targetSheetSelect.appendChild(option);
-  });
-
-  // Устанавливаем текущую ячейку
-  document.getElementById('targetCellAddress').value = cellAddress;
-
-  // Проверяем целевую ячейку сразу
-  validateTargetCell();
-  
-  // Заполняем выпадающие списки листов для System Prompt
-  const systemSheet = document.getElementById('systemSheet');
-  sheets.forEach(function(sheet) {
-    const option = document.createElement('option');
-    option.value = sheet;
-    option.textContent = sheet;
-    systemSheet.appendChild(option);
-  });
-  
-  // Загружаем список шаблонов и статистику
-  loadTemplatesList();
-  loadTemplatesStats();
-  
-  // Загружаем существующую конфигурацию
-  loadExistingConfig();
+function addLog(message, level) {
+  level = level || 'INFO';
+  const timestamp = new Date().toLocaleTimeString('ru-RU');
+  const logEntry = {
+    timestamp: timestamp,
+    message: message,
+    level: level.toUpperCase()
+  };
+  GLOBAL_LOG.push(logEntry);
+  Logger.log(`[${level}] ${message}`);
 }
 
-    function loadExistingConfig() {
-      google.script.run
-        .withSuccessHandler(function(config) {
-          if (config) {
-            // Заполняем System Prompt
-            if (config.systemPrompt) {
-              document.getElementById('systemSheet').value = config.systemPrompt.sheet;
-              document.getElementById('systemCell').value = config.systemPrompt.cell;
-            }
-            
-            // Заполняем User Data
-            if (config.userData && config.userData.length > 0) {
-              config.userData.forEach(function(data) {
-                addUserDataRow(data.sheet, data.cell);
-              });
-            } else {
-              addUserDataRow(); // Добавляем пустую строку
-            }
-          } else {
-            addUserDataRow(); // Добавляем пустую строку
-          }
-        })
-        .withFailureHandler(function() {
-          addUserDataRow(); // Добавляем пустую строку при ошибке
-        })
-        .loadCollectConfig(sheetName, cellAddress);
+function clearLog() {
+  GLOBAL_LOG = [];
+}
+
+function getLog() {
+  return GLOBAL_LOG;
+}
+
+function updateTargetCell(sheetName, cellAddress) {
+  try {
+    addLog(`📌 Целевая ячейка обновлена: ${sheetName}!${cellAddress}`, 'INFO');
+    
+    // Проверяем что лист существует
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(sheetName);
+    
+    if (!sheet) {
+      return {success: false, error: `Лист "${sheetName}" не найден`};
     }
     
-    function addUserDataRow(sheet, cell) {
-      const container = document.getElementById('userDataList');
-      const wrapper = document.createElement('div');
-      wrapper.style.marginBottom = '12px';
+    // Проверяем что адрес ячейки валидный
+    try {
+      sheet.getRange(cellAddress);
+    } catch (e) {
+      return {success: false, error: `Неверный адрес ячейки: ${cellAddress}`};
+    }
+    
+    return {success: true, message: `Целевая ячейка: ${sheetName}!${cellAddress}`};
+  } catch (e) {
+    addLog(`❌ updateTargetCell ERROR: ${e.message}`, 'ERROR');
+    return {success: false, error: e.message};
+  }
+}
+
+// ============================================================================
+// ГЛАВНАЯ ФУНКЦИЯ: Открыть UI
+// ============================================================================
+function openCollectConfigUI() {
+  try {
+    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi')
+      .setWidth(1000) 
+      .setHeight(900)  
+      .setTitle('🎯 AI Конструктор v3.0');
+    SpreadsheetApp.getUi().showModalDialog(html, 'AI Конструктор');
+    addLog('🎯 AI Конструктор UI открыт', 'INFO');
+  } catch (e) {
+    addLog(`❌ openCollectConfigUI ERROR: ${e.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка открытия UI', e.message, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+
+// ============================================================================
+// ИНИЦИАЛИЗАЦИЯ UI
+// ============================================================================
+function getCollectConfigInitData() {
+  clearLog();
+  addLog(`🚀 CollectConfig v${COLLECT_CONFIG_VERSION} (обновлено: ${COLLECT_CONFIG_LAST_UPDATE})`, 'INFO');
+  
+  try {
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+    
+    // Создаём базовый шаблон если не существует
+    createDefaultTemplate();
+    
+    return {
+      sheetName: sheet.getName(),
+      cellAddress: range.getA1Notation(),
+      sheets: getAllSheetNames(), // ✅ ДОБАВЛЕНО для выпадающего списка листов
+      version: COLLECT_CONFIG_VERSION,
+      lastUpdate: COLLECT_CONFIG_LAST_UPDATE,
+      logs: getLog()
+    };
+  } catch (e) {
+    addLog(`❌ getCollectConfigInitData ERROR: ${e.message}`, 'ERROR');
+    return {
+      sheetName: 'Лист1',
+      cellAddress: 'A1', 
+      sheets: ['Лист1'],
+      version: COLLECT_CONFIG_VERSION,
+      lastUpdate: COLLECT_CONFIG_LAST_UPDATE,
+      logs: getLog(),
+      error: e.message
+    };
+  }
+}
+
+
+// ============================================================================
+// AUTHORIZATION HELPER — TRIGGER OAUTH FOR userinfo.email SCOPE
+// ============================================================================
+/**
+ * Получает идентификатор для шаблонов
+ * @return {string} Всегда 'default' (общее хранилище)
+ */
+function ensureEmailAuth() {
+  // Используем общее хранилище для всех пользователей
+  // Это избегает проблем с разрешениями Session API
+  return 'default';
+}
+
+// ============================================================================
+// СОЗДАНИЕ БАЗОВОГО ШАБЛОНА
+// ============================================================================
+function createDefaultTemplate() {
+  try {
+    const user = ensureEmailAuth();
+    const templates = getAllTemplates(user);
+    
+    // Если шаблон уже есть - не создаём
+    if (templates && templates['По умолчанию']) {
+      addLog('✅ Базовый шаблон уже существует', 'INFO');
+      return;
+    }
+    
+    const defaultTemplate = {
+      systemPrompt: {
+        sheet: 'Prompt_box',
+        cell: 'E2'
+      },
+      userData: [
+        {
+          sheet: 'отзывы',
+          cell: 'B:B'
+        }
+      ]
+    };
+    
+    const result = saveTemplate(user, 'По умолчанию', defaultTemplate);
+    if (result && result.success) {
+      addLog('✅ Создан базовый шаблон "По умолчанию"', 'SUCCESS');
+    } else {
+      addLog('⚠️ Не удалось создать базовый шаблон', 'WARN');
+    }
+  } catch (error) {
+    addLog(`⚠️ Ошибка создания шаблона: ${error.message}`, 'WARN');
+  }
+}
+
+// ============================================================================
+// ГЛАВНАЯ ФУНКЦИЯ: СОХРАНИТЬ И ВЫПОЛНИТЬ
+// ============================================================================
+function saveAndExecuteCollectConfig(targetSheetName, targetCellAddress, config) {
+  try {
+    clearLog();
+    addLog(`🚀 CollectConfig v${COLLECT_CONFIG_VERSION} (обновлено: ${COLLECT_CONFIG_LAST_UPDATE})`, 'INFO');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    addLog('📋 НАЧАЛО ВЫПОЛНЕНИЯ', 'INFO');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    
+    // Валидация
+    addLog(`📍 Целевая ячейка: ${targetSheetName}!${targetCellAddress}`, 'INFO');
+    addLog(`📊 Конфигурация: ${JSON.stringify(config).substring(0, 100)}...`, 'INFO');
+    
+    if (!targetSheetName || !targetCellAddress || !config) {
+      throw new Error('Отсутствуют обязательные параметры!');
+    }
+    
+    // Сохраняем конфигурацию
+    addLog('💾 Сохранение конфигурации...', 'INFO');
+    const saved = saveCollectConfig(targetSheetName, targetCellAddress, config);
+    if (saved) {
+      addLog('✅ Конфигурация сохранена', 'SUCCESS');
+    } else {
+      addLog('⚠️ Ошибка сохранения', 'WARN');
+    }
+    
+    // Выполняем
+    addLog('🔥 Выполнение запроса...', 'INFO');
+    const result = executeCollectConfig(targetSheetName, targetCellAddress);
+    
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    if (result.success) {
+      addLog('✅ УСПЕХ!', 'SUCCESS');
+      addLog(`📝 Результат: ${result.result.length} символов`, 'INFO');
+    } else {
+      addLog('❌ ОШИБКА!', 'ERROR');
+      addLog(`❌ ${result.error}`, 'ERROR');
+    }
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    
+    result.logs = getLog();
+    return result;
+    
+  } catch (error) {
+    addLog(`💥 КРИТИЧЕСКАЯ ОШИБКА: ${error.message}`, 'ERROR');
+    addLog(`Stack: ${error.stack}`, 'ERROR');
+    return {
+      success: false,
+      error: error.message,
+      logs: getLog()
+    };
+  }
+}
+
+// ============================================================================
+// ВЫПОЛНЕНИЕ КОНФИГУРАЦИИ
+// ============================================================================
+function executeCollectConfig(sheetName, cellAddress) {
+  try {
+    // Загружаем конфигурацию
+    const config = loadCollectConfig(sheetName, cellAddress);
+    if (!config) {
+      throw new Error('Конфигурация не найдена!');
+    }
+    
+    addLog('📖 Конфигурация загружена', 'INFO');
+    
+    // Собираем System Prompt
+    let systemPrompt = '';
+    if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
+      addLog(`📍 System Prompt: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}`, 'INFO');
+      try {
+        systemPrompt = readData(config.systemPrompt.sheet, config.systemPrompt.cell);
+        addLog(`✅ System Prompt: ${systemPrompt.length} символов`, 'SUCCESS');
+      } catch (e) {
+        addLog(`❌ Ошибка чтения System Prompt: ${e.message}`, 'ERROR');
+        throw e;
+      }
+    } else {
+      addLog('⚠️ System Prompt не задан', 'WARN');
+    }
+    
+    // Собираем User Data
+    const userDataParts = [];
+    if (config.userData && config.userData.length > 0) {
+      addLog(`📦 User Data: ${config.userData.length} источников`, 'INFO');
       
-      const item = document.createElement('div');
-      item.className = 'data-item';
-      
-      const select = document.createElement('select');
-      sheets.forEach(function(s) {
-        const option = document.createElement('option');
-        option.value = s;
-        option.textContent = s;
-        if (s === sheet) option.selected = true;
-        select.appendChild(option);
+      config.userData.forEach(function(source, index) {
+        if (source.sheet && source.cell) {
+          addLog(`  📍 Источник ${index + 1}: ${source.sheet}!${source.cell}`, 'INFO');
+          try {
+            const data = readData(source.sheet, source.cell);
+            addLog(`  ✅ Прочитано: ${data.length} символов`, 'SUCCESS');
+            userDataParts.push(`Источник (${source.sheet}!${source.cell}):\n${data}`);
+          } catch (e) {
+            addLog(`  ❌ Ошибка: ${e.message}`, 'ERROR');
+            userDataParts.push(`Источник (${source.sheet}!${source.cell}):\n[ОШИБКА: ${e.message}]`);
+          }
+        }
       });
+    } else {
+      addLog('⚠️ User Data не задан', 'WARN');
+    }
+    
+    // Формируем финальный промпт
+    let finalPrompt = '';
+    if (systemPrompt) {
+      finalPrompt += systemPrompt + '\n\n---\n\n';
+    }
+    if (userDataParts.length > 0) {
+      finalPrompt += 'ДАННЫЕ:\n' + userDataParts.join('\n\n');
+    }
+    
+    if (!finalPrompt.trim()) {
+      throw new Error('Нет данных для обработки!');
+    }
+    
+    addLog(`📝 Финальный промпт: ${finalPrompt.length} символов`, 'INFO');
+    
+    // Вызываем AI
+    addLog('🤖 Отправка запроса в Gemini...', 'INFO');
+    const aiResult = GM(finalPrompt);
+    
+    if (!aiResult || aiResult.startsWith('Error:')) {
+      throw new Error('Ошибка AI: ' + aiResult);
+    }
+    
+    addLog(`✅ Получен ответ от AI: ${aiResult.length} символов`, 'SUCCESS');
+    
+    // Записываем результат
+    const targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    if (targetSheet) {
+      targetSheet.getRange(cellAddress).setValue(aiResult);
+      addLog(`✅ Результат записан в ${sheetName}!${cellAddress}`, 'SUCCESS');
+    }
+    
+    // Обновляем lastRun
+    updateLastRun(sheetName, cellAddress);
+    
+    return {
+      success: true,
+      result: aiResult
+    };
+    
+  } catch (error) {
+    addLog(`❌ executeCollectConfig ERROR: ${error.message}`, 'ERROR');
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// ============================================================================
+// ЧТЕНИЕ ДАННЫХ - МАКСИМАЛЬНО ПРОСТАЯ ВЕРСИЯ
+// ============================================================================
+function readData(sheetName, cellAddress) {
+  addLog(`  → Чтение ${sheetName}!${cellAddress}`, 'INFO');
+  
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(sheetName);
+    
+    if (!sheet) {
+      throw new Error(`Лист "${sheetName}" не найден`);
+    }
+    
+    // ПРОСТЕЙШИЙ подход: просто читаем диапазон как есть
+    const range = sheet.getRange(cellAddress);
+    const values = range.getValues();
+    
+    addLog(`  → Прочитано: ${values.length} строк × ${values[0].length} столбцов`, 'INFO');
+    
+    // Превращаем в плоский массив и фильтруем пустые
+    const result = [];
+    for (let r = 0; r < values.length; r++) {
+      for (let c = 0; c < values[r].length; c++) {
+        const val = values[r][c];
+        if (val !== null && val !== undefined && val.toString().trim() !== '') {
+          result.push(val.toString());
+        }
+      }
+    }
+    
+    addLog(`  → После фильтрации: ${result.length} значений`, 'INFO');
+    
+    return result.join('\n');
+    
+  } catch (error) {
+    addLog(`  ❌ Ошибка чтения: ${error.message}`, 'ERROR');
+    throw new Error(`Не удалось прочитать ${sheetName}!${cellAddress}: ${error.message}`);
+  }
+}
+
+// ============================================================================
+// СОХРАНЕНИЕ/ЗАГРУЗКА КОНФИГУРАЦИИ
+// ============================================================================
+function saveCollectConfig(sheetName, cellAddress, config) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let configSheet = ss.getSheetByName('ConfigData');
+    
+    if (!configSheet) {
+      configSheet = ss.insertSheet('ConfigData');
+      configSheet.hideSheet();
       
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.placeholder = 'A1 или C';
-      input.value = cell || '';
-      
-      // Чекбокс для выбора всего столбца
-      const checkboxWrapper = document.createElement('div');
-      checkboxWrapper.className = 'checkbox-group';
-      
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.id = 'wholeColumn_' + Date.now();
-      
-      const checkboxLabel = document.createElement('label');
-      checkboxLabel.setAttribute('for', checkbox.id);
-      checkboxLabel.textContent = '📊 Весь столбец';
-      
-      checkboxWrapper.appendChild(checkbox);
-      checkboxWrapper.appendChild(checkboxLabel);
-      
-      const preview = document.createElement('div');
-      preview.className = 'cell-preview';
-      preview.style.display = 'none';
-      
-      // Обновление превью при изменении
-      const updatePreview = function() {
-        const s = select.value;
-        const c = input.value.trim();
+      // Заголовки
+      const headers = ['Sheet', 'Cell', 'SystemPromptSheet', 'SystemPromptCell', 'UserDataJSON', 'CreatedAt', 'LastRun'];
+      configSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+        .setFontWeight('bold')
+        .setBackground('#4285f4')
+        .setFontColor('white');
+    }
+    
+    // Ищем существующую строку
+    const data = configSheet.getDataRange().getValues();
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+    
+    const rowData = [
+      sheetName,
+      cellAddress,
+      config.systemPrompt ? config.systemPrompt.sheet : '',
+      config.systemPrompt ? config.systemPrompt.cell : '',
+      JSON.stringify(config.userData || []),
+      rowIndex === -1 ? new Date().toISOString() : data[rowIndex - 1][5],
+      ''
+    ];
+    
+    if (rowIndex > 0) {
+      // Обновляем существующую
+      configSheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+    } else {
+      // Добавляем новую
+      configSheet.appendRow(rowData);
+    }
+    
+    return true;
+  } catch (error) {
+    addLog(`Ошибка сохранения: ${error.message}`, 'ERROR');
+    return false;
+  }
+}
+
+function loadCollectConfig(sheetName, cellAddress) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ConfigData');
+    
+    if (!configSheet) {
+      return null;
+    }
+    
+    const data = configSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
+        let userData = [];
+        try {
+          if (data[i][4]) {
+            userData = JSON.parse(data[i][4]);
+          }
+        } catch (e) {
+          // ignore
+        }
         
-        if (s && c) {
-          google.script.run
-            .withSuccessHandler(function(text) {
-              preview.textContent = text;
-              preview.style.display = 'block';
-              
-              if (text.startsWith('(пусто)')) {
-                preview.className = 'cell-preview empty';
-              } else if (text.startsWith('❌')) {
-                preview.className = 'cell-preview error';
-              } else {
-                preview.className = 'cell-preview';
-              }
-            })
-            .getCellPreview(s, c);
-        } else {
-          preview.style.display = 'none';
-        }
-      };
-      
-      select.onchange = updatePreview;
-      input.onblur = updatePreview;
-      
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'remove-btn';
-      removeBtn.textContent = '✕';
-      removeBtn.onclick = function() {
-        container.removeChild(wrapper);
-      };
-      
-      // Обработка чекбокса для преобразования в полный столбец
-      checkbox.onchange = function() {
-        if (checkbox.checked) {
-          const currentValue = input.value.trim();
-          if (currentValue) {
-            const columnLetter = extractColumnLetter(currentValue);
-            if (columnLetter) {
-              input.value = columnLetter + '1:' + columnLetter;
-              updatePreview();
-            }
-          }
-        }
-      };
-      
-      item.appendChild(select);
-      item.appendChild(input);
-      item.appendChild(removeBtn);
-      
-      wrapper.appendChild(item);
-      wrapper.appendChild(checkboxWrapper);
-      wrapper.appendChild(preview);
-      container.appendChild(wrapper);
-      
-      // Загрузим превью если есть значения
-      if (sheet && cell) {
-        updatePreview();
+        return {
+          systemPrompt: (data[i][2] && data[i][3]) ? {
+            sheet: data[i][2],
+            cell: data[i][3]
+          } : null,
+          userData: userData
+        };
       }
     }
     
-    function extractColumnLetter(cellRef) {
-      // Извлекает букву столбца из C, C1, C40 и т.д.
-      const match = cellRef.match(/^([A-Z]+)\d*$/i);
-      return match ? match[1].toUpperCase() : null;
-    }
-    
-    function handleColumnCheckbox(type) {
-      const checkbox = document.getElementById(type + 'WholeColumn');
-      const input = document.getElementById(type + 'Cell');
-      
-      if (checkbox.checked) {
-        const currentValue = input.value.trim();
-        if (currentValue) {
-          const columnLetter = extractColumnLetter(currentValue);
-          if (columnLetter) {
-            input.value = columnLetter + '1:' + columnLetter;
-            updateSystemPreview();
-          }
-        }
-      }
-    }
-    
-    function updateSystemPreview() {
-      const sheet = document.getElementById('systemSheet').value;
-      const cell = document.getElementById('systemCell').value.trim();
-      const preview = document.getElementById('systemPreview');
-      
-      // ✅ КРИТИЧНО: НЕ вызываем getCellPreview если параметры пустые
-      if (!sheet || sheet.trim() === '' || !cell || cell === '') {
-        preview.style.display = 'none';
-        return;
-      }
-      
-      addLogEntry('Preview: запрос для "' + sheet + '"!"' + cell + '"', 'info');
-      
-      if (sheet && cell) {
-        google.script.run
-          .withSuccessHandler(function(text) {
-            preview.textContent = text;
-            preview.style.display = 'block';
-            
-            if (text.startsWith('(пусто)')) {
-              preview.className = 'cell-preview empty';
-            } else if (text.startsWith('❌')) {
-              preview.className = 'cell-preview error';
-            } else {
-              preview.className = 'cell-preview';
-            }
-          })
-          .getCellPreview(sheet, cell);
-      } else {
-        preview.style.display = 'none';
-      }
-    }
-    
-    function collectConfig() {
-      const systemSheet = document.getElementById('systemSheet').value;
-      const systemCell = document.getElementById('systemCell').value;
-      
-      const config = {
-        systemPrompt: systemSheet && systemCell ? {
-          sheet: systemSheet,
-          cell: systemCell
-        } : null,
-        userData: []
-      };
-      
-      const dataItems = document.querySelectorAll('.data-item');
-      dataItems.forEach(function(item) {
-        const sheet = item.querySelector('select').value;
-        const cell = item.querySelector('input').value;
-        if (sheet && cell) {
-          config.userData.push({ sheet: sheet, cell: cell });
-        }
-      });
-      
-      return config;
-    }
-    
-    function saveOnly() {
-      const config = collectConfig();
-      showStatus('Сохранение...', 'info');
-      
-      google.script.run
-        .withSuccessHandler(function() {
-          showStatus('✅ Конфигурация сохранена!', 'success');
-        })
-        .withFailureHandler(function(error) {
-          showStatus('❌ Ошибка: ' + error, 'error');
-        })
-        .saveCollectConfig(sheetName, cellAddress, config);
-    }
-    
-    function runConfig() {
-  clearLogs(); // Очищаем старые логи
-  addLogEntry('🚀 Начало выполнения конфигурации', 'info');
-  
-  const config = collectConfig();
-  
-  // Получаем актуальные значения целевой ячейки
-  const currentSheetName = document.getElementById('targetSheetName').value;
-  const currentCellAddress = document.getElementById('targetCellAddress').value.trim();
-  
-  addLogEntry('Конфигурация собрана: ' + JSON.stringify(config).substring(0, 100) + '...', 'info');
-  
-  if (!config.systemPrompt && config.userData.length === 0) {
-    showStatus('⚠️ Заполните хотя бы одно поле!', 'error');
-    addLogEntry('❌ Валидация не прошла: нет данных', 'error');
-    return;
+    return null;
+  } catch (error) {
+    addLog(`Ошибка загрузки: ${error.message}`, 'ERROR');
+    return null;
   }
-  
-  if (!currentSheetName || !currentCellAddress) {
-    showStatus('⚠️ Выберите целевую ячейку!', 'error');
-    addLogEntry('❌ Валидация не прошла: не указана целевая ячейка', 'error');
-    return;
-  }
-  
-  addLogEntry('Целевая ячейка: ' + currentSheetName + '!' + currentCellAddress, 'info');
-  
-  if (config.systemPrompt) {
-    addLogEntry('System Prompt: ' + config.systemPrompt.sheet + '!' + config.systemPrompt.cell, 'info');
-  } else {
-    addLogEntry('System Prompt: не указан', 'warn');
-  }
-  
-  addLogEntry('User Data источников: ' + config.userData.length, 'info');
-  config.userData.forEach(function(source, i) {
-    addLogEntry('  Источник ' + (i + 1) + ': ' + source.sheet + '!' + source.cell, 'info');
-  });
-  
-  console.log('Запуск конфигурации с помощью новой функции:', config);
-  showStatus('🚀 Сохранение и выполнение...', 'info');
-  addLogEntry('Отправка запроса на сервер...', 'info');
-  
-  // ИСПРАВЛЕНО: Используем актуальные значения целевой ячейки
-  google.script.run
-    .withSuccessHandler(function(result) {
-      console.log('Результат выполнения:', result);
-      addLogEntry('✅ Ответ от сервера получен', 'success');
-      
-      // 🔥 ПОКАЗЫВАЕМ ЛОГИ ОТ СЕРВЕРА
-      if (result.logs && result.logs.length > 0) {
-        addLogEntry('━━━ ЛОГИ СЕРВЕРА ━━━', 'info');
-        for (var i = 0; i < result.logs.length; i++) {
-          var log = result.logs[i];
-          addLogEntry('[' + log.timestamp + '] ' + log.message, log.level.toLowerCase());
-        }
-        addLogEntry('━━━━━━━━━━━━━━━━━━━', 'info');
-      }
-      
-      if (result.success) {
-        showStatus('Готово);
-        addLogEntry('✅ УСПЕХ! Результат записан в ' + currentCellAddress, 'success');
-        addLogEntry('Результат: ' + (result.result ? result.result.substring(0, 100) + '...' : 'пусто'), 'info');
-        setTimeout(function() {
-          google.script.host.close();
-        }, 2000);
-      } else {
-        showStatus('❌ Ошибка выполнения: ' + (result.error || 'Неизвестная ошибка'), 'error');
-        addLogEntry('❌ ОШИБКА ВЫПОЛНЕНИЯ: ' + (result.error || 'Неизвестная ошибка'), 'error');
-      }
-    })
-    .withFailureHandler(function(error) {
-      console.error('Критическая ошибка:', error);
-      showStatus('❌ Критическая ошибка: ' + error.message, 'error');
-      addLogEntry('❌ КРИТИЧЕСКАЯ ОШИБКА: ' + error.message, 'error');
-    })
-    .saveAndExecuteCollectConfig(currentSheetName, currentCellAddress, config);
 }
 
-    function resetConfig() {
-      if (confirm('Удалить сохранённую конфигурацию?')) {
-        google.script.run
-          .withSuccessHandler(function() {
-            showStatus('✅ Конфигурация сброшена!', 'success');
-            setTimeout(function() {
-              google.script.host.close();
-            }, 1000);
-          })
-          .withFailureHandler(function(error) {
-            showStatus('❌ Ошибка: ' + error, 'error');
-          })
-          .deleteCollectConfig(sheetName, cellAddress);
-      }
+function updateLastRun(sheetName, cellAddress) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ConfigData');
+    
+    if (!configSheet) {
+      return;
     }
     
-    // ============================================================================
-    // TEMPLATE FUNCTIONS
-    // ============================================================================
-    
-    function loadTemplatesList() {
-      google.script.run
-        .withSuccessHandler(function(templates) {
-          const select = document.getElementById('templateSelect');
-          select.options.length = 1; // Keep first option
-          
-          for (const templateName in templates) {
-            const option = document.createElement('option');
-            option.value = templateName;
-            option.textContent = templateName;
-            select.appendChild(option);
-          }
-        })
-        .withFailureHandler(showError)
-        .serverGetAllTemplates();
-    }
-    
-    function loadSelectedTemplate() {
-      const select = document.getElementById('templateSelect');
-      const templateName = select.value;
-      
-      if (!templateName) {
-        showError('Выберите шаблон из списка');
+    const data = configSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
+        configSheet.getRange(i + 1, 7).setValue(new Date().toISOString());
         return;
       }
-      
-      showStatus('Загрузка шаблона "' + templateName + '"...', 'info');
-      
-      google.script.run
-        .withSuccessHandler(function(config) {
-          if (!config) {
-            showError('Шаблон "' + templateName + '" не найден');
-            return;
-          }
-          
-          // Populate UI
-          document.getElementById('systemSheet').value = config.systemPrompt ? config.systemPrompt.sheet : '';
-          document.getElementById('systemCell').value = config.systemPrompt ? config.systemPrompt.cell : '';
-          
-          const userDataList = document.getElementById('userDataList');
-          userDataList.innerHTML = '';
-          
-          if (config.userData && config.userData.length > 0) {
-            config.userData.forEach(function(ud) {
-              addUserDataRow(ud.sheet, ud.cell);
-            });
-          }
-          
-          document.getElementById('templateNameInput').value = templateName;
-          
-          showStatus('Шаблон "' + templateName + '" загружен', 'success');
-        })
-        .withFailureHandler(showError)
-        .serverGetTemplate(templateName);
     }
-    
-    function saveAsTemplate() {
-      const templateName = document.getElementById('templateNameInput').value.trim();
-      
-      if (!templateName) {
-        showError('Введите имя шаблона');
-        return;
-      }
-      
-      const config = collectConfig();
-      
-      if (!config.systemPrompt || !config.systemPrompt.sheet || !config.systemPrompt.cell) {
-        showError('Укажите System Prompt (лист и ячейку)');
-        return;
-      }
-      
-      showStatus('Сохранение шаблона "' + templateName + '"...', 'info');
-      
-      google.script.run
-        .withSuccessHandler(function(response) {
-          if (response.success) {
-            showStatus(response.message + (response.size ? ' (' + response.size + ' байт)' : ''), 'success');
-            loadTemplatesList();
-            loadTemplatesStats();
-          } else {
-            showError(response.message);
-          }
-        })
-        .withFailureHandler(showError)
-        .serverSaveTemplate(templateName, config);
-    }
-    
-    function deleteSelectedTemplate() {
-      const select = document.getElementById('templateSelect');
-      const templateName = select.value;
-      
-      if (!templateName) {
-        showError('Выберите шаблон для удаления');
-        return;
-      }
-      
-      if (!confirm('Вы уверены, что хотите удалить шаблон "' + templateName + '"?')) {
-        return;
-      }
-      
-      showStatus('Удаление шаблона "' + templateName + '"...', 'info');
-      
-      google.script.run
-        .withSuccessHandler(function(response) {
-          if (response.success) {
-            showStatus(response.message, 'success');
-            document.getElementById('templateNameInput').value = '';
-            loadTemplatesList();
-            loadTemplatesStats();
-          } else {
-            showError(response.message);
-          }
-        })
-        .withFailureHandler(showError)
-        .serverDeleteTemplate(templateName);
-    }
-    
-    function loadTemplatesStats() {
-      google.script.run
-        .withSuccessHandler(function(stats) {
-          const statsDiv = document.getElementById('templateStats');
-          statsDiv.textContent = 'Шаблонов: ' + stats.count + '/' + stats.maxCount + ' | Размер: ' + stats.totalSize + ' байт';
-        })
-        .withFailureHandler(function() {
-          // Silently fail
-        })
-        .serverGetTemplatesStats();
-    }
-    
-    // ============================================================================
-    // STATUS FUNCTIONS
-    // ============================================================================
-    
- 
-  // Обновляем глобальные переменные
-  sheetName = selectedSheet;
-  cellAddress = cellAddr;
-  
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result.success) {
-        statusDiv.innerHTML = `✅ ${result.message}`;
-        statusDiv.style.color = '#137333';
-        addLogEntry('Целевая ячейка обновлена: ' + sheetName + '!' + cellAddress, 'success');
-      } else {
-        statusDiv.innerHTML = `❌ ${result.error}`;
-        statusDiv.style.color = '#d93025';
-        addLogEntry('Ошибка целевой ячейки: ' + result.error, 'error');
-      }
-    })
-    .withFailureHandler(function(error) {
-      statusDiv.innerHTML = `❌ Ошибка: ${error.message}`;
-      statusDiv.style.color = '#d93025';
-      addLogEntry('Ошибка проверки ячейки: ' + error.message, 'error');
-    })
-    .updateTargetCell(selectedSheet, cellAddr);
+  } catch (error) {
+    // ignore
+  }
 }
 
-// Обработчики изменений целевой ячейки
-document.addEventListener('DOMContentLoaded', function() {
-  const targetSheet = document.getElementById('targetSheetName');
-  const targetCell = document.getElementById('targetCellAddress');
-  
-  if (targetSheet) {
-    targetSheet.onchange = validateTargetCell;
+// ============================================================================
+// ФУНКЦИИ ДЛЯ UI: PREVIEW
+// ============================================================================
+function getCellPreview(sheetName, cellAddress) {
+  try {
+    if (!sheetName || !cellAddress) {
+      return '⚠️ Не указаны параметры';
+    }
+    
+    const data = readData(sheetName, cellAddress);
+    
+    if (!data || data.length === 0) {
+      return '(пусто)';
+    }
+    
+    if (data.length <= 100) {
+      return data;
+    }
+    
+    return data.substring(0, 100) + '...';
+    
+  } catch (error) {
+    return `❌ Ошибка: ${error.message}`;
   }
-  
-  if (targetCell) {
-    targetCell.onblur = validateTargetCell;
-    targetCell.onkeypress = function(e) {
-      if (e.key === 'Enter') {
-        validateTargetCell();
-      }
-    };
-  }
-});
-function showStatus(message, type) {
-  const status = document.getElementById('status');
-  status.textContent = message;
-  status.className = 'status ' + type;
-  status.style.display = 'block';
-  
-  // Добавляем в логи
-  addLogEntry(message, type || 'info');
 }
 
-function showError(error) {
-  const errorMsg = '❌ Ошибка: ' + error;
-  showStatus(errorMsg, 'error');
+// ============================================================================
+// ОБНОВЛЕНИЕ ЯЧЕЙКИ
+// ============================================================================
+function refreshCellWithConfig() {
+  try {
+    const ui = SpreadsheetApp.getUi();
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+    
+    if (!range) {
+      ui.alert('⚠️ Выберите ячейку в таблице перед запуском!');
+      return;
+    }
+    
+    const sheetName = sheet.getName();
+    const cellAddress = range.getA1Notation();
+    const config = loadCollectConfig(sheetName, cellAddress);
+    
+    if (!config) {
+      const response = ui.alert(
+        '⚠️ Конфигурация не найдена',
+        'Хотите создать новую?',
+        ui.ButtonSet.YES_NO
+      );
+      
+      if (response === ui.Button.YES) {
+        openCollectConfigUI();
+      }
+      return;
+    }
+    
+    ui.alert('🚀 Запуск...', 'Выполняю запрос...', ui.ButtonSet.OK);
+    
+    const result = executeCollectConfig(sheetName, cellAddress);
+    
+    if (result.success) {
+      ui.alert('✅ Готово!', `Результат записан в ${cellAddress}`, ui.ButtonSet.OK);
+    } else {
+      ui.alert('❌ Ошибка', result.error, ui.ButtonSet.OK);
+    }
+    
+  } catch (error) {
+    SpreadsheetApp.getUi().alert('❌ Ошибка выполнения:\n\n' + error.message);
+  }
 }
 
-// Валидация целевой ячейки
-function validateTargetCell() {
-  const sheetSelect = document.getElementById('targetSheetName');
-  const cellInput = document.getElementById('targetCellAddress');
-  const statusDiv = document.getElementById('targetCellStatus');
-  
-  const selectedSheet = sheetSelect.value;
-  const cellAddr = cellInput.value.trim();
-  
-  if (!selectedSheet || !cellAddr) {
-    statusDiv.innerHTML = '⚠️ Заполните лист и ячейку';
-    statusDiv.style.color = '#ea8600';
-    return;
+// ============================================================================
+// ШАБЛОНЫ - ENDPOINTS ДЛЯ UI
+// ============================================================================
+function serverGetAllTemplates() {
+  try {
+    const user = ensureEmailAuth();
+    const templates = getAllTemplates(user);
+    
+    const result = {};
+    for (const name in templates) {
+      result[name] = templates[name].config || templates[name];
+    }
+    
+    return result;
+  } catch (e) {
+    return {};
   }
-  
-  // Обновляем глобальные переменные
-  sheetName = selectedSheet;
-  cellAddress = cellAddr;
-  
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result.success) {
-        statusDiv.innerHTML = '✅ ' + result.message;
-        statusDiv.style.color = '#137333';
-        addLogEntry('Целевая ячейка обновлена: ' + sheetName + '!' + cellAddress, 'success');
-      } else {
-        statusDiv.innerHTML = '❌ ' + result.error;
-        statusDiv.style.color = '#d93025';
-        addLogEntry('Ошибка целевой ячейки: ' + result.error, 'error');
-      }
-    })
-    .withFailureHandler(function(error) {
-      statusDiv.innerHTML = '❌ Ошибка: ' + error.message;
-      statusDiv.style.color = '#d93025';
-      addLogEntry('Ошибка проверки ячейки: ' + error.message, 'error');
-    })
-    .updateTargetCell(selectedSheet, cellAddr);
 }
 
-// Обработчики изменений целевой ячейки
-document.addEventListener('DOMContentLoaded', function() {
-  const targetSheet = document.getElementById('targetSheetName');
-  const targetCell = document.getElementById('targetCellAddress');
-  
-  if (targetSheet) {
-    targetSheet.onchange = validateTargetCell;
+function serverGetTemplate(templateName) {
+  try {
+    if (!templateName) {
+      return null;
+    }
+    
+    const user = ensureEmailAuth();
+    const template = getTemplate(user, templateName);
+    
+    if (!template) {
+      return null;
+    }
+    
+    return template.config || template;
+  } catch (e) {
+    return null;
   }
-  
-  if (targetCell) {
-    targetCell.onblur = validateTargetCell;
-    targetCell.onkeypress = function(e) {
-      if (e.key === 'Enter') {
-        validateTargetCell();
-      }
-    };
-  }
-});
+}
 
-  </script>
-</body>
-</html>
+function serverGetTemplatesStats() {
+  try {
+    const user = ensureEmailAuth();
+    return getTemplatesStats(user);
+  } catch (e) {
+    return {count: 0, totalSize: 0, templates: []};
+  }
+}
+
+function serverSaveTemplate(templateName, config) {
+  try {
+    const user = ensureEmailAuth();
+    return saveTemplate(user, templateName, config);
+  } catch (e) {
+    return {success: false, message: e.message};
+  }
+}
+
+function serverDeleteTemplate(templateName) {
+  try {
+    const user = ensureEmailAuth();
+    return deleteTemplate(user, templateName);
+  } catch (e) {
+    return {success: false, message: e.message};
+  }
+}
+
+// ============================================================================
+// УДАЛЕНИЕ КОНФИГУРАЦИИ
+// ============================================================================
+function deleteCollectConfig(sheetName, cellAddress) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ConfigData');
+    
+    if (!configSheet) {
+      return {success: false, message: 'Нет сохранённых конфигураций'};
+    }
+    
+    const data = configSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
+        configSheet.deleteRow(i + 1);
+        return {success: true, message: 'Конфигурация удалена'};
+      }
+    }
+    
+    return {success: false, message: 'Конфигурация не найдена'};
+  } catch (error) {
+    return {success: false, message: error.message};
+  }
+}
+
+// ============================================================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ============================================================================
+function getAllSheetNames() {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheets().map(s => s.getName());
+}
+
+function hasConfigForCurrentCell() {
+  try {
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+    if (!range) return false;
+    
+    const config = loadCollectConfig(sheet.getName(), range.getA1Notation());
+    return config !== null;
+  } catch (e) {
+    return false;
+  }
+}
+
+// ============================================================================
+// ПРОСТОЙ UI ДЛЯ УПРАВЛЕНИЯ ШАБЛОНАМИ
+// ============================================================================
+function openTemplatesUI() {
+  // Trigger OAuth consent if needed before accessing user email
+  ensureEmailAuth();
+
+  try {
+    const user = ensureEmailAuth();
+    const templates = getAllTemplates(user);
+    const templateNames = Object.keys(templates);
+    
+    if (templateNames.length === 0) {
+      SpreadsheetApp.getUi().alert(
+        '🗂️ Шаблоны',
+        'У вас пока нет сохранённых шаблонов.\n\n' +
+        'Создайте шаблон через:\n' +
+        '🎯 Настроить запрос → заполните форму → 💾 Сохранить как шаблон',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+    
+    // Формируем список шаблонов
+    let list = '📋 ВАШИ ШАБЛОНЫ (' + templateNames.length + '):\n\n';
+    templateNames.forEach(function(name, index) {
+      const tmpl = templates[name];
+      const created = tmpl.created ? new Date(tmpl.created).toLocaleDateString('ru-RU') : '—';
+      list += (index + 1) + '. ' + name + '\n   Создан: ' + created + '\n\n';
+    });
+    
+    SpreadsheetApp.getUi().alert(
+      '🗂️ Управление шаблонами',
+      list,
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  } catch (error) {
+    SpreadsheetApp.getUi().alert('Ошибка', 'Не удалось загрузить шаблоны: ' + error.message, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+// ============================================================================
+// СПРАВКА ПО AI КОНСТРУКТОРУ
+// ============================================================================
+function showCollectConfigHelp() {
+  const ui = SpreadsheetApp.getUi();
+
+  let helpText = '🎯 AI КОНСТРУКТОР - ЧТО ЭТО?\n\n';
+  helpText += '💡 ПРОБЛЕМА:\n';
+  helpText += 'Google Sheets ограничивает формулу 50,000 символами.\n';
+  helpText += 'Если вы собираете данные из многих ячеек:\n';
+  helpText += '=GM("Промпт: " & A1 & A2 & ... & A1000)\n';
+  helpText += '❌ Формула слишком длинная = ОШИБКА!\n\n';
+
+  helpText += '✅ РЕШЕНИЕ:\n';
+  helpText += 'AI Конструктор собирает данные НА СЕРВЕРЕ!\n';
+  helpText += '1. Выбираете ячейку (например B3)\n';
+  helpText += '2. Настраиваете:\n';
+  helpText += '   • System Prompt - инструкция для AI\n';
+  helpText += '   • User Data - листы и ячейки с данными\n';
+  helpText += '3. Нажимаете "Запустить"\n';
+  helpText += '4. Результат появляется в B3\n\n';
+
+  helpText += '🎯 КАК ИСПОЛЬЗОВАТЬ:\n';
+  helpText += '1. Выделите ячейку где нужен результат\n';
+  helpText += '2. Меню → 🎯 AI Конструктор → 🎯 Настроить запрос\n';
+  helpText += '3. Выберите лист и ячейку для System Prompt\n';
+  helpText += '4. Добавьте источники данных (+ Добавить данные)\n';
+  helpText += '5. Нажмите "Запустить"\n\n';
+
+  helpText += '💾 НАСТРОЙКИ СОХРАНЯЮТСЯ!\n';
+  helpText += 'При повторном открытии - все поля заполнены.\n';
+  helpText += 'Можно быстро обновить: 🔄 Обновить ячейку\n\n';
+
+  helpText += '🗂️ ШАБЛОНЫ:\n';
+  helpText += 'Сохраняйте частые конфигурации как шаблоны!\n';
+  helpText += 'Загружайте их в один клик через форму.\n\n';
+
+  helpText += '🔒 ХРАНЕНИЕ:\n';
+  helpText += 'Конфигурации сохраняются в скрытом листе\n';
+  helpText += '"ConfigData" - нет лимитов, легко экспортировать!';
+
+  ui.alert('🎯 AI Конструктор', helpText, ui.ButtonSet.OK);
+}
