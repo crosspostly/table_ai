@@ -945,6 +945,7 @@ function setLicenseCredentialsUI() {
 function serverStatus() {
   const email = getLicenseEmail();
   const token = getLicenseToken();
+  const sheetId = SpreadsheetApp.getActive().getId();
 
   if (DEV_MODE) {
     addLog(`STATUS REQUEST: email=${email}, token=${token ? token.substring(0, 4) + '****' : 'null'}`, 'DEBUG');
@@ -954,7 +955,7 @@ function serverStatus() {
     action: 'status',
     email: email,
     token: token,
-    sheetId
+    sheetId: sheetId
   };
 
   const options = {
@@ -1101,7 +1102,7 @@ function serverGM(prompt, maxTokens, temperature) {
     prompt: prompt,
     maxTokens: maxTokens,
     temperature: temperature,
-    sheetId
+    sheetId: sheetId
   };
 
   const options = {
