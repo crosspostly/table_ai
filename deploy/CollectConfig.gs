@@ -69,8 +69,8 @@ function updateTargetCell(sheetName, cellAddress) {
 function openCollectConfigUI() {
   try {
     const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi')
-      .setWidth(1000) 
-      .setHeight(900)  
+      .setWidth(900) 
+      .setHeight(1000)  
       .setTitle('🎯 AI Конструктор v3.0');
     SpreadsheetApp.getUi().showModalDialog(html, 'AI Конструктор');
     addLog('🎯 AI Конструктор UI открыт', 'INFO');
@@ -300,13 +300,13 @@ function executeCollectConfig(sheetName, cellAddress) {
     
     addLog(`✅ Получен ответ от AI: ${aiResult.length} символов`, 'SUCCESS');
     
-    // Записываем результат
+    // Записываем результат с проверкой лимита Google Sheets
     const targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
     if (targetSheet) {
-      targetSheet.getRange(cellAddress).setValue(aiResult);
-      addLog(`✅ Результат записан в ${sheetName}!${cellAddress}`, 'SUCCESS');
+      const result = writeResultToSheet(targetSheet, cellAddress, aiResult);
+      addLog(result.message, result.success ? 'SUCCESS' : 'WARN');
     }
-    
+   
     // Обновляем lastRun
     updateLastRun(sheetName, cellAddress);
     
@@ -320,6 +320,56 @@ function executeCollectConfig(sheetName, cellAddress) {
     return {
       success: false,
       error: error.message
+    };
+  }
+}
+
+function writeResultToSheet(sheet, cellAddress, text) {
+  try {
+    const GOOGLE_SHEETS_CHAR_LIMIT = 50000;
+    
+    if (!text || text.length <= GOOGLE_SHEETS_CHAR_LIMIT) {
+      // Помещается в одну ячейку
+      sheet.getRange(cellAddress).setValue(text || '');
+      return {
+        success: true,
+        message: `✅ Результат записан в ${cellAddress} (${text ? text.length : 0} символов)`
+      };
+    }
+    
+    // Нужно разбить на несколько ячеек
+    addLog(`⚠️ Результат слишком большой (${text.length} символов), разбиваем по ячейкам`, 'WARN');
+    
+    // Парсим адрес ячейки (например A1 → col=1, row=1)
+    const range = sheet.getRange(cellAddress);
+    const startRow = range.getRow();
+    const startCol = range.getColumn();
+    
+    const chunks = [];
+    for (let i = 0; i < text.length; i += GOOGLE_SHEETS_CHAR_LIMIT) {
+      chunks.push(text.slice(i, i + GOOGLE_SHEETS_CHAR_LIMIT));
+    }
+    
+    addLog(`📝 Разбито на ${chunks.length} частей`, 'INFO');
+    
+    // Записываем по частям
+    for (let i = 0; i < chunks.length; i++) {
+      const targetRow = startRow + i;
+      const chunk = chunks[i];
+      
+      sheet.getRange(targetRow, startCol).setValue(chunk);
+      addLog(`   Часть ${i + 1}/${chunks.length} → ${sheet.getName()}!${columnToLetter(startCol)}${targetRow} (${chunk.length} символов)`, 'INFO');
+    }
+    
+    return {
+      success: true,
+      message: `✅ Результат записан в ${chunks.length} ячеек начиная с ${cellAddress} (${text.length} символов общих)`
+    };
+    
+  } catch (error) {
+    return {
+      success: false,
+      message: `❌ Ошибка записи: ${error.message}`
     };
   }
 }
