@@ -259,6 +259,30 @@
       font-size: 13px;
       color: #0c5460;
     }
+    
+    .warning-box {
+      background: #fff3cd;
+      border: 2px solid #ffc107;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+      font-size: 12px;
+      color: #856404;
+    }
+    
+    .warning-box strong {
+      color: #856404;
+    }
+    
+    .strategy-info {
+      background: #e8f5e8;
+      border: 1px solid #4caf50;
+      border-radius: 6px;
+      padding: 8px;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #2e7d32;
+    }
   </style>
 </head>
 <body>
@@ -266,9 +290,9 @@
     <div class="header">
       <h1>
         <span>📄</span>
-        Экспорт в Word/PDF
+        Экспорт в Word/PDF v2.0
       </h1>
-      <p>Создайте документ с текстовыми карточками из данных листа</p>
+      <p>Умный экспорт с обработкой больших таблиц и текстовыми карточками</p>
     </div>
     
     <form id="exportForm">
@@ -304,6 +328,22 @@
         <div id="preview" class="preview-box">
           Выберите лист для просмотра
         </div>
+        
+        <!-- ✅ НОВОЕ: Предупреждение о размере -->
+        <div id="sizeWarning" class="warning-box" style="display:none;">
+          ⚠️ <strong>Большая таблица!</strong>
+          <br>Содержит <span id="rowCount"></span> строк.
+          <br><br>
+          <strong>Рекомендации:</strong>
+          <br>• До 100 строк: полный экспорт (~30 сек)
+          <br>• 100-500 строк: батчи (~3 мин)
+          <br>• >500 строк: только первые 100
+        </div>
+        
+        <!-- Информация о стратегии -->
+        <div id="strategyInfo" class="strategy-info" style="display:none;">
+          <span id="strategyText"></span>
+        </div>
       </div>
       
       <!-- Кнопки -->
@@ -330,7 +370,14 @@
     
     <!-- Информация -->
     <div class="info-box">
-      💡 <strong>Совет:</strong> Экспортированные файлы сохраняются в папку "Table AI Exports" на вашем Google Drive
+      💡 <strong>Новые возможности v2.0:</strong>
+      <br>• 🚀 Автоматический выбор стратегии экспорта
+      <br>• 📦 Обработка больших таблиц батчами
+      <br>• ⚠️ Предупреждения о размере данных
+      <br>• 🔄 Retry механизм при ошибках
+      <br>• 📊 Детальная статистика экспорта
+      <br><br>
+      📁 Файлы сохраняются в папке "Table AI Exports"
     </div>
   </div>
   
@@ -405,6 +452,7 @@
       document.getElementById('preview').innerHTML = 'Загрузка...';
       document.getElementById('previewSection').style.display = 'block';
       
+      // Загружаем превью данных
       google.script.run
         .withSuccessHandler(function(response) {
           if (response.success) {
@@ -417,6 +465,44 @@
           document.getElementById('preview').innerHTML = '❌ Ошибка: ' + error.message;
         })
         .getSheetPreview(sheetName);
+      
+      // Загружаем информацию о размере
+      google.script.run
+        .withSuccessHandler(function(response) {
+          if (response.success) {
+            updateSizeWarning(response);
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.error('Error getting size info:', error);
+        })
+        .getSheetSizeInfo(sheetName);
+    }
+    
+    // Обновление предупреждения о размере
+    function updateSizeWarning(sizeInfo) {
+      const sizeWarning = document.getElementById('sizeWarning');
+      const strategyInfo = document.getElementById('strategyInfo');
+      const strategyText = document.getElementById('strategyText');
+      
+      if (sizeInfo.warning) {
+        // Показываем предупреждение
+        sizeWarning.style.display = 'block';
+        document.getElementById('rowCount').textContent = sizeInfo.totalRows;
+        
+        // Показываем стратегию
+        strategyInfo.style.display = 'block';
+        if (sizeInfo.strategy === 'BATCHES') {
+          strategyText.textContent = '⚡ Стратегия: Батчи (50 строк за раз) - ~' + sizeInfo.estimatedTime;
+        } else if (sizeInfo.strategy === 'LIMITED') {
+          strategyText.textContent = '⚠️ Стратегия: Ограничение (только первые 100 строк) - ~' + sizeInfo.estimatedTime;
+        }
+      } else {
+        // Скрываем предупреждения для маленьких таблиц
+        sizeWarning.style.display = 'none';
+        strategyInfo.style.display = 'block';
+        strategyText.textContent = '✅ Стратегия: Полный экспорт - ~' + sizeInfo.estimatedTime;
+      }
     }
     
     // Отображение превью данных
@@ -450,10 +536,47 @@
         return;
       }
       
+      // ✅ ПРОВЕРКА РАЗМЕРА И ПОДТВЕРЖДЕНИЕ
+      google.script.run
+        .withSuccessHandler(function(sizeInfo) {
+          if (sizeInfo.success && sizeInfo.totalRows > 500) {
+            const confirmed = confirm(
+              '⚠️ ВНИМАНИЕ!\n\n' +
+              'Таблица содержит ' + sizeInfo.totalRows + ' строк.\n\n' +
+              'Будет экспортировано только первых 100 строк.\n\n' +
+              'Продолжить?'
+            );
+            
+            if (!confirmed) {
+              return;
+            }
+          }
+          
+          // Продолжаем экспорт
+          performExport(sheetName, sizeInfo);
+        })
+        .withFailureHandler(function(error) {
+          alert('Ошибка проверки размера: ' + error.message);
+        })
+        .getSheetSizeInfo(sheetName);
+    }
+    
+    // Выполнение экспорта
+    function performExport(sheetName, sizeInfo) {
       // Показать загрузку
       document.getElementById('exportForm').style.display = 'none';
       document.getElementById('loading').classList.add('active');
       document.getElementById('result').style.display = 'none';
+      
+      // Обновляем текст загрузки в зависимости от размера
+      const loadingText = document.querySelector('#loading p');
+      if (sizeInfo.strategy === 'FULL') {
+        loadingText.textContent = 'Создаём текстовые карточки...';
+      } else if (sizeInfo.strategy === 'BATCHES') {
+        loadingText.textContent = 'Обработка батчами, это может занять несколько минут...';
+      } else {
+        loadingText.textContent = 'Экспорт первых 100 записей...';
+      }
       
       // Вызов сервера
       google.script.run
@@ -470,12 +593,33 @@
       if (result.success) {
         let html = '<div class="result-links">';
         
+        // Добавляем информацию о стратегии и статистике
+        if (result.strategy) {
+          let strategyText = '';
+          if (result.strategy === 'FULL') {
+            strategyText = '✅ Полный экспорт';
+          } else if (result.strategy === 'BATCHES') {
+            strategyText = '⚡ Батчи';
+          } else if (result.strategy === 'LIMITED') {
+            strategyText = '⚠️ Ограниченный экспорт';
+          }
+          
+          html += '<div style="margin-bottom:12px; font-size:13px; color:#666;">';
+          html += '<strong>Стратегия:</strong> ' + strategyText + '<br>';
+          html += '<strong>Обработано:</strong> ' + result.processedRows + ' из ' + result.totalRows + ' строк';
+          html += '</div>';
+        }
+        
         if (result.wordUrl) {
-          html += '<a href="' + result.wordUrl + '" target="_blank" class="result-link">📄 Открыть Word документ</a>';
+          const wordSize = result.wordSize ? Math.round(result.wordSize / 1024) + ' KB' : '';
+          html += '<a href="' + result.wordUrl + '" target="_blank" class="result-link">📄 Открыть Word' + 
+                  (wordSize ? ' (' + wordSize + ')' : '') + '</a>';
         }
         
         if (result.pdfUrl) {
-          html += '<a href="' + result.pdfUrl + '" target="_blank" class="result-link">📕 Открыть PDF документ</a>';
+          const pdfSize = result.pdfSize ? Math.round(result.pdfSize / 1024) + ' KB' : '';
+          html += '<a href="' + result.pdfUrl + '" target="_blank" class="result-link">📕 Открыть PDF' + 
+                  (pdfSize ? ' (' + pdfSize + ')' : '') + '</a>';
         }
         
         html += '<a href="https://drive.google.com/drive/folders/" target="_blank" class="result-link">📁 Открыть Google Drive</a>';
@@ -485,8 +629,15 @@
         document.getElementById('resultContent').innerHTML = html;
         document.getElementById('result').className = 'result success';
       } else {
+        let errorHtml = '<div style="margin-bottom:12px; font-size:13px;">';
+        errorHtml += '<strong>Ошибка:</strong> ' + result.error;
+        if (result.elapsed) {
+          errorHtml += '<br><strong>Время до ошибки:</strong> ' + result.elapsed + ' сек';
+        }
+        errorHtml += '</div>';
+        
         document.getElementById('resultTitle').textContent = '❌ Ошибка экспорта';
-        document.getElementById('resultContent').textContent = result.error;
+        document.getElementById('resultContent').innerHTML = errorHtml;
         document.getElementById('result').className = 'result error';
       }
     }
