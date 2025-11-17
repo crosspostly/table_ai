@@ -248,9 +248,29 @@ function exportSheetToDocument(sheetName, format, _options) {
       throw new Error('Лист пустой!');
     }
 
-    const totalRows = lastRow - 1; // Без заголовков
+    // ✅ ПРОВЕРКА ПУСТЫХ СТРОК
+    addLog('🔍 Проверка пустых строк...', 'INFO');
+    const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+    let nonEmptyRows = 0;
+
+    // Считаем непустые строки (строки считаются пустыми, если ВСЕ ячейки пустые)
+    for (let i = 1; i < data.length; i++) { // Пропускаем заголовок
+      const row = data[i];
+      const hasData = row.some((cell) => cell !== null && cell !== '' && String(cell).trim() !== '');
+      if (hasData) {
+        nonEmptyRows++;
+      }
+    }
+
     addLog('📊 Размер листа: ' + lastRow + ' строк × ' + lastCol + ' колонок', 'INFO');
-    addLog('📊 Данных для обработки: ' + totalRows + ' строк', 'INFO');
+    addLog('📊 Всего строк: ' + (lastRow - 1), 'INFO');
+    addLog('📊 Непустых строк: ' + nonEmptyRows, 'INFO');
+
+    if (nonEmptyRows === 0) {
+      throw new Error('На листе нет данных для экспорта!');
+    }
+
+    const totalRows = nonEmptyRows; // ✅ ИСПОЛЬЗУЕМ КОЛИЧЕСТВО НЕПУСТЫХ СТРОК
 
     // Определяем стратегию обработки
     let strategy;
@@ -281,11 +301,23 @@ function exportSheetToDocument(sheetName, format, _options) {
       addLog('   3. Для полного экспорта используйте Excel', 'INFO');
     }
 
-    // === ЧТЕНИЕ ДАННЫХ ===
-    addLog('📖 Чтение данных из листа...', 'INFO');
-    const data = sheet.getRange(1, 1, maxRows + 1, lastCol).getValues();
+    // === ПОДГОТОВКА ДАННЫХ ===
+    addLog('📖 Подготовка данных для экспорта...', 'INFO');
+
+    // ✅ УЖЕ ПРОЧИТАНЫ ДАННЫЕ ВЫШЕ, ИСПОЛЬЗУЕМ ИХ
     const headers = data[0];
-    addLog('✅ Данные прочитаны: ' + data.length + ' строк', 'INFO');
+
+    // Фильтруем непустые строки для обработки
+    const filteredData = [headers]; // Заголовки всегда включаем
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const hasData = row.some((cell) => cell !== null && cell !== '' && String(cell).trim() !== '');
+      if (hasData && filteredData.length <= maxRows) {
+        filteredData.push(row);
+      }
+    }
+
+    addLog('✅ Данные подготовлены: ' + filteredData.length + ' строк (включая заголовок)', 'INFO');
 
     // === СОЗДАНИЕ ДОКУМЕНТА ===
     addLog('📝 Создание Google Docs документа...', 'INFO');
@@ -308,7 +340,7 @@ function exportSheetToDocument(sheetName, format, _options) {
     timestamp.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
     timestamp.setFontSize(10);
 
-    const stats = body.appendParagraph(`Записей: ${data.length - 1} из ${totalRows}`);
+    const stats = body.appendParagraph(`Записей: ${filteredData.length - 1} из ${totalRows}`);
     stats.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
     stats.setFontSize(10);
 
@@ -327,13 +359,13 @@ function exportSheetToDocument(sheetName, format, _options) {
     if (strategy === 'BATCHES') {
       // Обработка батчами с промежуточным сохранением
       let batchNum = 1;
-      for (let batchStart = 1; batchStart < data.length; batchStart += batchSize) {
-        const batchEnd = Math.min(batchStart + batchSize, data.length);
+      for (let batchStart = 1; batchStart < filteredData.length; batchStart += batchSize) {
+        const batchEnd = Math.min(batchStart + batchSize, filteredData.length);
         addLog(`📦 Батч ${batchNum}: строки ${batchStart}-${batchEnd - 1}`, 'INFO');
 
         // Обрабатываем батч
         for (let r = batchStart; r < batchEnd; r++) {
-          const result = processCard(body, data[r], r, headers);
+          const result = processCard(body, filteredData[r], r, headers);
           if (result.processed) {
             processedRows++;
             totalFields += result.fieldCount;
@@ -344,7 +376,7 @@ function exportSheetToDocument(sheetName, format, _options) {
         }
 
         // Промежуточное сохранение после батча (кроме последнего)
-        if (batchEnd < data.length) {
+        if (batchEnd < filteredData.length) {
           addLog('   💾 Сохранение прогресса...', 'INFO');
           doc.saveAndClose();
           Utilities.sleep(1000);
@@ -359,8 +391,8 @@ function exportSheetToDocument(sheetName, format, _options) {
       }
     } else {
       // Обычная обработка (FULL или LIMITED)
-      for (let r = 1; r < data.length; r++) {
-        const result = processCard(body, data[r], r, headers);
+      for (let r = 1; r < filteredData.length; r++) {
+        const result = processCard(body, filteredData[r], r, headers);
         if (result.processed) {
           processedRows++;
           totalFields += result.fieldCount;
@@ -371,8 +403,8 @@ function exportSheetToDocument(sheetName, format, _options) {
 
         // Прогресс-индикатор
         if (processedRows % PROGRESS_INTERVAL === 0) {
-          const progress = Math.round((processedRows / (data.length - 1)) * 100);
-          addLog(`   ⏳ Прогресс: ${processedRows}/${data.length - 1} (${progress}%)`, 'INFO');
+          const progress = Math.round((processedRows / (filteredData.length - 1)) * 100);
+          addLog(`   ⏳ Прогресс: ${processedRows}/${filteredData.length - 1} (${progress}%)`, 'INFO');
         }
       }
     }
@@ -386,6 +418,7 @@ function exportSheetToDocument(sheetName, format, _options) {
 
     // === ОБЯЗАТЕЛЬНОЕ СОХРАНЕНИЕ ДО ЭКСПОРТА ===
     addLog('💾 Сохранение документа на сервер Google...', 'INFO');
+    const docId = doc.getId(); // ✅ Определяем docId ДО сохранения
     doc.saveAndClose();
     Utilities.sleep(3000); // Увеличена задержка до 3 секунд
 
@@ -402,7 +435,6 @@ function exportSheetToDocument(sheetName, format, _options) {
 
     // === ЭКСПОРТ В ФАЙЛЫ ===
     const exportStart = Date.now();
-    const docId = doc.getId();
     const docFile = DriveApp.getFileById(docId);
     const folder = getOrCreateExportFolder();
     addLog('📁 Папка для сохранения: ' + folder.getName(), 'INFO');
@@ -762,6 +794,48 @@ function getSheetSizeInfo(sheetName) {
     };
   } catch (e) {
     return {success: false, error: e.message};
+  }
+}
+
+/**
+ * Получает количество НЕПУСТЫХ строк для листа (без заголовков)
+ * @param {string} sheetName - Название листа
+ * @return {number} Количество непустых строк данных
+ */
+// eslint-disable-next-line no-unused-vars
+function getNonEmptyRowCount(sheetName) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(sheetName);
+
+    if (!sheet) {
+      return 0;
+    }
+
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+
+    if (lastRow <= 1 || lastCol === 0) {
+      return 0;
+    }
+
+    // Читаем все данные и считаем непустые строки
+    const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+    let nonEmptyCount = 0;
+
+    for (let i = 1; i < data.length; i++) { // Пропускаем заголовок
+      const row = data[i];
+      const hasData = row.some((cell) => cell !== null && cell !== '' && String(cell).trim() !== '');
+      if (hasData) {
+        nonEmptyCount++;
+      }
+    }
+
+    addLog(`📊 Лист "${sheetName}": всего ${lastRow - 1} строк, непустых ${nonEmptyCount}`, 'INFO');
+    return nonEmptyCount;
+  } catch (e) {
+    addLog('Ошибка получения количества непустых строк: ' + e.message, 'ERROR');
+    return 0;
   }
 }
 

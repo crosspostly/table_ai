@@ -365,7 +365,7 @@
       </div>
       
       <!-- Кнопки -->
-      <button type="button" class="btn btn-primary" onclick="startExport()">
+      <button type="button" class="btn btn-primary" id="exportBtn" onclick="startExport()">
         🚀 Запустить экспорт
       </button>
       
@@ -586,7 +586,14 @@
     }
     
     // Запуск экспорта
+    let isExporting = false; // ✅ ФЛАГ БЛОКИРОВКИ
+    
     function startExport() {
+      if (isExporting) {
+        alert('⏳ Экспорт уже выполняется, подождите...');
+        return;
+      }
+      
       const sheetName = document.getElementById('sheetSelect').value;
       
       if (!sheetName) {
@@ -594,10 +601,11 @@
         return;
       }
       
-      // ✅ МГНОВЕННАЯ ОБРАТНАЯ СВЯЗЬ - блокируем кнопку
-      const btn = document.querySelector('button[onclick="startExport()"]');
+      // ✅ МГНОВЕННАЯ ОБРАТНАЯ СВЯЗЬ
+      isExporting = true;
+      const btn = document.getElementById('exportBtn');
       btn.disabled = true;
-      btn.textContent = '⏳ Запускаем...';
+      btn.textContent = '⏳ Анализируем...';
       btn.style.cursor = 'not-allowed';
       btn.style.opacity = '0.6';
       
@@ -614,7 +622,7 @@
             
             if (!confirmed) {
               // ✅ РАЗБЛОКИРУЕМ КНОПКУ ПРИ ОТМЕНЕ
-              const btn = document.querySelector('button[onclick="startExport()"]');
+              isExporting = false;
               btn.disabled = false;
               btn.textContent = '🚀 Запустить экспорт';
               btn.style.cursor = 'pointer';
@@ -629,14 +637,24 @@
               performExport(sheetName, sizeInfo);
             })
             .withFailureHandler(function(error) {
+              isExporting = false;
+              btn.disabled = false;
+              btn.textContent = '🚀 Запустить экспорт';
+              btn.style.cursor = 'pointer';
+              btn.style.opacity = '1';
               alert('Ошибка получения информации о стратегии: ' + error.message);
             })
             .getSheetSizeInfo(sheetName);
         })
         .withFailureHandler(function(error) {
+          isExporting = false;
+          btn.disabled = false;
+          btn.textContent = '🚀 Запустить экспорт';
+          btn.style.cursor = 'pointer';
+          btn.style.opacity = '1';
           alert('Ошибка проверки размера: ' + error.message);
         })
-        .getTotalRowsForSheet(sheetName);
+        .getNonEmptyRowCount(sheetName);
     }
     
     // Выполнение экспорта
@@ -656,10 +674,30 @@
         loadingText.textContent = 'Экспорт первых 100 записей...';
       }
       
+      // Обновляем кнопку
+      const btn = document.getElementById('exportBtn');
+      btn.textContent = '⏳ Экспортируем...';
+      
       // Вызов сервера
       google.script.run
-        .withSuccessHandler(handleExportResult)
-        .withFailureHandler(handleExportError)
+        .withSuccessHandler(function(result) {
+          isExporting = false;
+          btn.disabled = false;
+          btn.textContent = '🚀 Запустить экспорт';
+          btn.style.cursor = 'pointer';
+          btn.style.opacity = '1';
+          
+          handleExportResult(result);
+        })
+        .withFailureHandler(function(error) {
+          isExporting = false;
+          btn.disabled = false;
+          btn.textContent = '🚀 Запустить экспорт';
+          btn.style.cursor = 'pointer';
+          btn.style.opacity = '1';
+          
+          handleExportError(error);
+        })
         .exportSheetToDocument(sheetName, selectedFormat, {});
     }
     
@@ -667,13 +705,6 @@
     function handleExportResult(result) {
       document.getElementById('loading').classList.remove('active');
       document.getElementById('exportForm').style.display = 'block';
-      
-      // ✅ РАЗБЛОКИРУЕМ КНОПКУ
-      const btn = document.querySelector('button[onclick="startExport()"]');
-      btn.disabled = false;
-      btn.textContent = '🚀 Запустить экспорт';
-      btn.style.cursor = 'pointer';
-      btn.style.opacity = '1';
       
       if (result.success) {
         let html = '<div class="result-links">';
@@ -748,13 +779,6 @@
     function handleExportError(error) {
       document.getElementById('loading').classList.remove('active');
       document.getElementById('exportForm').style.display = 'block';
-      
-      // ✅ РАЗБЛОКИРУЕМ КНОПКУ ПРИ ОШИБКЕ
-      const btn = document.querySelector('button[onclick="startExport()"]');
-      btn.disabled = false;
-      btn.textContent = '🚀 Запустить экспорт';
-      btn.style.cursor = 'pointer';
-      btn.style.opacity = '1';
       
       document.getElementById('resultTitle').textContent = '❌ Ошибка';
       document.getElementById('resultContent').textContent = error.message;
