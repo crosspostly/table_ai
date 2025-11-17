@@ -174,6 +174,7 @@ function exportSheetToDocument(sheetName, format, _options) {
 
     // === СОЗДАНИЕ КАРТОЧЕК ДАННЫХ ===
     addLog('📝 Создание текстовых карточек...', 'INFO');
+    const cardCreationStart = Date.now();
     let processedRows = 0;
     let skippedRows = 0;
     let totalFields = 0;
@@ -233,10 +234,12 @@ function exportSheetToDocument(sheetName, format, _options) {
       }
     }
 
+    const cardCreationTime = Math.round((Date.now() - cardCreationStart) / 1000);
     addLog(`✅ Создано карточек: ${processedRows}`, 'SUCCESS');
     addLog(`⏭️ Пропущено строк: ${skippedRows}`, 'INFO');
     addLog(`📊 Всего полей: ${totalFields}`, 'INFO');
     addLog(`⏭️ Пропущено полей: ${skippedFields}`, 'INFO');
+    addLog(`⏱️ Время создания карточек: ${cardCreationTime} сек`, 'INFO');
 
     // === ОБЯЗАТЕЛЬНОЕ СОХРАНЕНИЕ ДО ЭКСПОРТА ===
     addLog('💾 Сохранение документа на сервер Google...', 'INFO');
@@ -245,6 +248,7 @@ function exportSheetToDocument(sheetName, format, _options) {
     addLog('✅ Документ сохранён на сервер', 'SUCCESS');
 
     // === ЭКСПОРТ В ФАЙЛЫ ===
+    const exportStart = Date.now();
     const docId = doc.getId();
     const docFile = DriveApp.getFileById(docId);
     const folder = getOrCreateExportFolder();
@@ -296,6 +300,9 @@ function exportSheetToDocument(sheetName, format, _options) {
     // Перемещаем исходный Google Docs в папку экспортов
     docFile.moveTo(folder);
 
+    const exportTime = Math.round((Date.now() - exportStart) / 1000);
+    addLog(`⏱️ Время экспорта файлов: ${exportTime} сек`, 'INFO');
+
     // === ИТОГОВАЯ СТАТИСТИКА ===
     const elapsed = Math.round((Date.now() - startTime) / 1000);
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
@@ -312,7 +319,16 @@ function exportSheetToDocument(sheetName, format, _options) {
     if (result.pdfSize) {
       addLog(`   PDF файл: ${Math.round(result.pdfSize / 1024)} KB`, 'INFO');
     }
-    addLog(`⏱️ Время выполнения: ${elapsed} сек`, 'INFO');
+    addLog(`⏱️ Время создания карточек: ${cardCreationTime} сек`, 'INFO');
+    addLog(`⏱️ Время экспорта файлов: ${exportTime} сек`, 'INFO');
+    addLog(`⏱️ Общее время выполнения: ${elapsed} сек`, 'INFO');
+
+    // Эффективность обработки
+    if (processedRows > 0) {
+      const avgTimePerRow = Math.round((elapsed / processedRows) * 100) / 100;
+      addLog(`📈 Среднее время на строку: ${avgTimePerRow} сек`, 'INFO');
+    }
+
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
     addLog('✅ ЭКСПОРТ ЗАВЕРШЕН!', 'SUCCESS');
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
@@ -397,7 +413,7 @@ function processCard(body, row, rowIndex, headers) {
 }
 
 /**
- * Экспортирует документ с retry механизмом и проверкой размера
+ * Экспортирует документ с улучшенным retry механизмом и проверкой размера
  * @param {string} docId - ID документа
  * @param {string} format - Формат ('docx' или 'pdf')
  * @param {number} maxRetries - Максимальное количество попыток
@@ -405,7 +421,8 @@ function processCard(body, row, rowIndex, headers) {
  */
 function exportWithRetry(docId, format, maxRetries) {
   let attempt = 0;
-  let lastBlob = null;
+  let bestBlob = null;
+  let bestSize = 0;
 
   while (attempt < maxRetries) {
     try {
@@ -414,35 +431,54 @@ function exportWithRetry(docId, format, maxRetries) {
 
       let blob;
       if (format === 'docx') {
-        // Word экспорт через URL
+        // Word экспорт через URL с улучшенными параметрами
         const docUrl = 'https://docs.google.com/document/d/' + docId + '/export?format=docx';
-        blob = UrlFetchApp.fetch(docUrl, {
+        const response = UrlFetchApp.fetch(docUrl, {
           headers: {
             'Authorization': 'Bearer ' + ScriptApp.getOAuthToken(),
           },
-        }).getBlob();
+          muteHttpExceptions: true, // Не бросать исключения при HTTP ошибках
+        });
+
+        const responseCode = response.getResponseCode();
+        if (responseCode !== 200) {
+          throw new Error(`HTTP ${responseCode}: ${response.getContentText()}`);
+        }
+
+        blob = response.getBlob();
       } else {
-        // PDF экспорт черезgetAs
-        const docFile = DriveApp.getFileById(docId);
-        blob = docFile.getAs('application/pdf');
+        // PDF экспорт через getAs с обработкой ошибок
+        try {
+          const docFile = DriveApp.getFileById(docId);
+          blob = docFile.getAs('application/pdf');
+        } catch (pdfError) {
+          throw new Error('PDF экспорт недоступен: ' + pdfError.message);
+        }
       }
 
       const size = blob.getBytes().length;
       addLog(`   Blob получен: ${size} байт`, 'INFO');
 
-      // Проверяем размер (меньше 1KB = подозрительно маленький)
-      if (size < 1000) {
-        addLog('⚠️ Blob слишком маленький, пробуем ещё раз...', 'WARN');
-        lastBlob = blob;
+      // Улучшенная проверка размера
+      const MIN_EXPECTED_SIZE = format === 'docx' ? 2000 : 1000; // Word обычно больше
+      if (size < MIN_EXPECTED_SIZE) {
+        addLog(`⚠️ Blob подозрительно маленький (${size} байт < ${MIN_EXPECTED_SIZE})`, 'WARN');
+
+        // Сохраняем как лучший, если он больше предыдущего
+        if (size > bestSize) {
+          bestBlob = blob;
+          bestSize = size;
+          addLog(`   Сохраняем как лучший кандидат: ${size} байт`, 'INFO');
+        }
 
         if (attempt < maxRetries) {
-          addLog(`   Ожидание ${attempt * 2} сек...`, 'INFO');
-          Utilities.sleep(attempt * 2000); // Экспоненциальная задержка
+          const waitTime = attempt * 2000; // Экспоненциальная задержка
+          addLog(`   Ожидание ${waitTime/1000} сек перед повторной попыткой...`, 'INFO');
+          Utilities.sleep(waitTime);
           continue;
         } else {
-          // Последняя попытка, используем максимальный blob
-          addLog('⚠️ Все попытки исчерпаны, используем последний blob', 'WARN');
-          return lastBlob || blob;
+          addLog('⚠️ Все попытки исчерпаны, используем лучший blob', 'WARN');
+          return bestBlob || blob;
         }
       }
 
@@ -452,10 +488,16 @@ function exportWithRetry(docId, format, maxRetries) {
       addLog(`   ⚠️ Попытка ${attempt} не удалась: ${e.message}`, 'WARN');
 
       if (attempt < maxRetries) {
-        addLog(`   Ожидание ${attempt * 2} сек...`, 'INFO');
-        Utilities.sleep(attempt * 2000); // Экспоненциальная задержка
+        const waitTime = attempt * 2000; // Экспоненциальная задержка
+        addLog(`   Ожидание ${waitTime/1000} сек...`, 'INFO');
+        Utilities.sleep(waitTime);
       } else {
-        throw e; // Исчерпаны попытки
+        // Если есть лучший blob, используем его
+        if (bestBlob && bestSize > 0) {
+          addLog(`⚠️ Используем лучший сохраненный blob: ${bestSize} байт`, 'WARN');
+          return bestBlob;
+        }
+        throw new Error(`Не удалось экспортировать документ после ${maxRetries} попыток. Последняя ошибка: ${e.message}`);
       }
     }
   }
@@ -563,5 +605,28 @@ function getSheetSizeInfo(sheetName) {
     };
   } catch (e) {
     return {success: false, error: e.message};
+  }
+}
+
+/**
+ * Получает количество строк для листа (без заголовков)
+ * @param {string} sheetName - Название листа
+ * @return {number} Количество строк данных
+ */
+// eslint-disable-next-line no-unused-vars
+function getTotalRowsForSheet(sheetName) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(sheetName);
+
+    if (!sheet) {
+      return 0;
+    }
+
+    const lastRow = sheet.getLastRow();
+    return Math.max(0, lastRow - 1); // Без заголовков
+  } catch (e) {
+    addLog('Ошибка получения количества строк: ' + e.message, 'ERROR');
+    return 0;
   }
 }

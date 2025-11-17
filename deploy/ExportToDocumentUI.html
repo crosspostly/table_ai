@@ -538,11 +538,11 @@
       
       // ✅ ПРОВЕРКА РАЗМЕРА И ПОДТВЕРЖДЕНИЕ
       google.script.run
-        .withSuccessHandler(function(sizeInfo) {
-          if (sizeInfo.success && sizeInfo.totalRows > 500) {
+        .withSuccessHandler(function(totalRows) {
+          if (totalRows > 500) {
             const confirmed = confirm(
               '⚠️ ВНИМАНИЕ!\n\n' +
-              'Таблица содержит ' + sizeInfo.totalRows + ' строк.\n\n' +
+              'Таблица содержит ' + totalRows + ' строк.\n\n' +
               'Будет экспортировано только первых 100 строк.\n\n' +
               'Продолжить?'
             );
@@ -552,13 +552,20 @@
             }
           }
           
-          // Продолжаем экспорт
-          performExport(sheetName, sizeInfo);
+          // Получаем полную информацию о стратегии
+          google.script.run
+            .withSuccessHandler(function(sizeInfo) {
+              performExport(sheetName, sizeInfo);
+            })
+            .withFailureHandler(function(error) {
+              alert('Ошибка получения информации о стратегии: ' + error.message);
+            })
+            .getSheetSizeInfo(sheetName);
         })
         .withFailureHandler(function(error) {
           alert('Ошибка проверки размера: ' + error.message);
         })
-        .getSheetSizeInfo(sheetName);
+        .getTotalRowsForSheet(sheetName);
     }
     
     // Выполнение экспорта
@@ -607,6 +614,15 @@
           html += '<div style="margin-bottom:12px; font-size:13px; color:#666;">';
           html += '<strong>Стратегия:</strong> ' + strategyText + '<br>';
           html += '<strong>Обработано:</strong> ' + result.processedRows + ' из ' + result.totalRows + ' строк';
+          
+          // Добавляем информацию о размерах файлов
+          if (result.wordSize) {
+            html += '<br><strong>Word:</strong> ' + Math.round(result.wordSize / 1024) + ' KB';
+          }
+          if (result.pdfSize) {
+            html += '<br><strong>PDF:</strong> ' + Math.round(result.pdfSize / 1024) + ' KB';
+          }
+          
           html += '</div>';
         }
         
