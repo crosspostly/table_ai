@@ -105,11 +105,11 @@ function exportSheetToDocument(sheetName, format, _options) {
 
     addLog('📊 Размер: ' + lastRow + ' строк × ' + lastCol + ' колонок', 'INFO');
 
-    // ✅ УМНЫЙ БАТЧИНГ: проверяем размер таблицы
+    // ✅ ОГРАНИЧЕНИЕ ДЛЯ БОЛЬШИХ ТАБЛИЦ
     const BATCH_SIZE = 100; // Обрабатываем по 100 строк за раз
-    const MAX_ROWS = 1000; // Максимальный лимит
+    const MAX_ROWS = 500; // Максимальный лимит для избежания timeout
     if (lastRow > MAX_ROWS) {
-      addLog('⚠️ Таблица слишком большая (' + lastRow + ' строк), обрезаем до ' + MAX_ROWS, 'WARN');
+      addLog('⚠️ Таблица слишком большая (' + lastRow + ' строк), обрезаем до ' + MAX_ROWS + ' строк', 'WARN');
       lastRow = MAX_ROWS;
     }
 
