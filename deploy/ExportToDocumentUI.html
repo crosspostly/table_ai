@@ -287,6 +287,17 @@
 </head>
 <body>
   <div class="container">
+    <!-- Блок авторизации -->
+    <div id="authRequired" style="display:none;">
+      <div class="auth-box">
+        <h3>🔒 Требуется авторизация</h3>
+        <p>Для работы экспорта нужны дополнительные разрешения.</p>
+        <button class="btn btn-primary" onclick="requestAuth()">
+          🔐 Авторизовать сейчас
+        </button>
+      </div>
+    </div>
+    
     <div class="header">
       <h1>
         <span>📄</span>
@@ -378,6 +389,12 @@
       <br>• 📊 Детальная статистика экспорта
       <br><br>
       📁 Файлы сохраняются в папке "Table AI Exports"
+      <strong>💡 Первый раз?</strong>
+      <br>При первом использовании появится окно с запросом разрешений.
+      <br>Нажмите <strong>"Разрешить"</strong> для продолжения.
+      <br><br>
+      <strong>📁 Где файлы?</strong>
+      <br>Все экспорты сохраняются в папку <strong>"Table AI Exports"</strong> на вашем Google Drive.
     </div>
   </div>
   
@@ -387,8 +404,54 @@
     
     // Инициализация при загрузке
     window.onload = function() {
-      loadSheets();
+      // Проверяем авторизацию при загрузке
+      google.script.run
+        .withSuccessHandler(function(status) {
+          if (!status.authorized) {
+            // Показываем форму авторизации
+            document.getElementById('authRequired').style.display = 'block';
+            document.getElementById('exportForm').style.display = 'none';
+          } else {
+            // Загружаем данные
+            loadSheets();
+          }
+        })
+        .withFailureHandler(function(error) {
+          alert('Ошибка проверки авторизации: ' + error.message);
+        })
+        .checkAuthStatus();
     };
+    
+    // Функция запроса авторизации
+    function requestAuth() {
+      document.getElementById('authRequired').innerHTML = `
+        <div class="loading-box">
+          <div class="spinner"></div>
+          <p>Запрашиваем разрешения...</p>
+          <p style="font-size: 12px; color: #666;">
+            Если появится всплывающее окно - разрешите доступ
+          </p>
+        </div>
+      `;
+      
+      google.script.run
+        .withSuccessHandler(function() {
+          // Успех - перезагружаем UI
+          location.reload();
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('authRequired').innerHTML = `
+            <div class="error-box">
+              <h3>❌ Ошибка авторизации</h3>
+              <p>${error.message}</p>
+              <button class="btn btn-secondary" onclick="location.reload()">
+                🔄 Попробовать снова
+              </button>
+            </div>
+          `;
+        })
+        .requestAuthorization();
+    }
     
     // Загрузка списка листов
     function loadSheets() {
@@ -638,7 +701,15 @@
                   (pdfSize ? ' (' + pdfSize + ')' : '') + '</a>';
         }
         
-        html += '<a href="https://drive.google.com/drive/folders/" target="_blank" class="result-link">📁 Открыть Google Drive</a>';
+        // ✅ НОВОЕ: Ссылка на папку Drive
+        if (result.folderUrl) {
+          html += `
+            <a href="${result.folderUrl}" target="_blank" class="result-link folder-link">
+              📁 Открыть папку с экспортами
+            </a>
+          `;
+        }
+        
         html += '</div>';
         
         document.getElementById('resultTitle').textContent = '✅ Экспорт завершен успешно!';
