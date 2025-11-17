@@ -17,6 +17,15 @@ function openExportSidebar() {
   try {
     addLog('📄 Открытие панели экспорта', 'INFO');
 
+    // ✅ ПРОВЕРКА РАЗРЕШЕНИЙ
+    const authStatus = checkAuthStatus();
+
+    if (!authStatus.authorized) {
+      addLog('⚠️ Требуется авторизация', 'WARN');
+      showAuthorizationDialog();
+      return;
+    }
+
     const html = HtmlService.createHtmlOutputFromFile('ExportToDocumentUI')
       .setTitle('📄 Экспорт в Word/PDF')
       .setWidth(400);
@@ -66,6 +75,126 @@ function getExportInitData() {
 }
 
 /**
+ * Проверяет наличие необходимых разрешений
+ * @return {Object} Статус авторизации
+ */
+// eslint-disable-next-line no-unused-vars
+function checkAuthStatus() {
+  try {
+    // Пробуем выполнить операции, требующие разрешений
+
+    // 1. Доступ к Google Sheets (уже есть по умолчанию)
+    SpreadsheetApp.getActiveSpreadsheet().getName();
+
+    // 2. Доступ к Google Drive
+    DriveApp.getRootFolder().getName();
+
+    // 3. Доступ к Google Docs
+    // Создаём тестовый документ и сразу удаляем
+    const testDoc = DocumentApp.create('_test_auth_' + new Date().getTime());
+    const testDocId = testDoc.getId();
+    DriveApp.getFileById(testDocId).setTrashed(true);
+
+    addLog('✅ Все разрешения получены', 'SUCCESS');
+
+    return {
+      authorized: true,
+      message: 'Авторизация успешна',
+    };
+  } catch (e) {
+    addLog('⚠️ Требуется авторизация: ' + e.message, 'WARN');
+
+    // Определяем какое разрешение отсутствует
+    let missingScope = 'unknown';
+
+    if (e.message.includes('Drive') || e.message.includes('drive')) {
+      missingScope = 'drive';
+    } else if (e.message.includes('Document') || e.message.includes('document')) {
+      missingScope = 'documents';
+    }
+
+    return {
+      authorized: false,
+      missingScope: missingScope,
+      error: e.message,
+    };
+  }
+}
+
+/**
+ * Показывает диалог с инструкциями по авторизации
+ */
+function showAuthorizationDialog() {
+  const ui = SpreadsheetApp.getUi();
+
+  const response = ui.alert(
+    '🔒 Требуется авторизация',
+    '❗ Для работы экспорта нужны дополнительные разрешения:\n\n' +
+    '✓ Доступ к Google Drive (создание файлов)\n' +
+    '✓ Доступ к Google Docs (создание документов)\n\n' +
+    '📌 Нажмите "Авторизовать" и разрешите доступ во всплывающем окне.',
+    ui.ButtonSet.OK_CANCEL,
+  );
+
+  if (response === ui.Button.OK) {
+    // Пользователь согласился
+    requestAuthorization();
+  } else {
+    ui.alert(
+      '⚠️ Авторизация отменена',
+      'Экспорт недоступен без разрешений.\n\nПопробуйте позже через меню:\n🤖 Table AI → 📄 Экспорт в Word/PDF',
+      ui.ButtonSet.OK,
+    );
+  }
+}
+
+/**
+ * Запрашивает авторизацию, выполняя операции
+ */
+// eslint-disable-next-line no-unused-vars
+function requestAuthorization() {
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    addLog('🔐 Запрос авторизации...', 'INFO');
+
+    // Принудительно вызываем все API для запроса разрешений
+    SpreadsheetApp.getActiveSpreadsheet().getName();
+    DriveApp.getRootFolder().getName();
+
+    // Создаём тестовый документ
+    const testDoc = DocumentApp.create('_auth_test_' + new Date().getTime());
+    const testDocId = testDoc.getId();
+
+    // Сразу удаляем
+    DriveApp.getFileById(testDocId).setTrashed(true);
+
+    addLog('✅ Авторизация успешна!', 'SUCCESS');
+
+    ui.alert(
+      '✅ Авторизация успешна!',
+      'Все разрешения получены.\n\nТеперь можете использовать экспорт.',
+      ui.ButtonSet.OK,
+    );
+
+    // Открываем панель
+    openExportSidebar();
+  } catch (e) {
+    addLog('❌ Ошибка авторизации: ' + e.message, 'ERROR');
+
+    ui.alert(
+      '❌ Ошибка авторизации',
+      'Не удалось получить разрешения:\n\n' + e.message + '\n\n' +
+      '📌 Попробуйте:\n' +
+      '1. Обновить страницу\n' +
+      '2. Выйти из Google аккаунта и войти снова\n' +
+      '3. Обратиться к администратору',
+      ui.ButtonSet.OK,
+    );
+  }
+}
+
+/**
  * Экспортирует лист в Word/PDF
  * @param {string} sheetName - Название листа
  * @param {string} format - Формат: 'word', 'pdf', или 'both'
@@ -80,6 +209,18 @@ function exportSheetToDocument(sheetName, format, _options) {
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
     addLog('📋 Лист: ' + sheetName, 'INFO');
     addLog('📦 Формат: ' + format, 'INFO');
+
+    // ✅ ПРОВЕРКА РАЗРЕШЕНИЙ
+    const authStatus = checkAuthStatus();
+
+    if (!authStatus.authorized) {
+      throw new Error(
+        'Отсутствуют необходимые разрешения. ' +
+        'Закройте панель и откройте снова для авторизации.',
+      );
+    }
+
+    addLog('✅ Разрешения проверены', 'SUCCESS');
 
     // Валидация параметров
     if (!sheetName || !format) {
@@ -190,15 +331,17 @@ function exportSheetToDocument(sheetName, format, _options) {
     const docId = doc.getId();
     const docFile = DriveApp.getFileById(docId);
 
+    // Создаем или находим папку для экспортов
+    const folder = getOrCreateExportFolder();
+    addLog('📁 Папка для сохранения: ' + folder.getName(), 'INFO');
+
     const result = {
       success: true,
       docId: docId,
       docName: docName,
+      folderUrl: folder.getUrl(), // ✅ ДОБАВЛЕНО
+      folderId: folder.getId(), // ✅ ДОБАВЛЕНО
     };
-
-    // Создаем или находим папку для экспортов
-    const folder = getOrCreateExportFolder();
-    addLog('📁 Папка для сохранения: ' + folder.getName(), 'INFO');
 
     // Экспорт в Word
     if (format === 'word' || format === 'both') {
