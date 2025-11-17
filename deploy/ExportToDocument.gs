@@ -12,6 +12,7 @@
 /**
  * Открывает боковую панель для экспорта
  */
+// eslint-disable-next-line no-unused-vars
 function openExportSidebar() {
   try {
     addLog('📄 Открытие панели экспорта', 'INFO');
@@ -33,6 +34,7 @@ function openExportSidebar() {
  * Получает данные для инициализации UI
  * @return {Object} Объект с доступными листами
  */
+// eslint-disable-next-line no-unused-vars
 function getExportInitData() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -70,6 +72,7 @@ function getExportInitData() {
  * @param {Object} _options - Дополнительные настройки форматирования
  * @return {Object} Результат с ссылками на файлы
  */
+// eslint-disable-next-line no-unused-vars
 function exportSheetToDocument(sheetName, format, _options) {
   try {
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
@@ -93,7 +96,7 @@ function exportSheetToDocument(sheetName, format, _options) {
 
     // Читаем данные
     addLog('📖 Чтение данных из листа...', 'INFO');
-    const lastRow = sheet.getLastRow();
+    let lastRow = sheet.getLastRow();
     const lastCol = sheet.getLastColumn();
 
     if (lastRow === 0 || lastCol === 0) {
@@ -101,6 +104,14 @@ function exportSheetToDocument(sheetName, format, _options) {
     }
 
     addLog('📊 Размер: ' + lastRow + ' строк × ' + lastCol + ' колонок', 'INFO');
+
+    // ✅ ОГРАНИЧЕНИЕ ДЛЯ БОЛЬШИХ ТАБЛИЦ
+    const BATCH_SIZE = 100; // Обрабатываем по 100 строк за раз
+    const MAX_ROWS = 500; // Максимальный лимит для избежания timeout
+    if (lastRow > MAX_ROWS) {
+      addLog('⚠️ Таблица слишком большая (' + lastRow + ' строк), обрезаем до ' + MAX_ROWS + ' строк', 'WARN');
+      lastRow = MAX_ROWS;
+    }
 
     const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
 
@@ -124,11 +135,14 @@ function exportSheetToDocument(sheetName, format, _options) {
     body.appendHorizontalRule();
     body.appendParagraph(''); // Пустая строка
 
-    // Создаем таблицу
-    addLog('📊 Создание таблицы...', 'INFO');
-    const table = body.appendTable(data);
+    // ✅ УМНОЕ СОЗДАНИЕ ТАБЛИЦЫ С БАТЧИНГОМ
+    addLog('📊 Создание таблицы с красивым форматированием...', 'INFO');
 
-    // Форматирование заголовка (первая строка)
+    // Создаем таблицу с заголовком
+    const headerData = [data[0]]; // Только первая строка (заголовок)
+    let table = body.appendTable(headerData);
+
+    // ✅ КРАСИВОЕ ФОРМАТИРОВАНИЕ ЗАГОЛОВКА
     const headerRow = table.getRow(0);
     const numCells = headerRow.getNumCells();
 
@@ -143,33 +157,56 @@ function exportSheetToDocument(sheetName, format, _options) {
       cell.setPaddingRight(8);
     }
 
-    // Форматирование остальных строк (чередующийся фон)
-    for (let r = 1; r < table.getNumRows(); r++) {
-      const row = table.getRow(r);
-      const bgColor = (r % 2 === 0) ? '#FFFFFF' : '#F3F3F3';
+    // ✅ ДОБАВЛЯЕМ ОСТАЛЬНЫЕ СТРОКИ БАТЧАМИ С КРАСИВЫМ ФОРМАТИРОВАНИЕМ
+    for (let startRow = 1; startRow < data.length; startRow += BATCH_SIZE) {
+      const endRow = Math.min(startRow + BATCH_SIZE, data.length);
+      const batchData = data.slice(startRow, endRow);
 
-      for (let c = 0; c < row.getNumCells(); c++) {
-        const cell = row.getCell(c);
-        cell.setBackgroundColor(bgColor);
-        cell.setPaddingTop(6);
-        cell.setPaddingBottom(6);
-        cell.setPaddingLeft(8);
-        cell.setPaddingRight(8);
+      addLog(`🎨 Обработка строк ${startRow}-${endRow} из ${data.length} с форматированием...`, 'INFO');
 
-        // Заменяем пустые ячейки на "—"
-        const text = cell.getText().trim();
-        if (!text) {
-          cell.clear();
-          cell.appendParagraph('—');
+      // Добавляем батч строк с красивым форматированием
+      for (let r = 0; r < batchData.length; r++) {
+        const rowData = batchData[r];
+        const newRow = table.appendTableRow();
+
+        for (let c = 0; c < rowData.length; c++) {
+          const cell = newRow.appendTableCell(rowData[c] ? String(rowData[c]) : '—');
+
+          // ✅ КРАСИВОЕ ЧЕРЕДУЮЩЕЕСЯ ФОРМАТИРОВАНИЕ
+          const bgColor = ((startRow + r) % 2 === 0) ? '#FFFFFF' : '#F3F3F3';
+          cell.setBackgroundColor(bgColor);
+          cell.setPaddingTop(6);
+          cell.setPaddingBottom(6);
+          cell.setPaddingLeft(8);
+          cell.setPaddingRight(8);
+
+          // Заменяем пустые ячейки на "—"
+          const text = cell.getText().trim();
+          if (!text) {
+            cell.clear();
+            cell.appendParagraph('—');
+          }
         }
+      }
+
+      // ✅ СОХРАНЯЕМ ПОСЛЕ КАЖДОГО БАТЧА (кроме последнего)
+      if (endRow < data.length) {
+        addLog('💾 Сохранение прогресса...', 'INFO');
+        doc.saveAndClose();
+        Utilities.sleep(300); // Небольшая пауза
+
+        // Переоткрываем документ
+        doc = DocumentApp.openById(doc.getId());
+        body = doc.getBody();
+        table = body.getTables()[0]; // Получаем ту же таблицу
       }
     }
 
-    // Границы таблицы
+    // ✅ ФИНАЛЬНОЕ ОФОРМЛЕНИЕ ТАБЛИЦЫ
     table.setBorderWidth(0.5);
     table.setBorderColor('#CCCCCC');
 
-    addLog('✅ Таблица создана и отформатирована', 'SUCCESS');
+    addLog('✅ Таблица создана и красиво отформатирована', 'SUCCESS');
 
     // Экспорт файлов
     const docId = doc.getId();
@@ -189,7 +226,15 @@ function exportSheetToDocument(sheetName, format, _options) {
     if (format === 'word' || format === 'both') {
       addLog('📄 Экспорт в Word...', 'INFO');
       try {
-        const blob = docFile.getAs('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        // ✅ ПРАВИЛЬНЫЙ СПОСОБ: используем URL для экспорта в DOCX
+        const docUrl = 'https://docs.google.com/document/d/' + docId + '/export?format=docx';
+
+        const blob = UrlFetchApp.fetch(docUrl, {
+          headers: {
+            'Authorization': 'Bearer ' + ScriptApp.getOAuthToken(),
+          },
+        }).getBlob();
+
         const wordFile = folder.createFile(blob);
         wordFile.setName(sheetName + '_export.docx');
         result.wordUrl = wordFile.getUrl();
@@ -261,6 +306,7 @@ function getOrCreateExportFolder() {
  * @param {string} sheetName - Название листа
  * @return {Object} Объект с превью данных
  */
+// eslint-disable-next-line no-unused-vars
 function getSheetPreview(sheetName) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
