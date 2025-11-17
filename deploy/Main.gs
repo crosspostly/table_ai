@@ -1,7 +1,7 @@
 /**
  * TABLE AI - CLIENT (Google Sheets Container-bound Script)
  * v3.0.0 Refactoring: CLIENT = UI ONLY
- * 
+ *
  * ИСПОЛЬЗУЕМЫЕ SHARED UTILITIES:
  * - SecurityValidator.gs: Валидация входных данных
  * - LoggingService.gs: Централизованное логирование
@@ -9,7 +9,7 @@
  * - EmojiRemover.gs: Очистка текста
  * - VersionInfo.gs: Информация о версии
  * - Constants.gs: Общие константы
- * 
+ *
  * VK_PARSER: Отдельный веб-сервис (VK_PARSER_URL)
  * SERVER: Отдельный веб-сервис (SERVER_URL)
  */
@@ -39,11 +39,11 @@ const DEVMODE = DEV_MODE;
 function shareAsTemplate() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   // Создать копию с очищенными данными, но с кодом
-  const copy = ss.copy("VK→Telegram Crossposter Template");
-  
+  const copy = ss.copy('VK→Telegram Crossposter Template');
+
   // URL для пользователей
   const url = `https://docs.google.com/spreadsheets/d/${copy.getId()}/copy`;
-  SpreadsheetApp.getUi().alert("Template URL готов:", url);
+  SpreadsheetApp.getUi().alert('Template URL готов:', url);
 }
 // ====== ЛОГИРОВАНИЕ ======
 function addLog(msg, level = 'INFO') {
@@ -453,42 +453,42 @@ function createStopWordsFormulas(sheet, totalRows) {
   try {
     addLog('→ Создание формул фильтрации (оптимизированная batch-версия)', 'INFO');
     const startTime = new Date().getTime();
-    
+
     const stopWordsRange = '$E$2:$E$100';
     const positiveWordsRange = '$H$2:$H$100';
-    
+
     // Собираем ВСЕ формулы в один массив для batch-операции
     const formulas = [];
-    for (var row = 2; row <= totalRows; row++) {
+    for (let row = 2; row <= totalRows; row++) {
       // F: Фильтрация стоп-слов
       const formulaF = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + stopWordsRange + ', C' + row + ')))*(' + stopWordsRange + '<>"")) > 0, "", C' + row + ')';
-      
+
       // G: Номер отфильтрованного поста
       const formulaG = '=IF(F' + row + '<>"", COUNTA(F$2:F' + row + '), "")';
-      
+
       // H: Пусто (колонка для позитивных слов - заполняется вручную)
-      
+
       // I: Фильтрация позитивных слов
       const formulaI = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + positiveWordsRange + ', C' + row + ')))*(' + positiveWordsRange + '<>"")) > 0, C' + row + ', "")';
-      
+
       // J: Номер поста с позитивными словами
       const formulaJ = '=IF(I' + row + '<>"", COUNTA(I$2:I' + row + '), "")';
-      
+
       // Формируем строку: F, G, H (пусто), I, J
       formulas.push([formulaF, formulaG, '', formulaI, formulaJ]);
     }
-    
+
     // ОДИН batch-запрос вместо 400 отдельных!
     // Устанавливаем формулы для колонок F, G, H, I, J (с E:6 по J:10)
     if (formulas.length > 0) {
       sheet.getRange(2, 6, formulas.length, 5).setFormulas(formulas);
     }
-    
+
     // Форматирование заголовков
     sheet.getRange(1, 5, 1, 3).setFontWeight('bold').setBackground('#FFF2CC'); // E, F, G - стоп-слова
     sheet.getRange(1, 8, 1, 3).setFontWeight('bold').setBackground('#D9EAD3'); // H, I, J - позитивные
     sheet.autoResizeColumns(5, 6);
-    
+
     const elapsed = new Date().getTime() - startTime;
     addLog('✅ Формулы фильтрации созданы за ' + elapsed + 'мс (batch-режим)', 'INFO');
   } catch (e) {
@@ -533,17 +533,17 @@ function gmCachePut_(key, value, ttlSec) {
 }
 function testServerConnection() {
   addLog('🔍 Тестирование подключения к серверу...', 'INFO');
-  
+
   try {
     // Тест 1: GET запрос (ping)
     addLog('📡 GET запрос на: ' + SERVER_URL, 'DEBUG');
     const getResp = UrlFetchApp.fetch(SERVER_URL + '?test=ping', {muteHttpExceptions: true});
     const getCode = getResp.getResponseCode();
     const getText = getResp.getContentText();
-    
+
     addLog('📥 GET RESPONSE: HTTP=' + getCode, 'DEBUG');
     addLog('📥 GET CONTENT: ' + getText.substring(0, 200) + '...', 'DEBUG');
-    
+
     if (getCode === 200) {
       addLog('✅ GET запрос успешен', 'INFO');
     } else {
@@ -552,34 +552,34 @@ function testServerConnection() {
   } catch (e) {
     addLog('❌ GET запрос exception: ' + e.message, 'ERROR');
   }
-  
+
   try {
     // Тест 2: POST запрос с минимальными данными
-    
+
     const testPayload = {
       action: 'status',
       email: 'sheepoff@gmail.com',
       token: 'test',
-      sheetId: SpreadsheetApp.getActive().getId()
+      sheetId: SpreadsheetApp.getActive().getId(),
     };
-    
+
     const postOptions = {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify(testPayload),
-      muteHttpExceptions: true
+      muteHttpExceptions: true,
     };
-    
+
     addLog('📡 POST запрос на: ' + SERVER_URL, 'DEBUG');
     addLog('📤 POST PAYLOAD: ' + JSON.stringify(testPayload), 'DEBUG');
-    
+
     const postResp = UrlFetchApp.fetch(SERVER_URL, postOptions);
     const postCode = postResp.getResponseCode();
     const postText = postResp.getContentText();
-    
+
     addLog('📥 POST RESPONSE: HTTP=' + postCode, 'DEBUG');
     addLog('📥 POST CONTENT: ' + postText.substring(0, 300) + '...', 'DEBUG');
-    
+
     if (postCode === 200) {
       try {
         const postData = JSON.parse(postText);
@@ -594,10 +594,10 @@ function testServerConnection() {
   } catch (e2) {
     addLog('❌ POST запрос exception: ' + e2.message, 'ERROR');
   }
-  
+
   // Экспортируем логи для просмотра
   exportLogsToSheet();
-  
+
   SpreadsheetApp.getUi().alert('Тестирование завершено', 'Результаты в листе "Логи"', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
@@ -679,6 +679,8 @@ function onOpen() {
       .addItem('📥 Импорт VK постов', 'importVkPosts')
       .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
       .addSeparator()
+      .addItem('📄 Экспорт в Word/PDF', 'openExportSidebar')
+      .addSeparator()
       .addItem('⚙️ Настройки', 'openSettingsUI')
       .addItem('🔒 Проверить лицензию', 'checkLicenseStatusUI')
       .addToUi();
@@ -690,7 +692,7 @@ function onOpen() {
         .addItem('⬇️ Экспорт логов', 'exportLogsToSheet')
         .addItem('🗑 Очистить логи', 'clearLogs')
         .addItem('🔍 Тест сервера', 'testServerConnection')
-        .addItem('🧪 Dev Self Test', 'runDevSelfTest')   
+        .addItem('🧪 Dev Self Test', 'runDevSelfTest')
         .addToUi(); // ← ДОБАВЛЕН .addToUi()!
     }
 
@@ -702,20 +704,19 @@ function onOpen() {
 }
 
 
-
 // Быстрое обновление активной GM-ячейки: пересоздаём формулу, чтобы заново вызвать Gemini
 function refreshCurrentGMCell() {
   try {
     const ss = SpreadsheetApp.getActive();
     const range = ss.getActiveRange();
     if (!range) {
-      SpreadsheetApp.getUi().alert('Информация', 'Выберите ячейку на листе "Распаковка"', SpreadsheetApp.getUi().ButtonSet.OK); 
+      SpreadsheetApp.getUi().alert('Информация', 'Выберите ячейку на листе "Распаковка"', SpreadsheetApp.getUi().ButtonSet.OK);
       return;
     }
     const cell = range.getCell(1, 1);
     const sheet = cell.getSheet();
     if (sheet.getName() !== 'Распаковка') {
-      SpreadsheetApp.getUi().alert('Информация', 'Выберите ячейку на листе "Распаковка"', SpreadsheetApp.getUi().ButtonSet.OK); 
+      SpreadsheetApp.getUi().alert('Информация', 'Выберите ячейку на листе "Распаковка"', SpreadsheetApp.getUi().ButtonSet.OK);
       return;
     }
     const row = cell.getRow();
@@ -763,7 +764,7 @@ function refreshCurrentGMCell() {
       }
     }
     if (!formula) {
-      SpreadsheetApp.getUi().alert('Информация', 'Нечего обновлять: в ячейке нет GM-формулы и нет соответствия в Prompt_box!B', SpreadsheetApp.getUi().ButtonSet.OK); 
+      SpreadsheetApp.getUi().alert('Информация', 'Нечего обновлять: в ячейке нет GM-формулы и нет соответствия в Prompt_box!B', SpreadsheetApp.getUi().ButtonSet.OK);
       return;
     }
 
@@ -798,23 +799,23 @@ function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
     } else {
       condVal = !!raw;
     }
-    
+
     if (!condVal) {
       if (DEV_MODE) {
         addLog('GM_IF: условие false, пропускаем', 'DEBUG');
       }
       return '';
     }
-    
+
     if (Array.isArray(prompt)) prompt = prompt[0][0];
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) return '';
     if (maxTokens == null) maxTokens = 25000;
     if (temperature == null) temperature = 0.7;
-    
+
     if (DEV_MODE) {
       addLog('GM_IF: условие true, вызываем GM', 'DEBUG');
     }
-    
+
     return GM(prompt, maxTokens, temperature);
   } catch (e) {
     addLog('❌ GM_IF ошибка: ' + e.message, 'ERROR');
@@ -1006,9 +1007,8 @@ function seedLicenseCredentialsFromParametersSheet() {
 
     scriptProps.setProperty('LICENSEEMAIL', email);
     scriptProps.setProperty('LICENSETOKEN', token);
-    logEvent('INFO', 'license_credentials_seeded', 'client', `Email=${email}, Token=${token.substring(0,4)}***`);
+    logEvent('INFO', 'license_credentials_seeded', 'client', `Email=${email}, Token=${token.substring(0, 4)}***`);
     return true;
-
   } catch (e) {
     logEvent('WARN', 'seed_license_from_params_error', 'client', e.message);
     return false;
@@ -1064,13 +1064,12 @@ function serverStatus() {
     }
 
     if (code !== 200) {
-      return { ok: false, error: data ? data.error : `HTTP ${code}` };
+      return {ok: false, error: data ? data.error : `HTTP ${code}`};
     }
     return data;
-
   } catch (e) {
     addLog(`STATUS REQUEST FAILED: ${e.message}`, 'ERROR');
-    return { ok: false, error: `REQUEST_FAILED: ${e.message}` };
+    return {ok: false, error: `REQUEST_FAILED: ${e.message}`};
   }
 }
 
@@ -1104,7 +1103,7 @@ function getSettingsData() {
     return {
       apiKey: props.getProperty('GEMINI_API_KEY') || '',
       email: props.getProperty('LICENSEEMAIL') || '',
-      token: props.getProperty('LICENSETOKEN') || ''
+      token: props.getProperty('LICENSETOKEN') || '',
     };
   } catch (e) {
     addLog('❌ Ошибка чтения настроек: ' + e.message, 'ERROR');
@@ -1116,32 +1115,32 @@ function saveSettingsData(data) {
   try {
     const props = PropertiesService.getScriptProperties();
     const updated = [];
-    
+
     if (data.apiKey) {
       props.setProperty('GEMINI_API_KEY', data.apiKey);
       updated.push('API ключ');
       addLog('✅ API ключ Gemini обновлён', 'INFO');
     }
-    
+
     if (data.email) {
       props.setProperty('LICENSE_EMAIL', data.email);
       updated.push('Email');
       addLog('✅ Email лицензии обновлён: ' + data.email, 'INFO');
     }
-    
+
     if (data.token) {
       props.setProperty('LICENSE_TOKEN', data.token);
       updated.push('Токен');
       addLog('✅ Токен лицензии обновлён', 'INFO');
     }
-    
+
     if (updated.length === 0) {
       return {success: false, message: 'Нет данных для сохранения'};
     }
-    
+
     return {
       success: true,
-      message: 'Сохранено: ' + updated.join(', ')
+      message: 'Сохранено: ' + updated.join(', '),
     };
   } catch (e) {
     addLog('❌ Ошибка сохранения настроек: ' + e.message, 'ERROR');
@@ -1158,7 +1157,7 @@ function serverGM(prompt, maxTokens, temperature) {
   if (DEV_MODE) {
     addLog(`SERVER REQUEST: action=gm, email=${email}, token=${token ? token.substring(0, 4) + '****' : 'null'}`, 'DEBUG');
     addLog(`PAYLOAD: promptLen=${prompt ? prompt.length : 0}, maxTokens=${maxTokens}`, 'DEBUG');
-    
+
     if (prompt) {
       addLog(`PROMPT START: ${prompt.substring(0, 150)}...`, 'DEBUG');
     }
@@ -1172,14 +1171,14 @@ function serverGM(prompt, maxTokens, temperature) {
     prompt: prompt,
     maxTokens: maxTokens,
     temperature: temperature,
-    sheetId: sheetId
+    sheetId: sheetId,
   };
 
   const options = {
     method: 'post',
     contentType: 'application/json',
     payload: JSON.stringify(payload),
-    muteHttpExceptions: true
+    muteHttpExceptions: true,
   };
 
   try {
@@ -1241,17 +1240,17 @@ function GM(prompt, maxTokens, temperature) {
       addLog('🚫 Отказ: лицензия не задана (email/token пустые)', 'WARN');
       return 'Error: LICENSE_REQUIRED';
     }
-    
+
     if (DEV_MODE) {
       addLog('🔍 LICENSE CHECK: email=' + _email + ', token=' + (_token ? _token.substring(0, 4) + '****' : 'отсутствует'), 'DEBUG');
     }
-    
+
     const st0 = serverStatus();
     if (!st0 || !st0.ok) {
       addLog('🚫 Отказ: лицензия неактивна или сервер недоступен. Статус: ' + (st0 && st0.error ? st0.error : 'UNKNOWN'), 'WARN');
       return 'Error: LICENSE_OR_SERVER';
     }
-    
+
     if (DEV_MODE) {
       addLog('✅ LICENSE OK: ' + (st0.message || 'активна') + (st0.quota ? ', квота: ' + JSON.stringify(st0.quota) : ''), 'DEBUG');
     }
@@ -1265,30 +1264,30 @@ function GM(prompt, maxTokens, temperature) {
   addLog('→ GM (proxy): prompt=' + (prompt ? prompt.slice(0, 60)+'...' : 'нет') + ' (' + (prompt ? prompt.length : 0) + ' символов)', 'INFO');
   if (!prompt || typeof prompt !== 'string') throw new Error('Промпт должен быть непустой строкой.');
   if (prompt.length > 50000) throw new Error('Промпт слишком длинный, сократите до 50000 символов.');
-  
+
   const key = gmCacheKey_(prompt, maxTokens, temperature);
-  const cached = gmCacheGet_(key); 
+  const cached = gmCacheGet_(key);
   if (cached) {
-    addLog('⚡ GM cache-hit: найден кэшированный ответ', 'DEBUG'); 
+    addLog('⚡ GM cache-hit: найден кэшированный ответ', 'DEBUG');
     return cached;
   }
-  
+
   const errKey = 'gm_err:' + key;
-  const lastErr = gmCacheGet_(errKey); 
+  const lastErr = gmCacheGet_(errKey);
   if (lastErr) {
-    addLog('⏳ GM last-error cached, skip call', 'DEBUG'); 
+    addLog('⏳ GM last-error cached, skip call', 'DEBUG');
     return lastErr;
   }
-  
-  let ok = false; 
-  let text = ''; 
+
+  let ok = false;
+  let text = '';
   let serr = null;
-  
+
   try {
     addLog('🚀 Отправка запроса через serverGM_...', 'DEBUG');
     const r = serverGM_(prompt, maxTokens, temperature);
     if (r && r.ok) {
-      ok = true; 
+      ok = true;
       text = r.data || '';
       addLog('✅ Сервер вернул успешный ответ, длина: ' + text.length, 'DEBUG');
     } else {
@@ -1299,14 +1298,14 @@ function GM(prompt, maxTokens, temperature) {
     serr = e.message;
     addLog('❌ Исключение при вызове serverGM_: ' + serr, 'ERROR');
   }
-  
+
   if (ok) {
     const processed = processGeminiResponse(text);
     gmCachePut_(key, processed, 21600);
     addLog('✅ GM успешно: ответ обработан и закэширован', 'INFO');
     return processed;
   }
-  
+
   if (DEV_MODE) {
     addLog('⚠️ DEV fallback → прямой Gemini. Причина: ' + (serr || 'UNKNOWN'), 'WARN');
     try {
@@ -1338,7 +1337,7 @@ function GM(prompt, maxTokens, temperature) {
       return em;
     }
   }
-  
+
   const msg = 'Error: ' + (serr || 'LICENSE_OR_SERVER');
   gmCachePut_(errKey, msg, 60);
   addLog('❌ GM финальная ошибка: ' + msg, 'ERROR');
