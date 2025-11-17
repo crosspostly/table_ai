@@ -387,17 +387,23 @@ function exportSheetToDocument(sheetName, format, _options) {
     // === ОБЯЗАТЕЛЬНОЕ СОХРАНЕНИЕ ДО ЭКСПОРТА ===
     addLog('💾 Сохранение документа на сервер Google...', 'INFO');
     doc.saveAndClose();
-    Utilities.sleep(2000); // Ждём синхронизации с сервером
+    Utilities.sleep(3000); // Увеличена задержка до 3 секунд
+
+    // Проверка доступности документа
+    try {
+      DocumentApp.openById(docId).getBody().getText();
+      addLog('✅ Документ готов к экспорту', 'SUCCESS');
+    } catch (e) {
+      addLog('⏳ Ждём ещё немного...', 'WARN');
+      Utilities.sleep(2000);
+    }
+
     addLog('✅ Документ сохранён на сервер', 'SUCCESS');
 
     // === ЭКСПОРТ В ФАЙЛЫ ===
     const exportStart = Date.now();
     const docId = doc.getId();
     const docFile = DriveApp.getFileById(docId);
-    const folder = getOrCreateExportFolder();
-    addLog('📁 Папка для сохранения: ' + folder.getName(), 'INFO');
-
-    // Создаем или находим папку для экспортов
     const folder = getOrCreateExportFolder();
     addLog('📁 Папка для сохранения: ' + folder.getName(), 'INFO');
 
@@ -446,8 +452,10 @@ function exportSheetToDocument(sheetName, format, _options) {
       }
     }
 
-    // Перемещаем исходный Google Docs в папку экспортов
-    docFile.moveTo(folder);
+    // ✅ УДАЛЯЕМ временный Google Docs
+    addLog('🗑️ Удаление временного документа...', 'INFO');
+    docFile.setTrashed(true);
+    addLog('✅ Временный документ удалён', 'SUCCESS');
 
     const exportTime = Math.round((Date.now() - exportStart) / 1000);
     addLog(`⏱️ Время экспорта файлов: ${exportTime} сек`, 'INFO');

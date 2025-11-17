@@ -283,6 +283,13 @@
       font-size: 11px;
       color: #2e7d32;
     }
+    
+    .folder-link {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+      color: white !important;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
   </style>
 </head>
 <body>
@@ -381,20 +388,8 @@
     
     <!-- Информация -->
     <div class="info-box">
-      💡 <strong>Новые возможности v2.0:</strong>
-      <br>• 🚀 Автоматический выбор стратегии экспорта
-      <br>• 📦 Обработка больших таблиц батчами
-      <br>• ⚠️ Предупреждения о размере данных
-      <br>• 🔄 Retry механизм при ошибках
-      <br>• 📊 Детальная статистика экспорта
-      <br><br>
-      📁 Файлы сохраняются в папке "Table AI Exports"
-      <strong>💡 Первый раз?</strong>
-      <br>При первом использовании появится окно с запросом разрешений.
-      <br>Нажмите <strong>"Разрешить"</strong> для продолжения.
-      <br><br>
-      <strong>📁 Где файлы?</strong>
-      <br>Все экспорты сохраняются в папку <strong>"Table AI Exports"</strong> на вашем Google Drive.
+      💡 <strong>Совет:</strong>
+      Экспортированные файлы сохраняются в папку "Table AI Exports" на вашем Google Drive
     </div>
   </div>
   
@@ -599,6 +594,13 @@
         return;
       }
       
+      // ✅ МГНОВЕННАЯ ОБРАТНАЯ СВЯЗЬ - блокируем кнопку
+      const btn = document.querySelector('button[onclick="startExport()"]');
+      btn.disabled = true;
+      btn.textContent = '⏳ Запускаем...';
+      btn.style.cursor = 'not-allowed';
+      btn.style.opacity = '0.6';
+      
       // ✅ ПРОВЕРКА РАЗМЕРА И ПОДТВЕРЖДЕНИЕ
       google.script.run
         .withSuccessHandler(function(totalRows) {
@@ -611,6 +613,12 @@
             );
             
             if (!confirmed) {
+              // ✅ РАЗБЛОКИРУЕМ КНОПКУ ПРИ ОТМЕНЕ
+              const btn = document.querySelector('button[onclick="startExport()"]');
+              btn.disabled = false;
+              btn.textContent = '🚀 Запустить экспорт';
+              btn.style.cursor = 'pointer';
+              btn.style.opacity = '1';
               return;
             }
           }
@@ -659,6 +667,13 @@
     function handleExportResult(result) {
       document.getElementById('loading').classList.remove('active');
       document.getElementById('exportForm').style.display = 'block';
+      
+      // ✅ РАЗБЛОКИРУЕМ КНОПКУ
+      const btn = document.querySelector('button[onclick="startExport()"]');
+      btn.disabled = false;
+      btn.textContent = '🚀 Запустить экспорт';
+      btn.style.cursor = 'pointer';
+      btn.style.opacity = '1';
       
       if (result.success) {
         let html = '<div class="result-links">';
@@ -733,6 +748,14 @@
     function handleExportError(error) {
       document.getElementById('loading').classList.remove('active');
       document.getElementById('exportForm').style.display = 'block';
+      
+      // ✅ РАЗБЛОКИРУЕМ КНОПКУ ПРИ ОШИБКЕ
+      const btn = document.querySelector('button[onclick="startExport()"]');
+      btn.disabled = false;
+      btn.textContent = '🚀 Запустить экспорт';
+      btn.style.cursor = 'pointer';
+      btn.style.opacity = '1';
+      
       document.getElementById('resultTitle').textContent = '❌ Ошибка';
       document.getElementById('resultContent').textContent = error.message;
       document.getElementById('result').className = 'result error';
