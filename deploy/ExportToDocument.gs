@@ -96,7 +96,7 @@ function exportSheetToDocument(sheetName, format, _options) {
 
     // Читаем данные
     addLog('📖 Чтение данных из листа...', 'INFO');
-    let lastRow = sheet.getLastRow();
+    const lastRow = sheet.getLastRow();
     const lastCol = sheet.getLastColumn();
 
     if (lastRow === 0 || lastCol === 0) {
@@ -104,14 +104,6 @@ function exportSheetToDocument(sheetName, format, _options) {
     }
 
     addLog('📊 Размер: ' + lastRow + ' строк × ' + lastCol + ' колонок', 'INFO');
-
-    // ✅ ОГРАНИЧЕНИЕ ДЛЯ БОЛЬШИХ ТАБЛИЦ
-    const BATCH_SIZE = 100; // Обрабатываем по 100 строк за раз
-    const MAX_ROWS = 500; // Максимальный лимит для избежания timeout
-    if (lastRow > MAX_ROWS) {
-      addLog('⚠️ Таблица слишком большая (' + lastRow + ' строк), обрезаем до ' + MAX_ROWS + ' строк', 'WARN');
-      lastRow = MAX_ROWS;
-    }
 
     const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
 
@@ -135,78 +127,64 @@ function exportSheetToDocument(sheetName, format, _options) {
     body.appendHorizontalRule();
     body.appendParagraph(''); // Пустая строка
 
-    // ✅ УМНОЕ СОЗДАНИЕ ТАБЛИЦЫ С БАТЧИНГОМ
-    addLog('📊 Создание таблицы с красивым форматированием...', 'INFO');
+    // ✅ СОЗДАНИЕ ТЕКСТОВЫХ КАРТОЧЕК ВМЕСТО ТАБЛИЦЫ
+    addLog('📝 Создание текстовых карточек из данных...', 'INFO');
 
-    // Создаем таблицу с заголовком
-    const headerData = [data[0]]; // Только первая строка (заголовок)
-    let table = body.appendTable(headerData);
+    const headers = data[0]; // Заголовки колонок
 
-    // ✅ КРАСИВОЕ ФОРМАТИРОВАНИЕ ЗАГОЛОВКА
-    const headerRow = table.getRow(0);
-    const numCells = headerRow.getNumCells();
+    // Создаем текстовые карточки для каждой строки данных
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
 
-    for (let c = 0; c < numCells; c++) {
-      const cell = headerRow.getCell(c);
-      cell.setBackgroundColor('#4285f4');
-      cell.getChild(0).asParagraph().setForegroundColor('#FFFFFF');
-      cell.getChild(0).asParagraph().setBold(true);
-      cell.setPaddingTop(8);
-      cell.setPaddingBottom(8);
-      cell.setPaddingLeft(8);
-      cell.setPaddingRight(8);
-    }
+      // Пропускаем пустые строки
+      if (row.every((cell) => !cell || cell.toString().trim() === '')) {
+        continue;
+      }
 
-    // ✅ ДОБАВЛЯЕМ ОСТАЛЬНЫЕ СТРОКИ БАТЧАМИ С КРАСИВЫМ ФОРМАТИРОВАНИЕМ
-    for (let startRow = 1; startRow < data.length; startRow += BATCH_SIZE) {
-      const endRow = Math.min(startRow + BATCH_SIZE, data.length);
-      const batchData = data.slice(startRow, endRow);
+      // Заголовок карточки
+      const cardTitle = body.appendParagraph('📌 Запись #' + r);
+      cardTitle.setBold(true);
+      cardTitle.setFontSize(14);
+      cardTitle.setForegroundColor('#4285f4');
 
-      addLog(`🎨 Обработка строк ${startRow}-${endRow} из ${data.length} с форматированием...`, 'INFO');
+      // Поля карточки
+      for (let c = 0; c < headers.length; c++) {
+        const fieldName = headers[c] ? headers[c].toString().trim() : '';
+        const fieldValue = row[c] ? row[c].toString().trim() : '';
 
-      // Добавляем батч строк с красивым форматированием
-      for (let r = 0; r < batchData.length; r++) {
-        const rowData = batchData[r];
-        const newRow = table.appendTableRow();
-
-        for (let c = 0; c < rowData.length; c++) {
-          const cell = newRow.appendTableCell(rowData[c] ? String(rowData[c]) : '—');
-
-          // ✅ КРАСИВОЕ ЧЕРЕДУЮЩЕЕСЯ ФОРМАТИРОВАНИЕ
-          const bgColor = ((startRow + r) % 2 === 0) ? '#FFFFFF' : '#F3F3F3';
-          cell.setBackgroundColor(bgColor);
-          cell.setPaddingTop(6);
-          cell.setPaddingBottom(6);
-          cell.setPaddingLeft(8);
-          cell.setPaddingRight(8);
-
-          // Заменяем пустые ячейки на "—"
-          const text = cell.getText().trim();
-          if (!text) {
-            cell.clear();
-            cell.appendParagraph('—');
-          }
+        // Пропускаем пустые заголовки или значения
+        if (!fieldName || !fieldValue) {
+          continue;
         }
+
+        // Создаем абзац для поля
+        const fieldPara = body.appendParagraph('');
+
+        // Название поля (жирное)
+        const nameText = fieldPara.appendText(fieldName + ': ');
+        nameText.setBold(true);
+        nameText.setForegroundColor('#333333');
+
+        // Значение поля (обычное)
+        const valueText = fieldPara.appendText(fieldValue);
+        valueText.setBold(false);
+        valueText.setForegroundColor('#000000');
+
+        // Добавляем отступ для красоты
+        fieldPara.setIndentStart(20);
+        fieldPara.setSpacingBefore(3);
+        fieldPara.setSpacingAfter(3);
       }
 
-      // ✅ СОХРАНЯЕМ ПОСЛЕ КАЖДОГО БАТЧА (кроме последнего)
-      if (endRow < data.length) {
-        addLog('💾 Сохранение прогресса...', 'INFO');
-        doc.saveAndClose();
-        Utilities.sleep(300); // Небольшая пауза
-
-        // Переоткрываем документ
-        doc = DocumentApp.openById(doc.getId());
-        body = doc.getBody();
-        table = body.getTables()[0]; // Получаем ту же таблицу
+      // Разделитель между карточками (кроме последней)
+      if (r < data.length - 1) {
+        body.appendParagraph(''); // Пустая строка
+        body.appendHorizontalRule();
+        body.appendParagraph(''); // Пустая строка
       }
     }
 
-    // ✅ ФИНАЛЬНОЕ ОФОРМЛЕНИЕ ТАБЛИЦЫ
-    table.setBorderWidth(0.5);
-    table.setBorderColor('#CCCCCC');
-
-    addLog('✅ Таблица создана и красиво отформатирована', 'SUCCESS');
+    addLog('✅ Текстовые карточки созданы', 'SUCCESS');
 
     // Экспорт файлов
     const docId = doc.getId();
