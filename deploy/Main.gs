@@ -662,6 +662,8 @@ function applyUniformFormatting(sheet) {
 function onOpen() {
   try {
     const ui = SpreadsheetApp.getUi();
+    
+    // Основное меню Table AI (AI Constructor)
     ui.createMenu('🤖 Table AI')
       .addItem('▶️ Подготовить формулы (умный режим)', 'prepareChainSmart')
       .addItem('🔁 Обновить текущую ячейку (GM)', 'refreshCurrentGMCell')
@@ -679,10 +681,13 @@ function onOpen() {
       .addItem('📥 Импорт VK постов', 'importVkPosts')
       .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
       .addSeparator()
-      .addItem('📄 Экспорт в Word/PDF', 'openExportSidebar')
-      .addSeparator()
       .addItem('⚙️ Настройки', 'openSettingsUI')
       .addItem('🔒 Проверить лицензию', 'checkLicenseStatusUI')
+      .addToUi();
+    
+    // Отдельное меню для экспорта
+    ui.createMenu('📄 Экспорт')
+      .addItem('📄 Экспорт в Word/PDF', 'openExportSidebar')
       .addToUi();
 
     // ✅ ИСПРАВЛЕНО DEV МЕНЮ:
