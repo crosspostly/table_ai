@@ -394,18 +394,8 @@
 </head>
 <body>
   <div class="container">
-    <h2>🎯 AI Конструктор</h2>
-    <div class="section">
-  <div class="section-title">📌 Целевая ячейка (куда записать результат)</div>
-  <div class="input-group">
-    <select id="targetSheetName">
-      <option value="">Выберите лист...</option>
-    </select>
-    <input type="text" id="targetCellAddress" placeholder="A1" style="flex: 0 0 100px;" />
-    <button class="btn btn-secondary btn-small" onclick="validateTargetCell()">✅ Проверить</button>
-  </div>
-  <div id="targetCellStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></div>
-  </div>
+    <h2>🎯 AI Конструктор v2.0</h2>
+    <div class="cell-info" id="cellInfo">Загрузка...</div>
 
     <!-- TEMPLATES SECTION -->
     <div class="section templates-section">
@@ -455,6 +445,7 @@
     <!-- Actions -->
     <div class="actions">
       <button class="btn btn-primary" onclick="runConfig()">🚀 Запустить</button>
+      <button class="btn btn-secondary" onclick="saveOnly()">💾 Сохранить</button>
       <button class="btn btn-danger" onclick="resetConfig()">🔄 Сбросить</button>
     </div>
     
@@ -516,46 +507,32 @@
       .withFailureHandler(showError)
       .getCollectConfigInitData();
     
-
-
-function initialize(data) {
-  sheetName = data.sheetName;
-  cellAddress = data.cellAddress;
-  sheets = data.sheets;
-  
-  // Заполняем выпадающий список листов для целевой ячейки
-  const targetSheetSelect = document.getElementById('targetSheetName');
-  sheets.forEach(function(sheet) {
-    const option = document.createElement('option');
-    option.value = sheet;
-    option.textContent = sheet;
-    if (sheet === sheetName) option.selected = true;
-    targetSheetSelect.appendChild(option);
-  });
-
-  // Устанавливаем текущую ячейку
-  document.getElementById('targetCellAddress').value = cellAddress;
-
-  // Проверяем целевую ячейку сразу
-  validateTargetCell();
-  
-  // Заполняем выпадающие списки листов для System Prompt
-  const systemSheet = document.getElementById('systemSheet');
-  sheets.forEach(function(sheet) {
-    const option = document.createElement('option');
-    option.value = sheet;
-    option.textContent = sheet;
-    systemSheet.appendChild(option);
-  });
-  
-  // Загружаем список шаблонов и статистику
-  loadTemplatesList();
-  loadTemplatesStats();
-  
-  // Загружаем существующую конфигурацию
-  loadExistingConfig();
-}
-
+    function initialize(data) {
+      sheetName = data.sheetName;
+      cellAddress = data.cellAddress;
+      sheets = data.sheets;
+      
+      // Обновляем информацию о ячейке
+      document.getElementById('cellInfo').textContent = 
+        '📌 Ячейка: ' + sheetName + ' → ' + cellAddress;
+      
+      // Заполняем выпадающие списки листов
+      const systemSheet = document.getElementById('systemSheet');
+      sheets.forEach(function(sheet) {
+        const option = document.createElement('option');
+        option.value = sheet;
+        option.textContent = sheet;
+        systemSheet.appendChild(option);
+      });
+      
+      // Загружаем список шаблонов и статистику
+      loadTemplatesList();
+      loadTemplatesStats();
+      
+      // Загружаем существующую конфигурацию
+      loadExistingConfig();
+    }
+    
     function loadExistingConfig() {
       google.script.run
         .withSuccessHandler(function(config) {
@@ -783,82 +760,61 @@ function initialize(data) {
     }
     
     function runConfig() {
-  clearLogs(); // Очищаем старые логи
-  addLogEntry('🚀 Начало выполнения конфигурации', 'info');
-  
-  const config = collectConfig();
-  
-  // Получаем актуальные значения целевой ячейки
-  const currentSheetName = document.getElementById('targetSheetName').value;
-  const currentCellAddress = document.getElementById('targetCellAddress').value.trim();
-  
-  addLogEntry('Конфигурация собрана: ' + JSON.stringify(config).substring(0, 100) + '...', 'info');
-  
-  if (!config.systemPrompt && config.userData.length === 0) {
-    showStatus('⚠️ Заполните хотя бы одно поле!', 'error');
-    addLogEntry('❌ Валидация не прошла: нет данных', 'error');
-    return;
-  }
-  
-  if (!currentSheetName || !currentCellAddress) {
-    showStatus('⚠️ Выберите целевую ячейку!', 'error');
-    addLogEntry('❌ Валидация не прошла: не указана целевая ячейка', 'error');
-    return;
-  }
-  
-  addLogEntry('Целевая ячейка: ' + currentSheetName + '!' + currentCellAddress, 'info');
-  
-  if (config.systemPrompt) {
-    addLogEntry('System Prompt: ' + config.systemPrompt.sheet + '!' + config.systemPrompt.cell, 'info');
-  } else {
-    addLogEntry('System Prompt: не указан', 'warn');
-  }
-  
-  addLogEntry('User Data источников: ' + config.userData.length, 'info');
-  config.userData.forEach(function(source, i) {
-    addLogEntry('  Источник ' + (i + 1) + ': ' + source.sheet + '!' + source.cell, 'info');
-  });
-  
-  console.log('Запуск конфигурации с помощью новой функции:', config);
-  showStatus('🚀 Сохранение и выполнение...', 'info');
-  addLogEntry('Отправка запроса на сервер...', 'info');
-  
-  // ИСПРАВЛЕНО: Используем актуальные значения целевой ячейки
-  google.script.run
-    .withSuccessHandler(function(result) {
-      console.log('Результат выполнения:', result);
-      addLogEntry('✅ Ответ от сервера получен', 'success');
+      clearLogs(); // Очищаем старые логи
+      addLogEntry('🚀 Начало выполнения конфигурации', 'info');
       
-      // 🔥 ПОКАЗЫВАЕМ ЛОГИ ОТ СЕРВЕРА
-      if (result.logs && result.logs.length > 0) {
-        addLogEntry('━━━ ЛОГИ СЕРВЕРА ━━━', 'info');
-        for (var i = 0; i < result.logs.length; i++) {
-          var log = result.logs[i];
-          addLogEntry('[' + log.timestamp + '] ' + log.message, log.level.toLowerCase());
-        }
-        addLogEntry('━━━━━━━━━━━━━━━━━━━', 'info');
+      const config = collectConfig();
+      addLogEntry('Конфигурация собрана: ' + JSON.stringify(config).substring(0, 100) + '...', 'info');
+      
+      if (!config.systemPrompt && config.userData.length === 0) {
+        showStatus('⚠️ Заполните хотя бы одно поле!', 'error');
+        addLogEntry('❌ Валидация не прошла: нет данных', 'error');
+        return;
       }
       
-      if (result.success) {
-        showStatus('Готово);
-        addLogEntry('✅ УСПЕХ! Результат записан в ' + currentCellAddress, 'success');
-        addLogEntry('Результат: ' + (result.result ? result.result.substring(0, 100) + '...' : 'пусто'), 'info');
-        setTimeout(function() {
-          google.script.host.close();
-        }, 2000);
+      addLogEntry('Целевая ячейка: ' + sheetName + '!' + cellAddress, 'info');
+      
+      if (config.systemPrompt) {
+        addLogEntry('System Prompt: ' + config.systemPrompt.sheet + '!' + config.systemPrompt.cell, 'info');
       } else {
-        showStatus('❌ Ошибка выполнения: ' + (result.error || 'Неизвестная ошибка'), 'error');
-        addLogEntry('❌ ОШИБКА ВЫПОЛНЕНИЯ: ' + (result.error || 'Неизвестная ошибка'), 'error');
+        addLogEntry('System Prompt: не указан', 'warn');
       }
-    })
-    .withFailureHandler(function(error) {
-      console.error('Критическая ошибка:', error);
-      showStatus('❌ Критическая ошибка: ' + error.message, 'error');
-      addLogEntry('❌ КРИТИЧЕСКАЯ ОШИБКА: ' + error.message, 'error');
-    })
-    .saveAndExecuteCollectConfig(currentSheetName, currentCellAddress, config);
-}
-
+      
+      addLogEntry('User Data источников: ' + config.userData.length, 'info');
+      config.userData.forEach(function(source, i) {
+        addLogEntry('  Источник ' + (i + 1) + ': ' + source.sheet + '!' + source.cell, 'info');
+      });
+      
+      console.log('Запуск конфигурации с помощью новой функции:', config);
+      showStatus('🚀 Сохранение и выполнение...', 'info');
+      addLogEntry('Отправка запроса на сервер...', 'info');
+      
+      // ИСПРАВЛЕНО: Один вызов новой серверной функции
+      google.script.run
+        .withSuccessHandler(function(result) {
+          console.log('Результат выполнения:', result);
+          addLogEntry('✅ Ответ от сервера получен', 'success');
+          
+          if (result.success) {
+            showStatus('✅ Готово! Результат записан в ' + cellAddress, 'success');
+            addLogEntry('✅ УСПЕХ! Результат записан в ' + cellAddress, 'success');
+            addLogEntry('Результат: ' + (result.result ? result.result.substring(0, 100) + '...' : 'пусто'), 'info');
+            setTimeout(function() {
+              google.script.host.close();
+            }, 2000);
+          } else {
+            showStatus('❌ Ошибка выполнения: ' + (result.error || 'Неизвестная ошибка'), 'error');
+            addLogEntry('❌ ОШИБКА ВЫПОЛНЕНИЯ: ' + (result.error || 'Неизвестная ошибка'), 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.error('Критическая ошибка:', error);
+          showStatus('❌ Критическая ошибка: ' + error.message, 'error');
+          addLogEntry('❌ КРИТИЧЕСКАЯ ОШИБКА: ' + error.message, 'error');
+        })
+        .saveAndExecuteCollectConfig(sheetName, cellAddress, config); // <--- ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ
+    }
+    
     function resetConfig() {
       if (confirm('Удалить сохранённую конфигурацию?')) {
         google.script.run
@@ -1012,122 +968,16 @@ function initialize(data) {
     // STATUS FUNCTIONS
     // ============================================================================
     
- 
-  // Обновляем глобальные переменные
-  sheetName = selectedSheet;
-  cellAddress = cellAddr;
-  
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result.success) {
-        statusDiv.innerHTML = `✅ ${result.message}`;
-        statusDiv.style.color = '#137333';
-        addLogEntry('Целевая ячейка обновлена: ' + sheetName + '!' + cellAddress, 'success');
-      } else {
-        statusDiv.innerHTML = `❌ ${result.error}`;
-        statusDiv.style.color = '#d93025';
-        addLogEntry('Ошибка целевой ячейки: ' + result.error, 'error');
-      }
-    })
-    .withFailureHandler(function(error) {
-      statusDiv.innerHTML = `❌ Ошибка: ${error.message}`;
-      statusDiv.style.color = '#d93025';
-      addLogEntry('Ошибка проверки ячейки: ' + error.message, 'error');
-    })
-    .updateTargetCell(selectedSheet, cellAddr);
-}
-
-// Обработчики изменений целевой ячейки
-document.addEventListener('DOMContentLoaded', function() {
-  const targetSheet = document.getElementById('targetSheetName');
-  const targetCell = document.getElementById('targetCellAddress');
-  
-  if (targetSheet) {
-    targetSheet.onchange = validateTargetCell;
-  }
-  
-  if (targetCell) {
-    targetCell.onblur = validateTargetCell;
-    targetCell.onkeypress = function(e) {
-      if (e.key === 'Enter') {
-        validateTargetCell();
-      }
-    };
-  }
-});
-function showStatus(message, type) {
-  const status = document.getElementById('status');
-  status.textContent = message;
-  status.className = 'status ' + type;
-  status.style.display = 'block';
-  
-  // Добавляем в логи
-  addLogEntry(message, type || 'info');
-}
-
-function showError(error) {
-  const errorMsg = '❌ Ошибка: ' + error;
-  showStatus(errorMsg, 'error');
-}
-
-// Валидация целевой ячейки
-function validateTargetCell() {
-  const sheetSelect = document.getElementById('targetSheetName');
-  const cellInput = document.getElementById('targetCellAddress');
-  const statusDiv = document.getElementById('targetCellStatus');
-  
-  const selectedSheet = sheetSelect.value;
-  const cellAddr = cellInput.value.trim();
-  
-  if (!selectedSheet || !cellAddr) {
-    statusDiv.innerHTML = '⚠️ Заполните лист и ячейку';
-    statusDiv.style.color = '#ea8600';
-    return;
-  }
-  
-  // Обновляем глобальные переменные
-  sheetName = selectedSheet;
-  cellAddress = cellAddr;
-  
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result.success) {
-        statusDiv.innerHTML = '✅ ' + result.message;
-        statusDiv.style.color = '#137333';
-        addLogEntry('Целевая ячейка обновлена: ' + sheetName + '!' + cellAddress, 'success');
-      } else {
-        statusDiv.innerHTML = '❌ ' + result.error;
-        statusDiv.style.color = '#d93025';
-        addLogEntry('Ошибка целевой ячейки: ' + result.error, 'error');
-      }
-    })
-    .withFailureHandler(function(error) {
-      statusDiv.innerHTML = '❌ Ошибка: ' + error.message;
-      statusDiv.style.color = '#d93025';
-      addLogEntry('Ошибка проверки ячейки: ' + error.message, 'error');
-    })
-    .updateTargetCell(selectedSheet, cellAddr);
-}
-
-// Обработчики изменений целевой ячейки
-document.addEventListener('DOMContentLoaded', function() {
-  const targetSheet = document.getElementById('targetSheetName');
-  const targetCell = document.getElementById('targetCellAddress');
-  
-  if (targetSheet) {
-    targetSheet.onchange = validateTargetCell;
-  }
-  
-  if (targetCell) {
-    targetCell.onblur = validateTargetCell;
-    targetCell.onkeypress = function(e) {
-      if (e.key === 'Enter') {
-        validateTargetCell();
-      }
-    };
-  }
-});
-
+    function showStatus(message, type) {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.className = 'status ' + type;
+      status.style.display = 'block';
+    }
+    
+    function showError(error) {
+      showStatus('❌ Ошибка: ' + error, 'error');
+    }
   </script>
 </body>
 </html>
