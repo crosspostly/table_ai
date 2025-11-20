@@ -1,13 +1,44 @@
 /**
  * TABLE AI - Unpacking Viewer Module
- * v1.0.0
+ * v1.0.1 - Fixed logging system
  *
  * Модуль для просмотра и экспорта данных из листа "Распаковка"
+ * 
  * Функции:
  * - openUnpackingViewer(): открытие модального окна
  * - getUnpackingData(): чтение данных из листа
  * - exportUnpackingToDoc(): экспорт в Google Docs
+ * - logUnpacking(): безопасное логирование с fallback
  */
+
+/**
+ * Безопасное логирование с fallback на Logger.log()
+ * Использует addLog() из Main.gs, если доступна
+ * @param {string} message - Сообщение для логирования
+ * @param {string} level - Уровень: INFO, DEBUG, WARN, ERROR (по умолчанию INFO)
+ */
+function logUnpacking(message, level) {
+  const logLevel = level || 'INFO';
+  
+  try {
+    // Проверяем наличие глобальной функции addLog
+    if (typeof addLog === 'function') {
+      addLog(`[UnpackingViewer] ${message}`, logLevel);
+    } else {
+      // Fallback: используем встроенный Logger
+      const timestamp = Utilities.formatDate(
+        new Date(), 
+        Session.getScriptTimeZone(), 
+        'yyyy-MM-dd HH:mm:ss'
+      );
+      Logger.log(`[${timestamp}] ${logLevel}: ${message}`);
+    }
+  } catch (error) {
+    // Критический fallback
+    console.log(`[${logLevel}] ${message}`);
+    console.error('Logging error:', error.message);
+  }
+}
 
 /**
  * Открывает модальное окно просмотра данных из листа "Распаковка"
@@ -15,7 +46,7 @@
 // eslint-disable-next-line no-unused-vars
 function openUnpackingViewer() {
   try {
-    addLog('📦 Открытие просмотра Распаковки', 'INFO');
+    logUnpacking('📦 Открытие просмотра Распаковки', 'INFO');
 
     const html = HtmlService.createHtmlOutputFromFile('UnpackingViewerUI')
       .setWidth(700)
@@ -24,9 +55,9 @@ function openUnpackingViewer() {
 
     SpreadsheetApp.getUi().showModalDialog(html, '📦 Просмотр Распаковки');
 
-    addLog('✅ Окно просмотра открыто', 'INFO');
+    logUnpacking('✅ Окно просмотра открыто', 'INFO');
   } catch (error) {
-    addLog('❌ Ошибка открытия окна: ' + error.message, 'ERROR');
+    logUnpacking('❌ Ошибка открытия окна: ' + error.message, 'ERROR');
     SpreadsheetApp.getUi().alert('❌ Ошибка открытия окна:\n\n' + error.message);
   }
 }
@@ -38,7 +69,7 @@ function openUnpackingViewer() {
 // eslint-disable-next-line no-unused-vars
 function getUnpackingData() {
   try {
-    addLog('📖 Чтение данных из листа Распаковка', 'INFO');
+    logUnpacking('📖 Чтение данных из листа Распаковка', 'INFO');
 
     // Получаем активную таблицу
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -47,7 +78,7 @@ function getUnpackingData() {
     const sheet = ss.getSheetByName('Распаковка');
 
     if (!sheet) {
-      addLog('❌ Лист "Распаковка" не найден', 'ERROR');
+      logUnpacking('❌ Лист "Распаковка" не найден', 'ERROR');
       return {
         success: false,
         data: [],
@@ -63,8 +94,8 @@ function getUnpackingData() {
     const dataRange = sheet.getRange('A3:H3');
     const dataValues = dataRange.getValues()[0];
 
-    addLog('📊 Прочитано заголовков: ' + headersValues.length, 'DEBUG');
-    addLog('📊 Прочитано значений: ' + dataValues.length, 'DEBUG');
+    logUnpacking('📊 Прочитано заголовков: ' + headersValues.length, 'DEBUG');
+    logUnpacking('📊 Прочитано значений: ' + dataValues.length, 'DEBUG');
 
     // Формируем массив объектов {header, value}
     const result = [];
@@ -84,7 +115,7 @@ function getUnpackingData() {
       });
     }
 
-    addLog('✅ Сформировано полей: ' + result.length, 'INFO');
+    logUnpacking('✅ Сформировано полей: ' + result.length, 'INFO');
 
     if (result.length === 0) {
       return {
@@ -100,7 +131,7 @@ function getUnpackingData() {
       error: null,
     };
   } catch (error) {
-    addLog('❌ Ошибка чтения данных: ' + error.message, 'ERROR');
+    logUnpacking('❌ Ошибка чтения данных: ' + error.message, 'ERROR');
     return {
       success: false,
       data: [],
@@ -116,7 +147,7 @@ function getUnpackingData() {
 // eslint-disable-next-line no-unused-vars
 function exportUnpackingToDoc() {
   try {
-    addLog('📄 Начало экспорта в Google Docs', 'INFO');
+    logUnpacking('📄 Начало экспорта в Google Docs', 'INFO');
 
     // Получаем данные
     const dataResponse = getUnpackingData();
@@ -126,14 +157,14 @@ function exportUnpackingToDoc() {
     }
 
     const data = dataResponse.data;
-    addLog('📊 Данных для экспорта: ' + data.length, 'DEBUG');
+    logUnpacking('📊 Данных для экспорта: ' + data.length, 'DEBUG');
 
     // Формируем имя файла
     const now = new Date();
     const dateStr = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd_HH-mm');
     const fileName = 'Распаковка_' + dateStr;
 
-    addLog('📝 Имя документа: ' + fileName, 'DEBUG');
+    logUnpacking('📝 Имя документа: ' + fileName, 'DEBUG');
 
     // Создаём Google Docs документ
     const doc = DocumentApp.create(fileName);
@@ -187,15 +218,15 @@ function exportUnpackingToDoc() {
 
     // Сохраняем документ
     doc.saveAndClose();
-    addLog('✅ Документ создан', 'INFO');
+    logUnpacking('✅ Документ создан', 'INFO');
 
     // Получаем ID и URL
     const docId = doc.getId();
     const docUrl = 'https://docs.google.com/document/d/' + docId + '/edit';
     const downloadUrl = 'https://docs.google.com/document/d/' + docId + '/export?format=docx';
 
-    addLog('📄 URL документа: ' + docUrl, 'DEBUG');
-    addLog('💾 URL скачивания: ' + downloadUrl, 'DEBUG');
+    logUnpacking('📄 URL документа: ' + docUrl, 'DEBUG');
+    logUnpacking('💾 URL скачивания: ' + downloadUrl, 'DEBUG');
 
     // Возвращаем результат
     return {
@@ -207,8 +238,8 @@ function exportUnpackingToDoc() {
       error: null,
     };
   } catch (error) {
-    addLog('❌ Ошибка экспорта: ' + error.message, 'ERROR');
-    addLog('Stack: ' + error.stack, 'ERROR');
+    logUnpacking('❌ Ошибка экспорта: ' + error.message, 'ERROR');
+    logUnpacking('Stack: ' + error.stack, 'ERROR');
 
     return {
       success: false,
