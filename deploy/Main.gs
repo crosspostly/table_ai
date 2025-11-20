@@ -682,8 +682,8 @@ function onOpen() {
         .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
         .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
         .addSeparator()
-        .addItem('🔄 Обновить рефлексию', 'updateReflectionConfigs')
-        .addItem('📦 Обновить распаковку', 'updateUnpackingConfigs')
+        .addItem('🔄 Обновить рефлексию', 'updateReflectionConfigs'), // → CollectConfig.gs
+        .addItem('📦 Обновить распаковку', 'updateUnpackingConfigs'), // → UnpackingViewer.gs (!)
         .addSeparator()
         .addItem('🗂️ Управление шаблонами', 'openTemplatesUI')
         .addItem('❓ Справка', 'showCollectConfigHelp'),
@@ -1326,8 +1326,8 @@ function GM(prompt, maxTokens, temperature) {
     try {
       const apiKey = getGeminiApiKey();
       const body = {
-        contents: [{parts: [{text: prompt}]}], 
-        generationConfig: {maxOutputTokens: maxTokens, temperature: temperature}
+        contents: [{parts: [{text: prompt}]}],
+        generationConfig: {maxOutputTokens: maxTokens, temperature: temperature},
       };
       const options = {method: 'POST', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true};
       const resp = UrlFetchApp.fetch(GEMINI_API_URL + '?key=' + apiKey, options);
