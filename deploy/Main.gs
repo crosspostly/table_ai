@@ -672,6 +672,9 @@ function onOpen() {
         .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
         .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
         .addSeparator()
+        .addItem('🔄 Обновить рефлексию', 'updateReflectionConfigs')
+        .addItem('📦 Обновить распаковку', 'updateUnpackingConfigs')
+        .addSeparator()
         .addItem('🗂️ Управление шаблонами', 'openTemplatesUI')
         .addItem('❓ Справка', 'showCollectConfigHelp'),
       )
