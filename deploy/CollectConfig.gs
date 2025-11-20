@@ -13,28 +13,57 @@ const COLLECT_CONFIG_VERSION = '3.0.1';
 const COLLECT_CONFIG_LAST_UPDATE = '2025-11-20 12:22:00';
 
 // ============================================================================
-// ГЛОБАЛЬНЫЙ ЛОГ (для передачи в UI)
+// ЛОКАЛЬНОЕ ЛОГИРОВАНИЕ ДЛЯ UI (не конфликтует с глобальным addLog)
 // ============================================================================
 let GLOBAL_LOG = [];
 
-function addLog(message, level) {
+/**
+ * Локальный лог для передачи в UI CollectConfig
+ * НЕ ЗАМЕНЯЕТ глобальную функцию addLog() из Main.gs!
+ */
+var COLLECT_CONFIG_UI_LOG = [];
+
+/**
+ * Добавляет запись в UI-лог И в глобальную систему логирования
+ * @param {string} message - Сообщение
+ * @param {string} level - Уровень: INFO, DEBUG, WARN, ERROR, SUCCESS
+ */
+function addCollectLog(message, level) {
   level = level || 'INFO';
   const timestamp = new Date().toLocaleTimeString('ru-RU');
+  
+  // Добавляем в локальный UI-лог
   const logEntry = {
     timestamp: timestamp,
     message: message,
     level: level.toUpperCase(),
   };
-  GLOBAL_LOG.push(logEntry);
-  Logger.log(`[${level}] ${message}`);
+  COLLECT_CONFIG_UI_LOG.push(logEntry);
+  
+  // ВАЖНО: Добавляем также в глобальную систему логирования
+  try {
+    if (typeof addLog === 'function') {
+      addLog(`[CollectConfig] ${message}`, level);
+    } else {
+      Logger.log(`[${level}] ${message}`);
+    }
+  } catch (e) {
+    Logger.log(`[${level}] ${message}`);
+  }
 }
 
-function clearLog() {
-  GLOBAL_LOG = [];
+/**
+ * Очищает локальный UI-лог (НЕ влияет на глобальный лог)
+ */
+function clearCollectLog() {
+  COLLECT_CONFIG_UI_LOG = [];
 }
 
-function getLog() {
-  return GLOBAL_LOG;
+/**
+ * Возвращает локальный UI-лог для отображения в интерфейсе
+ */
+function getCollectLog() {
+  return COLLECT_CONFIG_UI_LOG;
 }
 
 // ============================================================================
@@ -57,8 +86,8 @@ function openCollectConfigUI() {
 // ============================================================================
 function getCollectConfigInitData() {
   try {
-    clearLog();
-    addLog(`🚀 CollectConfig v${COLLECT_CONFIG_VERSION} (обновлено: ${COLLECT_CONFIG_LAST_UPDATE})`, 'INFO');
+    clearCollectLog();
+    addCollectLog(`🚀 CollectConfig v${COLLECT_CONFIG_VERSION} (обновлено: ${COLLECT_CONFIG_LAST_UPDATE})`, 'INFO');
 
     const sheet = SpreadsheetApp.getActiveSheet();
     const range = sheet.getActiveRange();
@@ -73,8 +102,8 @@ function getCollectConfigInitData() {
       return s.getName();
     });
 
-    addLog(`📍 Целевая ячейка: ${sheetName}!${cellAddress}`, 'INFO');
-    addLog(`📋 Найдено листов: ${sheets.length}`, 'INFO');
+    addCollectLog(`📍 Целевая ячейка: ${sheetName}!${cellAddress}`, 'INFO');
+    addCollectLog(`📋 Найдено листов: ${sheets.length}`, 'INFO');
 
     // Создаём базовый шаблон
     createDefaultTemplate();
@@ -85,10 +114,10 @@ function getCollectConfigInitData() {
       sheets: sheets,
       version: COLLECT_CONFIG_VERSION,
       lastUpdate: COLLECT_CONFIG_LAST_UPDATE,
-      logs: getLog(),
+      logs: getCollectLog(),
     };
   } catch (error) {
-    addLog(`❌ Ошибка инициализации: ${error.message}`, 'ERROR');
+    addCollectLog(`❌ Ошибка инициализации: ${error.message}`, 'ERROR');
     throw error;
   }
 }
@@ -103,7 +132,7 @@ function createDefaultTemplate() {
 
     // Если шаблон уже есть - не создаём
     if (templates && templates['По умолчанию']) {
-      addLog('✅ Базовый шаблон уже существует', 'INFO');
+      addCollectLog('✅ Базовый шаблон уже существует', 'INFO');
       return;
     }
 
@@ -122,12 +151,12 @@ function createDefaultTemplate() {
 
     const result = saveTemplate(user, 'По умолчанию', defaultTemplate);
     if (result && result.success) {
-      addLog('✅ Создан базовый шаблон "По умолчанию"', 'SUCCESS');
+      addCollectLog('✅ Создан базовый шаблон "По умолчанию"', 'SUCCESS');
     } else {
-      addLog('⚠️ Не удалось создать базовый шаблон', 'WARN');
+      addCollectLog('⚠️ Не удалось создать базовый шаблон', 'WARN');
     }
   } catch (error) {
-    addLog(`⚠️ Ошибка создания шаблона: ${error.message}`, 'WARN');
+    addCollectLog(`⚠️ Ошибка создания шаблона: ${error.message}`, 'WARN');
   }
 }
 
@@ -136,52 +165,52 @@ function createDefaultTemplate() {
 // ============================================================================
 function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
   try {
-    clearLog();
-    addLog(`🚀 CollectConfig v${COLLECT_CONFIG_VERSION} (обновлено: ${COLLECT_CONFIG_LAST_UPDATE})`, 'INFO');
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
-    addLog('📋 НАЧАЛО ВЫПОЛНЕНИЯ', 'INFO');
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    clearCollectLog();
+    addCollectLog(`🚀 CollectConfig v${COLLECT_CONFIG_VERSION} (обновлено: ${COLLECT_CONFIG_LAST_UPDATE})`, 'INFO');
+    addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    addCollectLog('📋 НАЧАЛО ВЫПОЛНЕНИЯ', 'INFO');
+    addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
 
     // Валидация
-    addLog(`📍 Целевая ячейка: ${sheetName}!${cellAddress}`, 'INFO');
-    addLog(`📊 Конфигурация: ${JSON.stringify(config).substring(0, 100)}...`, 'INFO');
+    addCollectLog(`📍 Целевая ячейка: ${sheetName}!${cellAddress}`, 'INFO');
+    addCollectLog(`📊 Конфигурация: ${JSON.stringify(config).substring(0, 100)}...`, 'INFO');
 
     if (!sheetName || !cellAddress || !config) {
       throw new Error('Отсутствуют обязательные параметры!');
     }
 
     // Сохраняем конфигурацию
-    addLog('💾 Сохранение конфигурации...', 'INFO');
+    addCollectLog('💾 Сохранение конфигурации...', 'INFO');
     const saved = saveCollectConfig(sheetName, cellAddress, config);
     if (saved) {
-      addLog('✅ Конфигурация сохранена', 'SUCCESS');
+      addCollectLog('✅ Конфигурация сохранена', 'SUCCESS');
     } else {
-      addLog('⚠️ Ошибка сохранения', 'WARN');
+      addCollectLog('⚠️ Ошибка сохранения', 'WARN');
     }
 
     // Выполняем
-    addLog('🔥 Выполнение запроса...', 'INFO');
+    addCollectLog('🔥 Выполнение запроса...', 'INFO');
     const result = executeCollectConfig(sheetName, cellAddress);
 
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
     if (result.success) {
-      addLog('✅ УСПЕХ!', 'SUCCESS');
-      addLog(`📝 Результат: ${result.result.length} символов`, 'INFO');
+      addCollectLog('✅ УСПЕХ!', 'SUCCESS');
+      addCollectLog(`📝 Результат: ${result.result.length} символов`, 'INFO');
     } else {
-      addLog('❌ ОШИБКА!', 'ERROR');
-      addLog(`❌ ${result.error}`, 'ERROR');
+      addCollectLog('❌ ОШИБКА!', 'ERROR');
+      addCollectLog(`❌ ${result.error}`, 'ERROR');
     }
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
 
-    result.logs = getLog();
+    result.logs = getCollectLog();
     return result;
   } catch (error) {
-    addLog(`💥 КРИТИЧЕСКАЯ ОШИБКА: ${error.message}`, 'ERROR');
-    addLog(`Stack: ${error.stack}`, 'ERROR');
+    addCollectLog(`💥 КРИТИЧЕСКАЯ ОШИБКА: ${error.message}`, 'ERROR');
+    addCollectLog(`Stack: ${error.stack}`, 'ERROR');
     return {
       success: false,
       error: error.message,
-      logs: getLog(),
+      logs: getCollectLog(),
     };
   }
 }
@@ -197,43 +226,43 @@ function executeCollectConfig(sheetName, cellAddress) {
       throw new Error('Конфигурация не найдена!');
     }
 
-    addLog('📖 Конфигурация загружена', 'INFO');
+    addCollectLog('📖 Конфигурация загружена', 'INFO');
 
     // Собираем System Prompt
     let systemPrompt = '';
     if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
-      addLog(`📍 System Prompt: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}`, 'INFO');
+      addCollectLog(`📍 System Prompt: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}`, 'INFO');
       try {
         systemPrompt = readData(config.systemPrompt.sheet, config.systemPrompt.cell);
-        addLog(`✅ System Prompt: ${systemPrompt.length} символов`, 'SUCCESS');
+        addCollectLog(`✅ System Prompt: ${systemPrompt.length} символов`, 'SUCCESS');
       } catch (e) {
-        addLog(`❌ Ошибка чтения System Prompt: ${e.message}`, 'ERROR');
+        addCollectLog(`❌ Ошибка чтения System Prompt: ${e.message}`, 'ERROR');
         throw e;
       }
     } else {
-      addLog('⚠️ System Prompt не задан', 'WARN');
+      addCollectLog('⚠️ System Prompt не задан', 'WARN');
     }
 
     // Собираем User Data
     const userDataParts = [];
     if (config.userData && config.userData.length > 0) {
-      addLog(`📦 User Data: ${config.userData.length} источников`, 'INFO');
+      addCollectLog(`📦 User Data: ${config.userData.length} источников`, 'INFO');
 
       config.userData.forEach(function(source, index) {
         if (source.sheet && source.cell) {
-          addLog(`  📍 Источник ${index + 1}: ${source.sheet}!${source.cell}`, 'INFO');
+          addCollectLog(`  📍 Источник ${index + 1}: ${source.sheet}!${source.cell}`, 'INFO');
           try {
             const data = readData(source.sheet, source.cell);
-            addLog(`  ✅ Прочитано: ${data.length} символов`, 'SUCCESS');
+            addCollectLog(`  ✅ Прочитано: ${data.length} символов`, 'SUCCESS');
             userDataParts.push(`Источник (${source.sheet}!${source.cell}):\n${data}`);
           } catch (e) {
-            addLog(`  ❌ Ошибка: ${e.message}`, 'ERROR');
+            addCollectLog(`  ❌ Ошибка: ${e.message}`, 'ERROR');
             userDataParts.push(`Источник (${source.sheet}!${source.cell}):\n[ОШИБКА: ${e.message}]`);
           }
         }
       });
     } else {
-      addLog('⚠️ User Data не задан', 'WARN');
+      addCollectLog('⚠️ User Data не задан', 'WARN');
     }
 
     // Формируем финальный промпт
@@ -249,23 +278,23 @@ function executeCollectConfig(sheetName, cellAddress) {
       throw new Error('Нет данных для обработки!');
     }
 
-    addLog(`📝 Финальный промпт: ${finalPrompt.length} символов`, 'INFO');
+    addCollectLog(`📝 Финальный промпт: ${finalPrompt.length} символов`, 'INFO');
 
     // Вызываем AI
-    addLog('🤖 Отправка запроса в Gemini...', 'INFO');
+    addCollectLog('🤖 Отправка запроса в Gemini...', 'INFO');
     const aiResult = GM(finalPrompt);
 
     if (!aiResult || aiResult.startsWith('Error:')) {
       throw new Error('Ошибка AI: ' + aiResult);
     }
 
-    addLog(`✅ Получен ответ от AI: ${aiResult.length} символов`, 'SUCCESS');
+    addCollectLog(`✅ Получен ответ от AI: ${aiResult.length} символов`, 'SUCCESS');
 
     // Записываем результат
     const targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
     if (targetSheet) {
       targetSheet.getRange(cellAddress).setValue(aiResult);
-      addLog(`✅ Результат записан в ${sheetName}!${cellAddress}`, 'SUCCESS');
+      addCollectLog(`✅ Результат записан в ${sheetName}!${cellAddress}`, 'SUCCESS');
     }
 
     // Обновляем lastRun
@@ -276,7 +305,7 @@ function executeCollectConfig(sheetName, cellAddress) {
       result: aiResult,
     };
   } catch (error) {
-    addLog(`❌ executeCollectConfig ERROR: ${error.message}`, 'ERROR');
+    addCollectLog(`❌ executeCollectConfig ERROR: ${error.message}`, 'ERROR');
     return {
       success: false,
       error: error.message,
@@ -288,7 +317,7 @@ function executeCollectConfig(sheetName, cellAddress) {
 // ЧТЕНИЕ ДАННЫХ - МАКСИМАЛЬНО ПРОСТАЯ ВЕРСИЯ
 // ============================================================================
 function readData(sheetName, cellAddress) {
-  addLog(`  → Чтение ${sheetName}!${cellAddress}`, 'INFO');
+  addCollectLog(`  → Чтение ${sheetName}!${cellAddress}`, 'INFO');
 
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -302,7 +331,7 @@ function readData(sheetName, cellAddress) {
     const range = sheet.getRange(cellAddress);
     const values = range.getValues();
 
-    addLog(`  → Прочитано: ${values.length} строк × ${values[0].length} столбцов`, 'INFO');
+    addCollectLog(`  → Прочитано: ${values.length} строк × ${values[0].length} столбцов`, 'INFO');
 
     // Превращаем в плоский массив и фильтруем пустые
     const result = [];
@@ -315,11 +344,11 @@ function readData(sheetName, cellAddress) {
       }
     }
 
-    addLog(`  → После фильтрации: ${result.length} значений`, 'INFO');
+    addCollectLog(`  → После фильтрации: ${result.length} значений`, 'INFO');
 
     return result.join('\n');
   } catch (error) {
-    addLog(`  ❌ Ошибка чтения: ${error.message}`, 'ERROR');
+    addCollectLog(`  ❌ Ошибка чтения: ${error.message}`, 'ERROR');
     throw new Error(`Не удалось прочитать ${sheetName}!${cellAddress}: ${error.message}`);
   }
 }
@@ -374,7 +403,7 @@ function saveCollectConfig(sheetName, cellAddress, config) {
 
     return true;
   } catch (error) {
-    addLog(`Ошибка сохранения: ${error.message}`, 'ERROR');
+    addCollectLog(`Ошибка сохранения: ${error.message}`, 'ERROR');
     return false;
   }
 }
@@ -412,7 +441,7 @@ function loadCollectConfig(sheetName, cellAddress) {
 
     return null;
   } catch (error) {
-    addLog(`Ошибка загрузки: ${error.message}`, 'ERROR');
+    addCollectLog(`Ошибка загрузки: ${error.message}`, 'ERROR');
     return null;
   }
 }
@@ -587,9 +616,9 @@ function hasConfigForCurrentCell() {
  */
 function updateReflectionConfigs() {
   try {
-    clearLog();
-    addLog('🚀 Обновление рефлексии', 'INFO');
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    clearCollectLog();
+    addCollectLog('🚀 Обновление рефлексии', 'INFO');
+    addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const configSheet = ss.getSheetByName('ConfigData');
@@ -620,7 +649,7 @@ function updateReflectionConfigs() {
       return;
     }
 
-    addLog(`📋 Найдено конфигураций: ${reflectionConfigs.length}`, 'INFO');
+    addCollectLog(`📋 Найдено конфигураций: ${reflectionConfigs.length}`, 'INFO');
 
     let successCount = 0;
     let errorCount = 0;
@@ -629,29 +658,29 @@ function updateReflectionConfigs() {
     // Выполняем каждую конфигурацию
     for (let i = 0; i < reflectionConfigs.length; i++) {
       const config = reflectionConfigs[i];
-      addLog(`\n🔄 Обработка ${i + 1}/${reflectionConfigs.length}: ${config.sheetName}!${config.cellAddress}`, 'INFO');
+      addCollectLog(`\n🔄 Обработка ${i + 1}/${reflectionConfigs.length}: ${config.sheetName}!${config.cellAddress}`, 'INFO');
 
       try {
         const result = executeCollectConfig(config.sheetName, config.cellAddress);
         if (result.success) {
           successCount++;
-          addLog(`✅ Успешно: ${config.sheetName}!${config.cellAddress}`, 'SUCCESS');
+          addCollectLog(`✅ Успешно: ${config.sheetName}!${config.cellAddress}`, 'SUCCESS');
         } else {
           errorCount++;
           const errorMsg = `❌ Ошибка в ${config.sheetName}!${config.cellAddress}: ${result.error}`;
-          addLog(errorMsg, 'ERROR');
+          addCollectLog(errorMsg, 'ERROR');
           errors.push(errorMsg);
         }
       } catch (e) {
         errorCount++;
         const errorMsg = `💥 Исключение в ${config.sheetName}!${config.cellAddress}: ${e.message}`;
-        addLog(errorMsg, 'ERROR');
+        addCollectLog(errorMsg, 'ERROR');
         errors.push(errorMsg);
       }
     }
 
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
-    addLog(`📊 ИТОГО: ✅ ${successCount} успешно, ❌ ${errorCount} с ошибками`, 'INFO');
+    addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    addCollectLog(`📊 ИТОГО: ✅ ${successCount} успешно, ❌ ${errorCount} с ошибками`, 'INFO');
 
     // Показываем результат
     let message = `Обновление рефлексии завершено:\n\n✅ Успешно: ${successCount}\n❌ С ошибками: ${errorCount}`;
@@ -669,10 +698,7 @@ function updateReflectionConfigs() {
       SpreadsheetApp.getUi().ButtonSet.OK,
     );
   } catch (error) {
-    addLog(`💥 Критическая ошибка: ${error.message}`, 'ERROR');
+    addCollectLog(`💥 Критическая ошибка: ${error.message}`, 'ERROR');
     SpreadsheetApp.getUi().alert('❌ Критическая ошибка', error.message, SpreadsheetApp.getUi().ButtonSet.OK);
   }
 }
-
-// Функция updateUnpackingConfigs() перенесена в UnpackingViewer.gs
-// Она должна работать напрямую с листом "Распаковка", а не через систему ConfigData
