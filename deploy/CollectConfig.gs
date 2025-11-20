@@ -15,7 +15,7 @@ const COLLECT_CONFIG_LAST_UPDATE = '2025-11-20 12:22:00';
 // ============================================================================
 // ГЛОБАЛЬНЫЙ ЛОГ (для передачи в UI)
 // ============================================================================
-var GLOBAL_LOG = [];
+let GLOBAL_LOG = [];
 
 function addLog(message, level) {
   level = level || 'INFO';
@@ -69,8 +69,8 @@ function getCollectConfigInitData() {
 
     const sheetName = sheet.getName();
     const cellAddress = range.getA1Notation();
-    const sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets().map(function(s) { 
-      return s.getName(); 
+    const sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets().map(function(s) {
+      return s.getName();
     });
 
     addLog(`📍 Целевая ячейка: ${sheetName}!${cellAddress}`, 'INFO');
@@ -200,7 +200,7 @@ function executeCollectConfig(sheetName, cellAddress) {
     addLog('📖 Конфигурация загружена', 'INFO');
 
     // Собираем System Prompt
-    var systemPrompt = '';
+    let systemPrompt = '';
     if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
       addLog(`📍 System Prompt: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}`, 'INFO');
       try {
@@ -237,7 +237,7 @@ function executeCollectConfig(sheetName, cellAddress) {
     }
 
     // Формируем финальный промпт
-    var finalPrompt = '';
+    let finalPrompt = '';
     if (systemPrompt) {
       finalPrompt += systemPrompt + '\n\n---\n\n';
     }
@@ -306,8 +306,8 @@ function readData(sheetName, cellAddress) {
 
     // Превращаем в плоский массив и фильтруем пустые
     const result = [];
-    for (var r = 0; r < values.length; r++) {
-      for (var c = 0; c < values[r].length; c++) {
+    for (let r = 0; r < values.length; r++) {
+      for (let c = 0; c < values[r].length; c++) {
         const val = values[r][c];
         if (val !== null && val !== undefined && val.toString().trim() !== '') {
           result.push(val.toString());
@@ -330,7 +330,7 @@ function readData(sheetName, cellAddress) {
 function saveCollectConfig(sheetName, cellAddress, config) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    var configSheet = ss.getSheetByName('ConfigData');
+    let configSheet = ss.getSheetByName('ConfigData');
 
     if (!configSheet) {
       configSheet = ss.insertSheet('ConfigData');
@@ -346,8 +346,8 @@ function saveCollectConfig(sheetName, cellAddress, config) {
 
     // Ищем существующую строку
     const data = configSheet.getDataRange().getValues();
-    var rowIndex = -1;
-    for (var i = 1; i < data.length; i++) {
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sheetName && data[i][1] === cellAddress) {
         rowIndex = i + 1;
         break;
@@ -389,9 +389,9 @@ function loadCollectConfig(sheetName, cellAddress) {
     }
 
     const data = configSheet.getDataRange().getValues();
-    for (var i = 1; i < data.length; i++) {
+    for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sheetName && data[i][1] === cellAddress) {
-        var userData = [];
+        let userData = [];
         try {
           if (data[i][4]) {
             userData = JSON.parse(data[i][4]);
@@ -427,7 +427,7 @@ function updateLastRun(sheetName, cellAddress) {
     }
 
     const data = configSheet.getDataRange().getValues();
-    for (var i = 1; i < data.length; i++) {
+    for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sheetName && data[i][1] === cellAddress) {
         configSheet.getRange(i + 1, 7).setValue(new Date().toISOString());
         return;
@@ -485,7 +485,7 @@ function refreshCellWithConfig() {
       const response = ui.alert(
         '⚠️ Конфигурация не найдена',
         'Хотите создать новую?',
-        ui.ButtonSet.YES_NO
+        ui.ButtonSet.YES_NO,
       );
 
       if (response === ui.Button.YES) {
@@ -517,8 +517,10 @@ function serverGetAllTemplates() {
     const templates = getAllTemplates(user);
 
     const result = {};
-    for (var name in templates) {
-      result[name] = templates[name].config || templates[name];
+    for (const name in templates) {
+      if (Object.prototype.hasOwnProperty.call(templates, name)) {
+        result[name] = templates[name].config || templates[name];
+      }
     }
 
     return result;
@@ -558,8 +560,8 @@ function serverDeleteTemplate(templateName) {
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================================================
 function getAllSheetNames() {
-  return SpreadsheetApp.getActiveSpreadsheet().getSheets().map(function(s) { 
-    return s.getName(); 
+  return SpreadsheetApp.getActiveSpreadsheet().getSheets().map(function(s) {
+    return s.getName();
   });
 }
 
@@ -601,7 +603,7 @@ function updateReflectionConfigs() {
     const reflectionConfigs = [];
 
     // Собираем все конфигурации для листа "Рефлексия"
-    for (var i = 1; i < data.length; i++) {
+    for (let i = 1; i < data.length; i++) {
       if (data[i][0] === 'Рефлексия') { // Sheet column
         reflectionConfigs.push({
           sheetName: data[i][0],
@@ -620,12 +622,12 @@ function updateReflectionConfigs() {
 
     addLog(`📋 Найдено конфигураций: ${reflectionConfigs.length}`, 'INFO');
 
-    var successCount = 0;
-    var errorCount = 0;
+    let successCount = 0;
+    let errorCount = 0;
     const errors = [];
 
     // Выполняем каждую конфигурацию
-    for (var i = 0; i < reflectionConfigs.length; i++) {
+    for (let i = 0; i < reflectionConfigs.length; i++) {
       const config = reflectionConfigs[i];
       addLog(`\n🔄 Обработка ${i + 1}/${reflectionConfigs.length}: ${config.sheetName}!${config.cellAddress}`, 'INFO');
 
@@ -652,7 +654,7 @@ function updateReflectionConfigs() {
     addLog(`📊 ИТОГО: ✅ ${successCount} успешно, ❌ ${errorCount} с ошибками`, 'INFO');
 
     // Показываем результат
-    var message = `Обновление рефлексии завершено:\n\n✅ Успешно: ${successCount}\n❌ С ошибками: ${errorCount}`;
+    let message = `Обновление рефлексии завершено:\n\n✅ Успешно: ${successCount}\n❌ С ошибками: ${errorCount}`;
 
     if (errors.length > 0 && errors.length <= 5) {
       message += '\n\nОшибки:\n' + errors.slice(0, 5).join('\n');
@@ -664,7 +666,7 @@ function updateReflectionConfigs() {
     SpreadsheetApp.getUi().alert(
       errorCount > 0 ? '⚠️ Обновление завершено с ошибками' : '✅ Обновление завершено успешно',
       message,
-      SpreadsheetApp.getUi().ButtonSet.OK
+      SpreadsheetApp.getUi().ButtonSet.OK,
     );
   } catch (error) {
     addLog(`💥 Критическая ошибка: ${error.message}`, 'ERROR');
@@ -672,94 +674,5 @@ function updateReflectionConfigs() {
   }
 }
 
-/**
- * Обновить распаковку - выполняет все конфигурации для листа "Распаковка"
- */
-function updateUnpackingConfigs() {
-  try {
-    clearLog();
-    addLog('🚀 Обновление распаковки', 'INFO');
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
-
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const configSheet = ss.getSheetByName('ConfigData');
-
-    if (!configSheet) {
-      SpreadsheetApp.getUi().alert('❌ Ошибка', 'Лист "ConfigData" не найден!', SpreadsheetApp.getUi().ButtonSet.OK);
-      return;
-    }
-
-    const data = configSheet.getDataRange().getValues();
-    const unpackingConfigs = [];
-
-    // Собираем все конфигурации для листа "Распаковка"
-    for (var i = 1; i < data.length; i++) {
-      if (data[i][0] === 'Распаковка') { // Sheet column
-        unpackingConfigs.push({
-          sheetName: data[i][0],
-          cellAddress: data[i][1],
-          systemPromptSheet: data[i][2],
-          systemPromptCell: data[i][3],
-          userDataJSON: data[i][4],
-        });
-      }
-    }
-
-    if (unpackingConfigs.length === 0) {
-      SpreadsheetApp.getUi().alert('ℹ️ Информация', 'Конфигурации для распаковки не найдены', SpreadsheetApp.getUi().ButtonSet.OK);
-      return;
-    }
-
-    addLog(`📋 Найдено конфигураций: ${unpackingConfigs.length}`, 'INFO');
-
-    var successCount = 0;
-    var errorCount = 0;
-    const errors = [];
-
-    // Выполняем каждую конфигурацию
-    for (var i = 0; i < unpackingConfigs.length; i++) {
-      const config = unpackingConfigs[i];
-      addLog(`\n🔄 Обработка ${i + 1}/${unpackingConfigs.length}: ${config.sheetName}!${config.cellAddress}`, 'INFO');
-
-      try {
-        const result = executeCollectConfig(config.sheetName, config.cellAddress);
-        if (result.success) {
-          successCount++;
-          addLog(`✅ Успешно: ${config.sheetName}!${config.cellAddress}`, 'SUCCESS');
-        } else {
-          errorCount++;
-          const errorMsg = `❌ Ошибка в ${config.sheetName}!${config.cellAddress}: ${result.error}`;
-          addLog(errorMsg, 'ERROR');
-          errors.push(errorMsg);
-        }
-      } catch (e) {
-        errorCount++;
-        const errorMsg = `💥 Исключение в ${config.sheetName}!${config.cellAddress}: ${e.message}`;
-        addLog(errorMsg, 'ERROR');
-        errors.push(errorMsg);
-      }
-    }
-
-    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
-    addLog(`📊 ИТОГО: ✅ ${successCount} успешно, ❌ ${errorCount} с ошибками`, 'INFO');
-
-    // Показываем результат
-    var message = `Обновление распаковки завершено:\n\n✅ Успешно: ${successCount}\n❌ С ошибками: ${errorCount}`;
-
-    if (errors.length > 0 && errors.length <= 5) {
-      message += '\n\nОшибки:\n' + errors.slice(0, 5).join('\n');
-    } else if (errors.length > 5) {
-      message += '\n\nПервые 5 ошибок:\n' + errors.slice(0, 5).join('\n');
-      message += `\n... и еще ${errors.length - 5} ошибок`;
-    }
-
-    SpreadsheetApp.getUi().alert(
-      errorCount > 0 ? '⚠️ Обновление завершено с ошибками' : '✅ Обновление завершено успешно',
-      message,
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-  } catch (error) {
-    addLog(`💥 Критическая ошибка: ${error.message}`, 'ERROR');
-    SpreadsheetApp.getUi().alert('❌ Критическая ошибка', error.message, SpreadsheetApp.getUi().ButtonSet.OK);
-  }
-}
+// Функция updateUnpackingConfigs() перенесена в UnpackingViewer.gs
+// Она должна работать напрямую с листом "Распаковка", а не через систему ConfigData

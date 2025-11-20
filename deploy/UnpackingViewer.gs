@@ -220,3 +220,138 @@ function exportUnpackingToDoc() {
     };
   }
 }
+
+/**
+ * Обновляет распаковку - пересчитывает формулы в B3:G3
+ * Вызывается из меню "📦 Обновить распаковку"
+ *
+ * ВАЖНО: Эта функция НЕ связана с AI Constructor (CollectConfig)!
+ * Она работает напрямую с листом "Распаковка" и формулами GM_IF
+ */
+// eslint-disable-next-line no-unused-vars
+function updateUnpackingConfigs() {
+  try {
+    addLog('🔄 Начало обновления распаковки', 'INFO');
+
+    const ui = SpreadsheetApp.getUi();
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // Проверяем наличие листа Распаковка
+    const sheet = ss.getSheetByName('Распаковка');
+
+    if (!sheet) {
+      addLog('❌ Лист "Распаковка" не найден', 'ERROR');
+      ui.alert(
+        '❌ Лист "Распаковка" не найден',
+        'Создайте лист "Распаковка" для работы функции обновления.',
+        ui.ButtonSet.OK,
+      );
+      return;
+    }
+
+    addLog('📋 Лист "Распаковка" найден', 'INFO');
+
+    // Получаем диапазон B3:G3
+    const range = sheet.getRange('B3:G3');
+    const formulas = range.getFormulas()[0]; // Первая строка формул
+
+    addLog('📊 Найдено ячеек: ' + formulas.length, 'DEBUG');
+
+    // Считаем сколько ячеек с формулами
+    let formulaCount = 0;
+    let emptyCount = 0;
+
+    for (let i = 0; i < formulas.length; i++) {
+      if (formulas[i] && formulas[i].trim() !== '') {
+        formulaCount++;
+      } else {
+        emptyCount++;
+      }
+    }
+
+    addLog('✅ С формулами: ' + formulaCount + ', пустых: ' + emptyCount, 'INFO');
+
+    if (formulaCount === 0) {
+      addLog('⚠️ Нет формул для обновления', 'WARN');
+      ui.alert(
+        '⚠️ Нет формул',
+        'В диапазоне B3:G3 нет GM-формул для обновления.\n\n' +
+        'Используйте меню:\n' +
+        '🤖 Table AI → ▶️ Подготовить формулы (умный режим)',
+        ui.ButtonSet.OK,
+      );
+      return;
+    }
+
+    // Показываем предупреждение
+    const response = ui.alert(
+      '🔄 Обновить распаковку?',
+      `Будут обновлены ${formulaCount} ячеек в диапазоне B3:G3.\n\n` +
+      'Текущие данные будут перезаписаны.\n\n' +
+      'Продолжить?',
+      ui.ButtonSet.YES_NO,
+    );
+
+    if (response !== ui.Button.YES) {
+      addLog('🚫 Обновление отменено пользователем', 'INFO');
+      return;
+    }
+
+    addLog('🔄 Начинаем обновление формул...', 'INFO');
+
+    // МЕТОД 1: Пересчёт формул через очистку и восстановление
+    // Это заставит GM-формулы выполниться заново
+
+    // Сохраняем текущие формулы
+    const savedFormulas = [];
+    for (let col = 2; col <= 7; col++) { // B=2, G=7
+      const cell = sheet.getRange(3, col);
+      const formula = cell.getFormula();
+      savedFormulas.push({col: col, formula: formula});
+      addLog('  📝 Сохранена формула в колонке ' + col + ': ' + formula.substring(0, 50) + '...', 'DEBUG');
+    }
+
+    // Очищаем содержимое (но не формулы целиком, а значения)
+    addLog('🧹 Очистка текущих значений...', 'INFO');
+    range.clearContent();
+    SpreadsheetApp.flush(); // Применяем изменения
+
+    // Небольшая задержка для Google Sheets
+    Utilities.sleep(100);
+
+    // Восстанавливаем формулы
+    addLog('♻️ Восстановление формул...', 'INFO');
+    let restoredCount = 0;
+
+    for (let i = 0; i < savedFormulas.length; i++) {
+      if (savedFormulas[i].formula && savedFormulas[i].formula.trim() !== '') {
+        const cell = sheet.getRange(3, savedFormulas[i].col);
+        cell.setFormula(savedFormulas[i].formula);
+        restoredCount++;
+        addLog('  ✅ Восстановлена формула в колонке ' + savedFormulas[i].col, 'DEBUG');
+      }
+    }
+
+    SpreadsheetApp.flush(); // Применяем изменения
+
+    addLog('✅ Восстановлено формул: ' + restoredCount, 'SUCCESS');
+    addLog('🎉 Обновление распаковки завершено успешно!', 'SUCCESS');
+
+    ui.alert(
+      '✅ Обновление завершено',
+      `Успешно обновлено ${restoredCount} формул в диапазоне B3:G3.\n\n` +
+      'GM-формулы будут выполнены автоматически при выполнении условий.',
+      ui.ButtonSet.OK,
+    );
+  } catch (error) {
+    addLog('❌ Критическая ошибка обновления: ' + error.message, 'ERROR');
+    addLog('Stack: ' + error.stack, 'ERROR');
+
+    SpreadsheetApp.getUi().alert(
+      '❌ Ошибка обновления',
+      'Не удалось обновить распаковку:\n\n' + error.message + '\n\n' +
+      'Проверьте логи для подробностей.',
+      SpreadsheetApp.getUi().ButtonSet.OK,
+    );
+  }
+}
