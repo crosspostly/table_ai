@@ -4,7 +4,7 @@
  * ============================================================================
  * Версия: 3.0.0
  * Дата: 2025-10-18 18:20:00
- * 
+ *
  * ЦЕЛЬ: ПРОСТОТА И НАДЁЖНОСТЬ!
  * ============================================================================
  */
@@ -15,7 +15,7 @@ const COLLECT_CONFIG_LAST_UPDATE = '2025-10-18 18:20:00';
 // ============================================================================
 // ГЛОБАЛЬНЫЙ ЛОГ (для передачи в UI)
 // ============================================================================
-var GLOBAL_LOG = [];
+let GLOBAL_LOG = [];
 
 function addLog(message, level) {
   level = level || 'INFO';
@@ -23,7 +23,7 @@ function addLog(message, level) {
   const logEntry = {
     timestamp: timestamp,
     message: message,
-    level: level.toUpperCase()
+    level: level.toUpperCase(),
   };
   GLOBAL_LOG.push(logEntry);
   Logger.log(`[${level}] ${message}`);
@@ -45,7 +45,7 @@ function openCollectConfigUI() {
     const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi')
       .setWidth(700)
       .setTitle('🎯 AI Конструктор v3.0');
-    
+
     SpreadsheetApp.getUi().showModalDialog(html, 'AI Конструктор');
   } catch (error) {
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
@@ -59,31 +59,31 @@ function getCollectConfigInitData() {
   try {
     clearLog();
     addLog(`🚀 CollectConfig v${COLLECT_CONFIG_VERSION} (обновлено: ${COLLECT_CONFIG_LAST_UPDATE})`, 'INFO');
-    
+
     const sheet = SpreadsheetApp.getActiveSheet();
     const range = sheet.getActiveRange();
-    
+
     if (!range) {
       throw new Error('Выделите ячейку!');
     }
-    
+
     const sheetName = sheet.getName();
     const cellAddress = range.getA1Notation();
-    const sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets().map(s => s.getName());
-    
+    const sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets().map((s) => s.getName());
+
     addLog(`📍 Целевая ячейка: ${sheetName}!${cellAddress}`, 'INFO');
     addLog(`📋 Найдено листов: ${sheets.length}`, 'INFO');
-    
+
     // Создаём базовый шаблон
     createDefaultTemplate();
-    
+
     return {
       sheetName: sheetName,
       cellAddress: cellAddress,
       sheets: sheets,
       version: COLLECT_CONFIG_VERSION,
       lastUpdate: COLLECT_CONFIG_LAST_UPDATE,
-      logs: getLog()
+      logs: getLog(),
     };
   } catch (error) {
     addLog(`❌ Ошибка инициализации: ${error.message}`, 'ERROR');
@@ -98,26 +98,26 @@ function createDefaultTemplate() {
   try {
     const user = Session.getActiveUser().getEmail() || 'anonymous';
     const templates = getAllTemplates(user);
-    
+
     // Если шаблон уже есть - не создаём
     if (templates && templates['По умолчанию']) {
       addLog('✅ Базовый шаблон уже существует', 'INFO');
       return;
     }
-    
+
     const defaultTemplate = {
       systemPrompt: {
         sheet: 'Prompt_box',
-        cell: 'E2'
+        cell: 'E2',
       },
       userData: [
         {
           sheet: 'отзывы',
-          cell: 'B:B'
-        }
-      ]
+          cell: 'B:B',
+        },
+      ],
     };
-    
+
     const result = saveTemplate(user, 'По умолчанию', defaultTemplate);
     if (result && result.success) {
       addLog('✅ Создан базовый шаблон "По умолчанию"', 'SUCCESS');
@@ -139,15 +139,15 @@ function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
     addLog('📋 НАЧАЛО ВЫПОЛНЕНИЯ', 'INFO');
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
-    
+
     // Валидация
     addLog(`📍 Целевая ячейка: ${sheetName}!${cellAddress}`, 'INFO');
     addLog(`📊 Конфигурация: ${JSON.stringify(config).substring(0, 100)}...`, 'INFO');
-    
+
     if (!sheetName || !cellAddress || !config) {
       throw new Error('Отсутствуют обязательные параметры!');
     }
-    
+
     // Сохраняем конфигурацию
     addLog('💾 Сохранение конфигурации...', 'INFO');
     const saved = saveCollectConfig(sheetName, cellAddress, config);
@@ -156,11 +156,11 @@ function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
     } else {
       addLog('⚠️ Ошибка сохранения', 'WARN');
     }
-    
+
     // Выполняем
     addLog('🔥 Выполнение запроса...', 'INFO');
     const result = executeCollectConfig(sheetName, cellAddress);
-    
+
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
     if (result.success) {
       addLog('✅ УСПЕХ!', 'SUCCESS');
@@ -170,17 +170,16 @@ function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
       addLog(`❌ ${result.error}`, 'ERROR');
     }
     addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
-    
+
     result.logs = getLog();
     return result;
-    
   } catch (error) {
     addLog(`💥 КРИТИЧЕСКАЯ ОШИБКА: ${error.message}`, 'ERROR');
     addLog(`Stack: ${error.stack}`, 'ERROR');
     return {
       success: false,
       error: error.message,
-      logs: getLog()
+      logs: getLog(),
     };
   }
 }
@@ -195,9 +194,9 @@ function executeCollectConfig(sheetName, cellAddress) {
     if (!config) {
       throw new Error('Конфигурация не найдена!');
     }
-    
+
     addLog('📖 Конфигурация загружена', 'INFO');
-    
+
     // Собираем System Prompt
     let systemPrompt = '';
     if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
@@ -212,12 +211,12 @@ function executeCollectConfig(sheetName, cellAddress) {
     } else {
       addLog('⚠️ System Prompt не задан', 'WARN');
     }
-    
+
     // Собираем User Data
     const userDataParts = [];
     if (config.userData && config.userData.length > 0) {
       addLog(`📦 User Data: ${config.userData.length} источников`, 'INFO');
-      
+
       config.userData.forEach(function(source, index) {
         if (source.sheet && source.cell) {
           addLog(`  📍 Источник ${index + 1}: ${source.sheet}!${source.cell}`, 'INFO');
@@ -234,7 +233,7 @@ function executeCollectConfig(sheetName, cellAddress) {
     } else {
       addLog('⚠️ User Data не задан', 'WARN');
     }
-    
+
     // Формируем финальный промпт
     let finalPrompt = '';
     if (systemPrompt) {
@@ -243,43 +242,42 @@ function executeCollectConfig(sheetName, cellAddress) {
     if (userDataParts.length > 0) {
       finalPrompt += 'ДАННЫЕ:\n' + userDataParts.join('\n\n');
     }
-    
+
     if (!finalPrompt.trim()) {
       throw new Error('Нет данных для обработки!');
     }
-    
+
     addLog(`📝 Финальный промпт: ${finalPrompt.length} символов`, 'INFO');
-    
+
     // Вызываем AI
     addLog('🤖 Отправка запроса в Gemini...', 'INFO');
     const aiResult = GM(finalPrompt);
-    
+
     if (!aiResult || aiResult.startsWith('Error:')) {
       throw new Error('Ошибка AI: ' + aiResult);
     }
-    
+
     addLog(`✅ Получен ответ от AI: ${aiResult.length} символов`, 'SUCCESS');
-    
+
     // Записываем результат
     const targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
     if (targetSheet) {
       targetSheet.getRange(cellAddress).setValue(aiResult);
       addLog(`✅ Результат записан в ${sheetName}!${cellAddress}`, 'SUCCESS');
     }
-    
+
     // Обновляем lastRun
     updateLastRun(sheetName, cellAddress);
-    
+
     return {
       success: true,
-      result: aiResult
+      result: aiResult,
     };
-    
   } catch (error) {
     addLog(`❌ executeCollectConfig ERROR: ${error.message}`, 'ERROR');
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 }
@@ -289,21 +287,21 @@ function executeCollectConfig(sheetName, cellAddress) {
 // ============================================================================
 function readData(sheetName, cellAddress) {
   addLog(`  → Чтение ${sheetName}!${cellAddress}`, 'INFO');
-  
+
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(sheetName);
-    
+
     if (!sheet) {
       throw new Error(`Лист "${sheetName}" не найден`);
     }
-    
+
     // ПРОСТЕЙШИЙ подход: просто читаем диапазон как есть
     const range = sheet.getRange(cellAddress);
     const values = range.getValues();
-    
+
     addLog(`  → Прочитано: ${values.length} строк × ${values[0].length} столбцов`, 'INFO');
-    
+
     // Превращаем в плоский массив и фильтруем пустые
     const result = [];
     for (let r = 0; r < values.length; r++) {
@@ -314,11 +312,10 @@ function readData(sheetName, cellAddress) {
         }
       }
     }
-    
+
     addLog(`  → После фильтрации: ${result.length} значений`, 'INFO');
-    
+
     return result.join('\n');
-    
   } catch (error) {
     addLog(`  ❌ Ошибка чтения: ${error.message}`, 'ERROR');
     throw new Error(`Не удалось прочитать ${sheetName}!${cellAddress}: ${error.message}`);
@@ -332,11 +329,11 @@ function saveCollectConfig(sheetName, cellAddress, config) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let configSheet = ss.getSheetByName('ConfigData');
-    
+
     if (!configSheet) {
       configSheet = ss.insertSheet('ConfigData');
       configSheet.hideSheet();
-      
+
       // Заголовки
       const headers = ['Sheet', 'Cell', 'SystemPromptSheet', 'SystemPromptCell', 'UserDataJSON', 'CreatedAt', 'LastRun'];
       configSheet.getRange(1, 1, 1, headers.length).setValues([headers])
@@ -344,7 +341,7 @@ function saveCollectConfig(sheetName, cellAddress, config) {
         .setBackground('#4285f4')
         .setFontColor('white');
     }
-    
+
     // Ищем существующую строку
     const data = configSheet.getDataRange().getValues();
     let rowIndex = -1;
@@ -354,7 +351,7 @@ function saveCollectConfig(sheetName, cellAddress, config) {
         break;
       }
     }
-    
+
     const rowData = [
       sheetName,
       cellAddress,
@@ -362,9 +359,9 @@ function saveCollectConfig(sheetName, cellAddress, config) {
       config.systemPrompt ? config.systemPrompt.cell : '',
       JSON.stringify(config.userData || []),
       rowIndex === -1 ? new Date().toISOString() : data[rowIndex - 1][5],
-      ''
+      '',
     ];
-    
+
     if (rowIndex > 0) {
       // Обновляем существующую
       configSheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
@@ -372,7 +369,7 @@ function saveCollectConfig(sheetName, cellAddress, config) {
       // Добавляем новую
       configSheet.appendRow(rowData);
     }
-    
+
     return true;
   } catch (error) {
     addLog(`Ошибка сохранения: ${error.message}`, 'ERROR');
@@ -384,11 +381,11 @@ function loadCollectConfig(sheetName, cellAddress) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const configSheet = ss.getSheetByName('ConfigData');
-    
+
     if (!configSheet) {
       return null;
     }
-    
+
     const data = configSheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sheetName && data[i][1] === cellAddress) {
@@ -400,17 +397,17 @@ function loadCollectConfig(sheetName, cellAddress) {
         } catch (e) {
           // ignore
         }
-        
+
         return {
           systemPrompt: (data[i][2] && data[i][3]) ? {
             sheet: data[i][2],
-            cell: data[i][3]
+            cell: data[i][3],
           } : null,
-          userData: userData
+          userData: userData,
         };
       }
     }
-    
+
     return null;
   } catch (error) {
     addLog(`Ошибка загрузки: ${error.message}`, 'ERROR');
@@ -422,11 +419,11 @@ function updateLastRun(sheetName, cellAddress) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const configSheet = ss.getSheetByName('ConfigData');
-    
+
     if (!configSheet) {
       return;
     }
-    
+
     const data = configSheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sheetName && data[i][1] === cellAddress) {
@@ -447,19 +444,18 @@ function getCellPreview(sheetName, cellAddress) {
     if (!sheetName || !cellAddress) {
       return '⚠️ Не указаны параметры';
     }
-    
+
     const data = readData(sheetName, cellAddress);
-    
+
     if (!data || data.length === 0) {
       return '(пусто)';
     }
-    
+
     if (data.length <= 100) {
       return data;
     }
-    
+
     return data.substring(0, 100) + '...';
-    
   } catch (error) {
     return `❌ Ошибка: ${error.message}`;
   }
@@ -473,39 +469,38 @@ function refreshCellWithConfig() {
     const ui = SpreadsheetApp.getUi();
     const sheet = SpreadsheetApp.getActiveSheet();
     const range = sheet.getActiveRange();
-    
+
     if (!range) {
       ui.alert('⚠️ Выберите ячейку!');
       return;
     }
-    
+
     const sheetName = sheet.getName();
     const cellAddress = range.getA1Notation();
     const config = loadCollectConfig(sheetName, cellAddress);
-    
+
     if (!config) {
       const response = ui.alert(
         '⚠️ Конфигурация не найдена',
         'Хотите создать новую?',
-        ui.ButtonSet.YES_NO
+        ui.ButtonSet.YES_NO,
       );
-      
+
       if (response === ui.Button.YES) {
         openCollectConfigUI();
       }
       return;
     }
-    
+
     ui.alert('🚀 Запуск...', 'Выполняю запрос...', ui.ButtonSet.OK);
-    
+
     const result = executeCollectConfig(sheetName, cellAddress);
-    
+
     if (result.success) {
       ui.alert('✅ Готово!', `Результат записан в ${cellAddress}`, ui.ButtonSet.OK);
     } else {
       ui.alert('❌ Ошибка', result.error, ui.ButtonSet.OK);
     }
-    
   } catch (error) {
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
   }
@@ -518,12 +513,12 @@ function serverGetAllTemplates() {
   try {
     const user = Session.getActiveUser().getEmail() || 'anonymous';
     const templates = getAllTemplates(user);
-    
+
     const result = {};
     for (const name in templates) {
       result[name] = templates[name].config || templates[name];
     }
-    
+
     return result;
   } catch (e) {
     return {};
@@ -561,7 +556,7 @@ function serverDeleteTemplate(templateName) {
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================================================
 function getAllSheetNames() {
-  return SpreadsheetApp.getActiveSpreadsheet().getSheets().map(s => s.getName());
+  return SpreadsheetApp.getActiveSpreadsheet().getSheets().map((s) => s.getName());
 }
 
 function hasConfigForCurrentCell() {
@@ -569,10 +564,198 @@ function hasConfigForCurrentCell() {
     const sheet = SpreadsheetApp.getActiveSheet();
     const range = sheet.getActiveRange();
     if (!range) return false;
-    
+
     const config = loadCollectConfig(sheet.getName(), range.getA1Notation());
     return config !== null;
   } catch (e) {
     return false;
+  }
+}
+
+// ============================================================================
+// ФУНКЦИИ АВТОМАТИЧЕСКОГО ОБНОВЛЕНИЯ
+// ============================================================================
+
+/**
+ * Обновить рефлексию - выполняет все конфигурации для листа "Рефлексия"
+ */
+function updateReflectionConfigs() {
+  try {
+    clearLog();
+    addLog('🚀 Обновление рефлексии', 'INFO');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ConfigData');
+
+    if (!configSheet) {
+      SpreadsheetApp.getUi().alert('❌ Ошибка', 'Лист "ConfigData" не найден!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+
+    const data = configSheet.getDataRange().getValues();
+    const reflectionConfigs = [];
+
+    // Собираем все конфигурации для листа "Рефлексия"
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === 'Рефлексия') { // Sheet column
+        reflectionConfigs.push({
+          sheetName: data[i][0],
+          cellAddress: data[i][1],
+          systemPromptSheet: data[i][2],
+          systemPromptCell: data[i][3],
+          userDataJSON: data[i][4],
+        });
+      }
+    }
+
+    if (reflectionConfigs.length === 0) {
+      SpreadsheetApp.getUi().alert('ℹ️ Информация', 'Конфигурации для рефлексии не найдены', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+
+    addLog(`📋 Найдено конфигураций: ${reflectionConfigs.length}`, 'INFO');
+
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    // Выполняем каждую конфигурацию
+    for (let i = 0; i < reflectionConfigs.length; i++) {
+      const config = reflectionConfigs[i];
+      addLog(`\n🔄 Обработка ${i + 1}/${reflectionConfigs.length}: ${config.sheetName}!${config.cellAddress}`, 'INFO');
+
+      try {
+        const result = executeCollectConfig(config.sheetName, config.cellAddress);
+        if (result.success) {
+          successCount++;
+          addLog(`✅ Успешно: ${config.sheetName}!${config.cellAddress}`, 'SUCCESS');
+        } else {
+          errorCount++;
+          const errorMsg = `❌ Ошибка в ${config.sheetName}!${config.cellAddress}: ${result.error}`;
+          addLog(errorMsg, 'ERROR');
+          errors.push(errorMsg);
+        }
+      } catch (e) {
+        errorCount++;
+        const errorMsg = `💥 Исключение в ${config.sheetName}!${config.cellAddress}: ${e.message}`;
+        addLog(errorMsg, 'ERROR');
+        errors.push(errorMsg);
+      }
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    addLog(`📊 ИТОГО: ✅ ${successCount} успешно, ❌ ${errorCount} с ошибками`, 'INFO');
+
+    // Показываем результат
+    let message = `Обновление рефлексии завершено:\n\n✅ Успешно: ${successCount}\n❌ С ошибками: ${errorCount}`;
+
+    if (errors.length > 0 && errors.length <= 5) {
+      message += '\n\nОшибки:\n' + errors.slice(0, 5).join('\n');
+    } else if (errors.length > 5) {
+      message += '\n\nПервые 5 ошибок:\n' + errors.slice(0, 5).join('\n');
+      message += `\n... и еще ${errors.length - 5} ошибок`;
+    }
+
+    SpreadsheetApp.getUi().alert(
+      errorCount > 0 ? '⚠️ Обновление завершено с ошибками' : '✅ Обновление завершено успешно',
+      message,
+      SpreadsheetApp.getUi().ButtonSet.OK,
+    );
+  } catch (error) {
+    addLog(`💥 Критическая ошибка: ${error.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('❌ Критическая ошибка', error.message, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
+ * Обновить распаковку - выполняет все конфигурации для листа "Распаковка"
+ */
+function updateUnpackingConfigs() {
+  try {
+    clearLog();
+    addLog('🚀 Обновление распаковки', 'INFO');
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ConfigData');
+
+    if (!configSheet) {
+      SpreadsheetApp.getUi().alert('❌ Ошибка', 'Лист "ConfigData" не найден!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+
+    const data = configSheet.getDataRange().getValues();
+    const unpackingConfigs = [];
+
+    // Собираем все конфигурации для листа "Распаковка"
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === 'Распаковка') { // Sheet column
+        unpackingConfigs.push({
+          sheetName: data[i][0],
+          cellAddress: data[i][1],
+          systemPromptSheet: data[i][2],
+          systemPromptCell: data[i][3],
+          userDataJSON: data[i][4],
+        });
+      }
+    }
+
+    if (unpackingConfigs.length === 0) {
+      SpreadsheetApp.getUi().alert('ℹ️ Информация', 'Конфигурации для распаковки не найдены', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+
+    addLog(`📋 Найдено конфигураций: ${unpackingConfigs.length}`, 'INFO');
+
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    // Выполняем каждую конфигурацию
+    for (let i = 0; i < unpackingConfigs.length; i++) {
+      const config = unpackingConfigs[i];
+      addLog(`\n🔄 Обработка ${i + 1}/${unpackingConfigs.length}: ${config.sheetName}!${config.cellAddress}`, 'INFO');
+
+      try {
+        const result = executeCollectConfig(config.sheetName, config.cellAddress);
+        if (result.success) {
+          successCount++;
+          addLog(`✅ Успешно: ${config.sheetName}!${config.cellAddress}`, 'SUCCESS');
+        } else {
+          errorCount++;
+          const errorMsg = `❌ Ошибка в ${config.sheetName}!${config.cellAddress}: ${result.error}`;
+          addLog(errorMsg, 'ERROR');
+          errors.push(errorMsg);
+        }
+      } catch (e) {
+        errorCount++;
+        const errorMsg = `💥 Исключение в ${config.sheetName}!${config.cellAddress}: ${e.message}`;
+        addLog(errorMsg, 'ERROR');
+        errors.push(errorMsg);
+      }
+    }
+
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    addLog(`📊 ИТОГО: ✅ ${successCount} успешно, ❌ ${errorCount} с ошибками`, 'INFO');
+
+    // Показываем результат
+    let message = `Обновление распаковки завершено:\n\n✅ Успешно: ${successCount}\n❌ С ошибками: ${errorCount}`;
+
+    if (errors.length > 0 && errors.length <= 5) {
+      message += '\n\nОшибки:\n' + errors.slice(0, 5).join('\n');
+    } else if (errors.length > 5) {
+      message += '\n\nПервые 5 ошибок:\n' + errors.slice(0, 5).join('\n');
+      message += `\n... и еще ${errors.length - 5} ошибок`;
+    }
+
+    SpreadsheetApp.getUi().alert(
+      errorCount > 0 ? '⚠️ Обновление завершено с ошибками' : '✅ Обновление завершено успешно',
+      message,
+      SpreadsheetApp.getUi().ButtonSet.OK,
+    );
+  } catch (error) {
+    addLog(`💥 Критическая ошибка: ${error.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('❌ Критическая ошибка', error.message, SpreadsheetApp.getUi().ButtonSet.OK);
   }
 }
