@@ -21,21 +21,29 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 const SERVER_URL = 'https://script.google.com/macros/s/AKfycbyyUlB5YWP4bwv3gHHniTv_12cAHlqjYfra7fQ3m3Vri5XvZTQ_uUZZovCYeTo2_u6gQw/exec';
 
 // ====== КОНСТАНТЫ ДЛЯ АВТОМАТИЗАЦИИ (legacy-триггеры, оставлены для совместимости) ======
+// eslint-disable-next-line no-unused-vars
 const AUTO_PROCESSING_DELAY = 20000; // 20 сек
+// eslint-disable-next-line no-unused-vars
 const LONG_PROCESSING_DELAY = 45000; // 45 сек
+// eslint-disable-next-line no-unused-vars
 const COMPLETION_PHRASE = 'Отчёт готов';
+// eslint-disable-next-line no-unused-vars
 const PROCESSING_STATUS_KEY = 'AUTO_PROCESSING_STATUS';
 const LOGS_CACHE_KEY = 'SYSTEM_LOGS';
 const MAX_LOGS = 300;
 const LOGS_TTL = 86400; // 24ч
+// eslint-disable-next-line no-unused-vars
 const MAX_RETRY_ATTEMPTS = 5;
+// eslint-disable-next-line no-unused-vars
 const RETRY_DELAY_INCREMENT = 10000;
 
 // ====== DEV ФЛАГ ======
 const DEV_MODE = false; // DEV: показывать DEV-меню/логи
+// eslint-disable-next-line no-unused-vars
 const DEVMODE = DEV_MODE;
 
 // В твоем мастер-листе добавь кнопку:
+// eslint-disable-next-line no-unused-vars
 function shareAsTemplate() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   // Создать копию с очищенными данными, но с кодом
@@ -62,6 +70,7 @@ function addLog(msg, level = 'INFO') {
 }
 
 // ====== VK Parser URL: жёстко используем константу VK_PARSER_URL (без чтения Параметры!B5) ======
+// eslint-disable-next-line no-unused-vars
 function getVkParserUrl_() {
   try {
     return String(VK_PARSER_URL).replace(/\/$/, '');
@@ -344,7 +353,7 @@ function prepareChainFromPromptBox() {
 
   for (let i = 0; i < mappings.length; i++) {
     const m = mappings[i];
-    var cond;
+    let cond;
     if (i === 0) {
       // Всегда якорь от A3
       cond = '$A3<>""';
@@ -378,7 +387,7 @@ function prepareChainForA3() {
     const promptRow = stepIndex + 1; // шаг 1 -> F2 ... шаг 6 -> F7
     const target = sheet.getRange(row, col);
     const promptRef = 'Prompt_box!$F$' + promptRow;
-    var formula;
+    let formula;
     if (col === 2) {
       formula = '=GM_IF($A3<>"", ' + promptRef + ', 25000, 0.7)';
     } else {
@@ -416,7 +425,7 @@ function importVkPosts() {
   const url = VK_PARSER_URL + '?owner=' + encodeURIComponent(owner) + '&count=' + encodeURIComponent(count);
   try {
     const resp = UrlFetchApp.fetch(url);
-    var arr = JSON.parse(resp.getContentText());
+    const arr = JSON.parse(resp.getContentText());
   } catch (e) {
     addLog('❌ Ошибка запроса VK: ' + e.message, 'ERROR');
     SpreadsheetApp.getUi().alert('Ошибка запроса VK Parser: ' + e);
@@ -659,6 +668,7 @@ function applyUniformFormatting(sheet) {
 }
 
 // ====== Меню ======
+// eslint-disable-next-line no-unused-vars
 function onOpen() {
   try {
     const ui = SpreadsheetApp.getUi();
@@ -678,6 +688,8 @@ function onOpen() {
         .addItem('🗂️ Управление шаблонами', 'openTemplatesUI')
         .addItem('❓ Справка', 'showCollectConfigHelp'),
       )
+      .addSeparator()
+      .addItem('📦 Просмотр Распаковки', 'openUnpackingViewer')
       .addSeparator()
       .addItem('📥 Импорт VK постов', 'importVkPosts')
       .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
@@ -1313,7 +1325,10 @@ function GM(prompt, maxTokens, temperature) {
     addLog('⚠️ DEV fallback → прямой Gemini. Причина: ' + (serr || 'UNKNOWN'), 'WARN');
     try {
       const apiKey = getGeminiApiKey();
-      const body = {contents: [{parts: [{text: prompt}]}], generationConfig: {maxOutputTokens: maxTokens, temperature: temperature}};
+      const body = {
+        contents: [{parts: [{text: prompt}]}], 
+        generationConfig: {maxOutputTokens: maxTokens, temperature: temperature}
+      };
       const options = {method: 'POST', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true};
       const resp = UrlFetchApp.fetch(GEMINI_API_URL + '?key=' + apiKey, options);
       const code = resp.getResponseCode();
