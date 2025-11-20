@@ -1,292 +1,336 @@
-# 🎯 Table AI - AI Конструктор v3.0.0
+# Table AI - Google Sheets AI Automation
 
-**Google Sheets AI Integration с системой управления промптами и шаблонами**
+[![Version](https://img.shields.io/badge/version-3.0.1-blue.svg)](https://github.com/crosspostly/table_ai)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Последнее обновление:** 2 ноября 2025  
-**Версия:** 3.0.0  
-**Статус:** ✅ Production Ready
+> **⚠️ КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ ДЛЯ РАЗРАБОТЧИКОВ:**
+> 
+> При добавлении новых функций обновления (типа `updateXXXConfigs()`):
+> 
+> 1. 🚫 **НЕ ИСПОЛЬЗУЙТЕ систему CollectConfig (ConfigData)** если ваш модуль не связан с AI Constructor
+> 2. 🚫 **НЕ ПЕРЕОПРЕДЕЛЯЙТЕ функцию `addLog()`** - используйте обёртки (`logXXX()`)
+> 3. ✅ **Создавайте независимые функции** в файле вашего модуля
+> 4. ✅ **Документируйте зависимости** явно в комментариях
+> 
+> **Пример правильной реализации:** см. `UnpackingViewer.gs` → `updateUnpackingConfigs()`
+> 
+> **Нарушение этих правил ЛОМАЕТ весь AI Constructor!**
+
+## О проекте
+
+Table AI - система автоматизации работы с AI в Google Sheets через Gemini API.
+
+### Основные модули
+
+- **Main.gs** - Центральная система управления, меню, логирование
+- **CollectConfig.gs** - AI Constructor (сбор данных из разных источников)
+- **UnpackingViewer.gs** - Просмотр и экспорт данных распаковки
+- **OCR Module** - Распознавание текста с изображений
+- **VK Parser** - Импорт постов из ВКонтакте
+
+### Архитектура логирования
+
+```
+Main.gs (глобальное логирование)
+↓
+addLog() - централизованная функция
+↓
+├── CollectConfig.gs → addCollectLog() - обёртка для UI
+├── UnpackingViewer.gs → logUnpacking() - безопасная обёртка
+└── Другие модули → используют addLog() напрямую
+```
+
+**⚠️ ВАЖНО:** Каждый модуль должен использовать СВОЮ обёртку, не переопределять `addLog()`!
 
 ---
 
-## 📋 ОГЛАВЛЕНИЕ
-1. [Что это](#что-это)
-2. [Быстрый старт](#быстрый-старт)
-3. [Архитектура](#архитектура)
-4. [Файлы проекта](#файлы-проекта)
-5. [Развертывание](#развертывание)
-6. [API: Клиент → Сервер](#api-клиент--сервер)
-7. [Как работает](#как-работает)
-8. [Тестирование](#тестирование)
-9. [Troubleshooting](#troubleshooting)
-10. [Best Practices](#best-practices)
+## 🚨 Критические правила разработки
 
----
+### 1. Система логирования
 
-## 🎯 ЧТО ЭТО
+#### ✅ ПРАВИЛЬНО:
 
-**Table AI** — система для интеграции Google Sheets с Gemini AI через удобный интерфейс управления промптами.
-
-### Проблема
-Google Sheets ограничивает формулы 50,000 символами. При работе с большими данными:
 ```javascript
-=GM("Промпт: " & A1 & A2 & ... & A1000)
-```
-❌ **Формула слишком длинная = ОШИБКА!**
+// В вашем модуле создайте обёртку:
+function logYourModule(message, level) {
+  try {
+    if (typeof addLog === 'function') {
+      addLog(`[YourModule] ${message}`, level || 'INFO');
+    } else {
+      Logger.log(`[${level || 'INFO'}] ${message}`);
+    }
+  } catch (e) {
+    Logger.log(`[${level || 'INFO'}] ${message}`);
+  }
+}
 
-### Решение
-AI Конструктор собирает данные **на сервере** Apps Script:
-1. ✅ **Нет лимита** размера формулы
-2. ✅ **Логирование** всех операций
-3. ✅ **Шаблоны** для повторного использования
-4. ✅ **Мульти-пользователь** поддержка
-
----
-
-## 🚀 БЫСТРЫЙ СТАРТ
-
-### Шаг 1: Развертывание
-
-1. **Откройте Google Sheets**
-2. **Extensions → Apps Script**
-3. **Скопируйте файлы из проекта:**
-   ```
-   Main.gs           ← Основная логика
-   TemplateService.gs ← Система шаблонов
-   CollectConfig.gs  ← AI Конструктор сервер
-   CollectConfigUi.html ← UI интерфейс
-   server.gs         ← Меню
-   ```
-
-**⚠️ ВАЖНО:** HTML файл должен называться точно **`CollectConfigUi`** (без .html)!
-
-### Шаг 2: Настройка Gemini API
-
-1. **Получите API ключ:** https://aistudio.google.com/app/apikey
-2. **В Apps Script:** Добавьте в Properties:
-   ```javascript
-   PropertiesService.getScriptProperties().setProperties({
-     'GEMINI_API_KEY': 'ваш-api-ключ'
-   });
-   ```
-
-### Шаг 3: Первый запуск
-
-1. **Обновите Google Sheets** (F5)
-2. **Появится меню:** 🤖 AI Tools
-3. **Выберите:** 🎯 AI Конструктор → Настроить запрос
-4. **✅ Готово!**
-
----
-
-## 🏗️ АРХИТЕКТУРА
-
-### Клиент-Сервер модель
-
-```
-┌─────────────────────────────────────┐
-│  HTML UI (CollectConfigUi.html)    │
-│  - Отображение интерфейса           │
-│  - Сбор параметров от пользователя │
-│  - Отправка запросов на сервер     │
-└──────────┬──────────────────────────┘
-           │ google.script.run
-           ▼
-┌─────────────────────────────────────┐
-│  Server (CollectConfig.gs)          │
-│  - Чтение данных из листов          │
-│  - Вызов GM() для Gemini            │
-│  - Сохранение конфигураций          │
-└──────────┬──────────────────────────┘
-           │
-           ▼
-┌─────────────────────────────────────┐
-│  Gemini AI (Main.gs → GM())         │
-│  - Обработка промпта                │
-│  - Возврат результата               │
-└─────────────────────────────────────┘
+// Используйте только свою обёртку:
+logYourModule('✅ Модуль запущен', 'INFO');
 ```
 
-### Система хранения
+#### ❌ НЕПРАВИЛЬНО:
 
-| Тип данных | Хранилище | Назначение |
-|------------|-----------|------------|
-| **API ключи** | PropertiesService | GEMINI_API_KEY |
-| **Шаблоны** | PropertiesService | Пользовательские шаблоны |
-| **Конфигурации** | Скрытый лист "ConfigData" | Настройки ячеек |
-| **Логи** | Глобальная переменная | Отладочная информация |
-| **Кэш** | CacheService | Ответы Gemini (6 часов) |
-
----
-
-## 📦 ФАЙЛЫ ПРОЕКТА
-
-### Основные файлы (обязательные)
-
-| Файл | Строк | Назначение |
-|------|-------|-----------|
-| **`Main.gs`** | 1200+ | **Ядро системы** - GM функции, меню, API |
-| **`CollectConfig.gs`** | 630 | **AI Конструктор сервер** - обработка запросов |
-| **`CollectConfigUi.html`** | 983 | **HTML интерфейс** - UI для пользователя |
-| **`TemplateService.gs`** | 432 | **Система шаблонов** - сохранение/загрузка |
-| **`server.gs`** | 293 | **Меню Google Sheets** - добавление пунктов |
-
-### Вспомогательные файлы
-
-| Файл | Назначение |
-|------|------------|
-| `appsscript.json` | Манифест проекта Apps Script |
-| `package.json` | npm зависимости для разработки |
-| `__tests__/` | Юнит-тесты (43 теста) |
-| `DEPLOYMENT_GUIDE.md` | Подробное руководство по развертыванию |
-
----
-
-## 🚀 РАЗВЕРТЫВАНИЕ
-
-### Автоматическое развертывание
-
-**Используйте Google Clasp CLI:**
-
-```bash
-# 1. Установка
-npm install -g @google/clasp
-
-# 2. Авторизация
-clasp login
-
-# 3. Клонирование
-clasp clone [SCRIPT_ID]
-
-# 4. Развертывание
-clasp push
-```
-
-### Ручное развертывание
-
-**Порядок добавления файлов ВАЖЕН:**
-
-```bash
-1. Main.gs           # Сначала основные функции
-2. TemplateService.gs # Система шаблонов
-3. CollectConfig.gs   # AI Конструктор сервер
-4. server.gs          # Меню
-5. CollectConfigUi.html # UI (Files → + → HTML file)
-```
-
-**⚠️ КРИТИЧНО:**
-- HTML файл должен называться **`CollectConfigUi`** (без .html в названии!)
-- В коде: `HtmlService.createHtmlOutputFromFile('CollectConfigUi')`
-- Если название не совпадёт → ошибка "Template not found"
-
-### Проверка развертывания
-
-1. **Сохраните проект** (💾 Save)
-2. **Выберите функцию** `onOpen` в выпадающем меню
-3. **Запустите** (▶️ Run)
-4. **Разрешите доступ** (первый раз)
-5. **Обновите Google Sheets** (F5)
-6. **Проверьте меню** 🤖 AI Tools
-
-✅ **Готово!**
-
----
-
-## 🔌 API: КЛИЕНТ → СЕРВЕР
-
-[Полный список и примеры вызовов перенесены сюда из deploy/README.md и размещены ниже]
-
-### Основные API функции
-
-#### 1. Инициализация
 ```javascript
-getCollectConfigInitData() → {
-  sheetName: "Лист1",
-  cellAddress: "A1",
-  sheets: ["Лист1", "Лист2"],
-  version: "3.0.0",
-  logs: [...]
+// НЕ переопределяйте addLog()!
+function addLog(message, level) { // ← ЭТО ЛОМАЕТ ВСЁ!
+  // ваш код
+}
+
+// НЕ используйте напрямую без проверки:
+addLog('Сообщение'); // ← может упасть с ReferenceError
+```
+
+---
+
+### 2. Функции обновления конфигураций
+
+#### ✅ ПРАВИЛЬНО - Независимая функция:
+
+```javascript
+// deploy/YourModule.gs
+/**
+ * Обновляет ваш модуль
+ * ВАЖНО: НЕ использует CollectConfig (ConfigData)!
+ */
+function updateYourModuleConfigs() {
+  logYourModule('🔄 Обновление модуля', 'INFO');
+  
+  const sheet = SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName('YourSheet');
+  
+  if (!sheet) {
+    logYourModule('❌ Лист не найден', 'ERROR');
+    return;
+  }
+  
+  // Ваша логика обновления
+  // Работает ТОЛЬКО с данными вашего модуля
+  
+  logYourModule('✅ Обновление завершено', 'SUCCESS');
 }
 ```
 
-#### 2. Предпросмотр данных
-```javascript
-getCellPreview(sheetName, cellAddress) → "Первые 100 символов..."
-```
+#### ❌ НЕПРАВИЛЬНО - Использование чужой системы:
 
-#### 3. Выполнение запроса
 ```javascript
-saveAndExecuteCollectConfig(sheetName, cellAddress, config) → {
-  success: true,
-  result: "Ответ от AI",
-  logs: [...]
+// НЕ ДЕЛАЙТЕ ТАК!
+function updateYourModuleConfigs() {
+  // ❌ Пытается использовать ConfigData из CollectConfig
+  const configSheet = ss.getSheetByName('ConfigData');
+  const configs = /* читаем конфигурации */;
+  
+  // ❌ Вызывает executeCollectConfig() - это для AI Constructor!
+  const result = executeCollectConfig(sheetName, cellAddress);
+  
+  // ЭТО ЛОМАЕТ AI CONSTRUCTOR!
 }
 ```
 
-#### 4. Управление шаблонами
-```javascript
-serverSaveTemplate(templateName, config) → {success, message}
-serverGetTemplate(templateName) → config | null
-serverGetAllTemplates() → {templateName: config, ...}
-serverDeleteTemplate(templateName) → {success, message}
+---
+
+### 3. Независимость модулей
+
+**Каждый модуль должен быть самодостаточным:**
+
+| Модуль | Ответственность | Система хранения | Функции обновления |
+|--------|-----------------|------------------|--------------------|
+| **CollectConfig** | AI Constructor | `ConfigData` (лист) | `updateReflectionConfigs()` |
+| **UnpackingViewer** | Просмотр распаковки | Напрямую `Распаковка!B3:G3` | `updateUnpackingConfigs()` |
+| **OCR Module** | Распознавание | `отзывы` (лист) | Собственные функции |
+| **VK Parser** | Импорт постов | `посты` (лист) | Собственные функции |
+
+**Правило:** Если ваш модуль НЕ про AI Constructor → НЕ используйте ConfigData!
+
+---
+
+## 📚 Структура проекта
+
+```
+table_ai/
+├── deploy/
+│   ├── Main.gs                 # Центральная система (меню, логи, GM)
+│   ├── CollectConfig.gs        # AI Constructor (ConfigData)
+│   ├── UnpackingViewer.gs      # Просмотр распаковки (независимый)
+│   ├── UnpackingViewerUI.html  # UI для UnpackingViewer
+│   ├── SettingsUI.html         # Настройки
+│   └── ...
+├── docs/
+│   ├── CollectConfig.md        # Документация AI Constructor
+│   ├── UnpackingViewer.md      # Документация просмотра распаковки
+│   ├── LOGGING.md              # ⚠️ НОВЫЙ ФАЙЛ - правила логирования
+│   └── MODULE_INDEPENDENCE.md  # ⚠️ НОВЫЙ ФАЙЛ - независимость модулей
+├── tests/
+│   └── ...
+└── README.md                   # Этот файл
 ```
 
-#### 5. Работа с конфигурациями
+---
+
+## 🔧 Разработка
+
+### Добавление нового модуля
+
+**1. Создайте файл модуля:**
+
 ```javascript
-saveCollectConfig(sheetName, cellAddress, config) → boolean
-loadCollectConfig(sheetName, cellAddress) → {systemPrompt, userData} | null
-deleteCollectConfig(sheetName, cellAddress) → {success, message}
+// deploy/YourModule.gs
+/**
+ * YOUR MODULE - Module Description
+ * v1.0.0
+ * 
+ * ВАЖНО: Независимый модуль, НЕ использует CollectConfig!
+ */
+
+/**
+ * Безопасное логирование для вашего модуля
+ */
+function logYourModule(message, level) {
+  const logLevel = level || 'INFO';
+  try {
+    if (typeof addLog === 'function') {
+      addLog(`[YourModule] ${message}`, logLevel);
+    } else {
+      const timestamp = Utilities.formatDate(
+        new Date(),
+        Session.getScriptTimeZone(),
+        'yyyy-MM-dd HH:mm:ss'
+      );
+      Logger.log(`[${timestamp}] ${logLevel}: ${message}`);
+    }
+  } catch (error) {
+    console.log(`[${logLevel}] ${message}`);
+  }
+}
+
+/**
+ * Ваши функции модуля
+ */
+function yourModuleFunction() {
+  logYourModule('🚀 Запуск функции', 'INFO');
+  // ваш код
+}
 ```
 
-#### 6. Вспомогательные функции
+**2. Добавьте в меню (Main.gs):**
+
 ```javascript
-getAllSheetNames() → ["Лист1", "Лист2", ...]
-hasConfigForCurrentCell() → boolean
+// В функции onOpen()
+  .addSeparator()
+  .addItem('🔥 Ваша функция', 'yourModuleFunction') // → YourModule.gs
+```
+
+**3. Создайте документацию:**
+
+```markdown
+# docs/YourModule.md
+
+## Обзор
+Описание вашего модуля
+
+## Независимость
+- ✅ НЕ использует ConfigData
+- ✅ НЕ использует CollectConfig систему
+- ✅ Работает с собственными листами/данными
+- ✅ Использует logYourModule() для логирования
+
+## Функции
+...
 ```
 
 ---
 
-## ⚙️ КАК РАБОТАЕТ
+## 🧪 Тестирование
 
-[Перенесено из deploy/README.md — с примерами функций openCollectConfigUI, getCollectConfigInitData, saveAndExecuteCollectConfig, executeCollectConfig, readData]
+### Перед коммитом проверьте:
 
----
+- [ ] **Логирование работает** - логи появляются в DEV меню
+- [ ] **AI Constructor НЕ сломан** - можно открыть и использовать
+- [ ] **Ваш модуль работает независимо**
+- [ ] **Нет конфликтов имён функций**
+- [ ] **Документация обновлена**
 
-## 🧪 ТЕСТИРОВАНИЕ
+### Команды для проверки:
 
-[Перенесено из deploy/README.md — команды, ожидаемые результаты, таблица тестов и сценарии ручной проверки]
+```bash
+# Проверка конфликтов функций
+grep -n "function addLog" deploy/*.gs
+# Должна быть ТОЛЬКО ОДНА функция в Main.gs!
 
----
+# Проверка использования ConfigData
+grep -n "ConfigData" deploy/YourModule.gs
+# НЕ должно быть, если модуль НЕ про AI Constructor!
 
-## 🐛 TROUBLESHOOTING
-
-[Перенесено из deploy/README.md — 6 типовых проблем с решениями]
-
----
-
-## 🎓 BEST PRACTICES
-
-[Перенесено из deploy/README.md — синхронизация HTML↔GS, логирование, валидация, структурированные ответы]
-
----
-
-## 📚 ДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ
-
-[Перенесено из deploy/README.md — структура ConfigData и TemplatesData]
+# Проверка логирования
+grep -n "addLog(" deploy/YourModule.gs
+# Должно быть 0 прямых вызовов, только через обёртку!
+```
 
 ---
 
-## 📝 CHANGELOG
+## 📖 Дополнительная документация
 
-[Перенесено из deploy/README.md — v3.0.0, v2.1.0, v2.0.0]
-
----
-
-## 📞 ПОДДЕРЖКА
-
-[Ссылки и порядок проверки]
+- [docs/LOGGING.md](docs/LOGGING.md) - Детальное руководство по логированию
+- [docs/MODULE_INDEPENDENCE.md](docs/MODULE_INDEPENDENCE.md) - Правила независимости модулей
+- [docs/CollectConfig.md](docs/CollectConfig.md) - AI Constructor документация
+- [docs/UnpackingViewer.md](docs/UnpackingViewer.md) - Пример независимого модуля
 
 ---
 
-## 📄 ЛИЦЕНЗИЯ
+## 🐛 Известные проблемы и решения
 
-MIT
+### Проблема: "Конфигурация не найдена"
+
+**Причина:** Функция `updateXXXConfigs()` пытается использовать ConfigData, но она для AI Constructor!
+
+**Решение:** Создайте независимую функцию в файле вашего модуля, см. `UnpackingViewer.gs`
+
+### Проблема: "ReferenceError: addLog is not defined"
+
+**Причина:** Прямой вызов `addLog()` без проверки наличия
+
+**Решение:** Используйте безопасную обёртку `logYourModule()`
+
+### Проблема: Логи не появляются в DEV меню
+
+**Причина:** Переопределена функция `addLog()` в другом модуле
+
+**Решение:** Удалите переопределение, используйте обёртку
+
+---
+
+## 📞 Поддержка
+
+При возникновении проблем:
+1. Проверьте логи: **🧰 DEV → 📝 Показать логи**
+2. Экспортируйте логи: **🧰 DEV → ⬇️ Экспорт логов**
+3. Создайте Issue с логами и описанием проблемы
+
+---
+
+## 🏆 Best Practices
+
+### ✅ DO:
+- Создавайте обёртки для логирования (`logYourModule()`)
+- Делайте модули независимыми
+- Документируйте зависимости
+- Тестируйте перед коммитом
+- Используйте префиксы в логах `[ModuleName]`
+
+### ❌ DON'T:
+- Не переопределяйте `addLog()`
+- Не используйте ConfigData вне AI Constructor
+- Не вызывайте `executeCollectConfig()` из других модулей
+- Не забывайте обновлять документацию
+- Не коммитьте без тестирования AI Constructor
+
+---
+
+## 📜 Лицензия
+
+MIT License - see [LICENSE](LICENSE) for details
+
+---
+
+**⚠️ ПОМНИТЕ: Каждый сломанный AI Constructor - это потерянное время команды!**
+
+**Следуйте правилам, читайте документацию, тестируйте изменения!**
