@@ -150,6 +150,7 @@ function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
       addLog('GM_IF: условие true, вызываем GM', 'DEBUG');
     }
 
+    /* eslint-disable-next-line new-cap, no-unused-vars */
     return GM(prompt, maxTokens, temperature);
   } catch (e) {
     addLog('❌ GM_IF ошибка: ' + e.message, 'ERROR');
