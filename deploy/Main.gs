@@ -14,7 +14,8 @@
  * SERVER: Отдельный веб-сервис (SERVER_URL)
  */
 
-// ====== URL-ы и константы ======
+// VK Parser URL: используется в VK.gs
+// eslint-disable-next-line no-unused-vars
 const VK_PARSER_URL = 'https://script.google.com/macros/s/AKfycbzttbqz16EmmcXbEYCuYhNlXkCxAnCG77phspFL1_rTCi4xVqoorByJAPa4dI4iwT8/exec';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 // Фиксированный сервер (веб‑приложение) для лицензий/логов
@@ -69,15 +70,6 @@ function addLog(msg, level = 'INFO') {
   }
 }
 
-// ====== VK Parser URL: жёстко используем константу VK_PARSER_URL (без чтения Параметры!B5) ======
-// eslint-disable-next-line no-unused-vars
-function getVkParserUrl_() {
-  try {
-    return String(VK_PARSER_URL).replace(/\/$/, '');
-  } catch (e) {
-    addLog('⚠️ getVkParserUrl_: ' + e.message, 'WARN'); return String(VK_PARSER_URL||'').replace(/\/$/, '');
-  }
-}
 function getLogs(limit = 100) {
   try {
     const cache = CacheService.getScriptCache();
@@ -90,6 +82,7 @@ function getLogs(limit = 100) {
     return 'Ошибка чтения логов: ' + e.message;
   }
 }
+// eslint-disable-next-line no-unused-vars
 function showLogsDialog() {
   try {
     SpreadsheetApp.getUi().alert('📝 Логи (последние 100)', getLogs(100), SpreadsheetApp.getUi().ButtonSet.OK);
@@ -97,6 +90,7 @@ function showLogsDialog() {
     SpreadsheetApp.getUi().alert('Ошибка показа логов: ' + e.message);
   }
 }
+// eslint-disable-next-line no-unused-vars
 function exportLogsToSheet() {
   try {
     const ss = SpreadsheetApp.getActive();
@@ -122,6 +116,7 @@ function exportLogsToSheet() {
     SpreadsheetApp.getUi().alert('Ошибка экспорта логов: ' + e.message);
   }
 }
+// eslint-disable-next-line no-unused-vars
 function clearLogs() {
   try {
     CacheService.getScriptCache().remove(LOGS_CACHE_KEY);
@@ -133,6 +128,7 @@ function clearLogs() {
 }
 
 // ====== ТРИГГЕРЫ (просмотр/очистка) ======
+// eslint-disable-next-line no-unused-vars
 function cleanupOldTriggers() {
   try {
     addLog('🧹 Очистка старых триггеров...', 'INFO');
@@ -163,6 +159,7 @@ function cleanupOldTriggers() {
     return msg;
   }
 }
+// eslint-disable-next-line no-unused-vars
 function showActiveTriggersDialog() {
   try {
     const triggers = ScriptApp.getProjectTriggers();
@@ -250,6 +247,7 @@ function getCompletionPhrase() {
 // Функция setCompletionPhraseUI удалена - больше не используется
 
 // ====== УТИЛИТЫ ДЛЯ ПОСЛЕДОВАТЕЛЬНОСТИ ======
+// eslint-disable-next-line no-unused-vars
 function isCompletionReady(text) {
   if (!text || typeof text !== 'string') return false;
   const clean = text.trim();
@@ -409,103 +407,6 @@ function clearChainForA3() {
   SpreadsheetApp.getUi().alert('Информация', '🧹 Очищено: B3..G3', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
-// ====== VK PARSER + фильтрация ======
-function importVkPosts() {
-  addLog('→ Импорт VK-постов с фильтрацией', 'INFO');
-  const ss = SpreadsheetApp.getActive();
-  const params = ss.getSheetByName('Параметры');
-  if (!params) {
-    addLog('❌ Нет листа "Параметры"', 'ERROR'); SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Параметры" не найден!', SpreadsheetApp.getUi().ButtonSet.OK); return;
-  }
-  const owner = params.getRange('B1').getValue();
-  const count = params.getRange('B2').getValue();
-  if (!owner || !count) {
-    addLog('❌ Не указаны owner или count', 'ERROR'); SpreadsheetApp.getUi().alert('Ошибка', 'Введите owner и count на листе "Параметры"', SpreadsheetApp.getUi().ButtonSet.OK); return;
-  }
-  const url = VK_PARSER_URL + '?owner=' + encodeURIComponent(owner) + '&count=' + encodeURIComponent(count);
-  try {
-    const resp = UrlFetchApp.fetch(url);
-    const arr = JSON.parse(resp.getContentText());
-  } catch (e) {
-    addLog('❌ Ошибка запроса VK: ' + e.message, 'ERROR');
-    SpreadsheetApp.getUi().alert('Ошибка запроса VK Parser: ' + e);
-    return;
-  }
-  if (!Array.isArray(arr)) {
-    addLog('❌ Неверный массив от VK', 'ERROR'); SpreadsheetApp.getUi().alert('Ошибка', 'Неверный формат данных от VK Parser', SpreadsheetApp.getUi().ButtonSet.OK); return;
-  }
-
-  const headers = [
-    'Дата', 'Ссылка на пост', 'Текст поста', 'Номер поста',
-    'Стоп-слова', 'Отфильтрованные посты', 'Новый номер',
-    'Позитивные слова', 'Посты с позитивными словами', 'Новый номер (позитивные)',
-  ];
-  const out = [headers];
-  arr.forEach(function(o, i) {
-    const number = o.number !== undefined ? o.number : i + 1;
-    out.push([o.date, o.link, o.text, number, '', '', '', '', '', '']);
-  });
-
-  const sheet = ss.getSheetByName('посты');
-  if (!sheet) {
-    addLog('❌ Лист "посты" не найден!', 'ERROR'); SpreadsheetApp.getUi().alert('Ошибка', 'Создайте лист "посты".', SpreadsheetApp.getUi().ButtonSet.OK); return;
-  }
-
-  sheet.clear();
-  sheet.getRange(1, 1, out.length, headers.length).setValues(out);
-  applyUniformFormatting(sheet);
-  createStopWordsFormulas(sheet, out.length);
-  addLog('✅ Импортировано ' + (out.length-1) + ' постов', 'INFO');
-  SpreadsheetApp.getUi().alert('Импорт завершён: ' + (out.length - 1) + ' постов. Формулы фильтрации добавлены.');
-}
-function createStopWordsFormulas(sheet, totalRows) {
-  try {
-    addLog('→ Создание формул фильтрации (оптимизированная batch-версия)', 'INFO');
-    const startTime = new Date().getTime();
-
-    const stopWordsRange = '$E$2:$E$100';
-    const positiveWordsRange = '$H$2:$H$100';
-
-    // Собираем ВСЕ формулы в один массив для batch-операции
-    const formulas = [];
-    for (let row = 2; row <= totalRows; row++) {
-      // F: Фильтрация стоп-слов
-      const formulaF = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + stopWordsRange + ', C' + row + ')))*(' + stopWordsRange + '<>"")) > 0, "", C' + row + ')';
-
-      // G: Номер отфильтрованного поста
-      const formulaG = '=IF(F' + row + '<>"", COUNTA(F$2:F' + row + '), "")';
-
-      // H: Пусто (колонка для позитивных слов - заполняется вручную)
-
-      // I: Фильтрация позитивных слов
-      const formulaI = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + positiveWordsRange + ', C' + row + ')))*(' + positiveWordsRange + '<>"")) > 0, C' + row + ', "")';
-
-      // J: Номер поста с позитивными словами
-      const formulaJ = '=IF(I' + row + '<>"", COUNTA(I$2:I' + row + '), "")';
-
-      // Формируем строку: F, G, H (пусто), I, J
-      formulas.push([formulaF, formulaG, '', formulaI, formulaJ]);
-    }
-
-    // ОДИН batch-запрос вместо 400 отдельных!
-    // Устанавливаем формулы для колонок F, G, H, I, J (с E:6 по J:10)
-    if (formulas.length > 0) {
-      sheet.getRange(2, 6, formulas.length, 5).setFormulas(formulas);
-    }
-
-    // Форматирование заголовков
-    sheet.getRange(1, 5, 1, 3).setFontWeight('bold').setBackground('#FFF2CC'); // E, F, G - стоп-слова
-    sheet.getRange(1, 8, 1, 3).setFontWeight('bold').setBackground('#D9EAD3'); // H, I, J - позитивные
-    sheet.autoResizeColumns(5, 6);
-
-    const elapsed = new Date().getTime() - startTime;
-    addLog('✅ Формулы фильтрации созданы за ' + elapsed + 'мс (batch-режим)', 'INFO');
-  } catch (e) {
-    addLog('❌ Ошибка создания формул: ' + e.message, 'ERROR');
-    SpreadsheetApp.getUi().alert('Ошибка создания формул: ' + e.message);
-  }
-}
-
 function getGeminiApiKey() {
   const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) throw new Error('API-ключ Gemini не установлен. Меню: 🤖 Table AI → Установить API ключ Gemini');
@@ -540,6 +441,7 @@ function gmCachePut_(key, value, ttlSec) {
     CacheService.getScriptCache().put(key, value, ttl);
   } catch (e) {}
 }
+// eslint-disable-next-line no-unused-vars
 function testServerConnection() {
   addLog('🔍 Тестирование подключения к серверу...', 'INFO');
 
@@ -610,6 +512,7 @@ function testServerConnection() {
   SpreadsheetApp.getUi().alert('Тестирование завершено', 'Результаты в листе "Логи"', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
+// eslint-disable-next-line no-unused-vars
 function initGeminiKey() {
   const ui = SpreadsheetApp.getUi();
   const help = 'Где взять ключ (коротко):\n' +
@@ -629,6 +532,7 @@ function initGeminiKey() {
     addLog('❌ Gemini: ключ не введён', 'WARN');
   }
 }
+// eslint-disable-next-line no-unused-vars
 function showGeminiKeyHelp() {
   const ui = SpreadsheetApp.getUi();
   const msg =
@@ -640,6 +544,7 @@ function showGeminiKeyHelp() {
     'Документация: https://ai.google.dev/gemini-api/docs/api-key?hl=ru';
   ui.alert('❓ Как получить API ключ Gemini', msg, ui.ButtonSet.OK);
 }
+// eslint-disable-next-line no-unused-vars
 function refreshSelectedGMTriggers() {
   const ss = SpreadsheetApp.getActive();
   const paramsSheet = ss.getSheetByName('Параметры');
@@ -654,6 +559,7 @@ function refreshSelectedGMTriggers() {
 }
 
 // ====== Форматирование ======
+// eslint-disable-next-line no-unused-vars
 function applyUniformFormatting(sheet) {
   try {
     const range = sheet.getDataRange();
@@ -715,6 +621,7 @@ function onOpen() {
 
 
 // Быстрое обновление активной GM-ячейки: пересоздаём формулу, чтобы заново вызвать Gemini
+// eslint-disable-next-line no-unused-vars
 function refreshCurrentGMCell() {
   try {
     const ss = SpreadsheetApp.getActive();
@@ -834,6 +741,7 @@ function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
 }
 
 // ====== onEdit: авто-очистка Markdown для строки 3 (B..G) ======
+// eslint-disable-next-line no-unused-vars
 function onEdit(e) {
   const range = e.range;
   const sheet = range.getSheet();
@@ -857,6 +765,7 @@ function onEdit(e) {
 // Горячая кнопка теперь через рисунок с назначенной функцией ocrReviews
 
 // ====== DEV: Автотесты (не включать в продукт: DEV_MODE=false) ======
+// eslint-disable-next-line no-unused-vars
 function runDevSelfTest() {
   const failures = [];
   try {
@@ -958,6 +867,7 @@ function hasStoredLicense() {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 function setLicenseCredentialsUI() {
   const ui = SpreadsheetApp.getUi();
   const curEmail = getLicenseEmail();
@@ -976,10 +886,12 @@ function setLicenseCredentialsUI() {
   ui.alert('✅ Лицензия сохранена.');
 }
 
+// eslint-disable-next-line no-unused-vars
 function getScriptProp(key) {
   return PropertiesService.getScriptProperties().getProperty(key);
 }
 
+// eslint-disable-next-line no-unused-vars
 function setScriptProp(key, value) {
   PropertiesService.getScriptProperties().setProperty(key, String(value));
 }
@@ -1083,6 +995,7 @@ function serverStatus() {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 function checkLicenseStatusUI() {
   try {
     const st = serverStatus();
@@ -1094,6 +1007,7 @@ function checkLicenseStatusUI() {
 }
 
 // ====== UNIFIED SETTINGS UI ======
+// eslint-disable-next-line no-unused-vars
 function openSettingsUI() {
   try {
     const html = HtmlService.createHtmlOutputFromFile('SettingsUI')
@@ -1107,6 +1021,7 @@ function openSettingsUI() {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 function getSettingsData() {
   try {
     const props = PropertiesService.getScriptProperties();
@@ -1121,6 +1036,7 @@ function getSettingsData() {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 function saveSettingsData(data) {
   try {
     const props = PropertiesService.getScriptProperties();
