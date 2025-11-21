@@ -1,22 +1,25 @@
 /**
  * ============================================================================
- * COLLECT CONFIG - РЕФАКТОРИНГ UI v2.1
+ * COLLECT CONFIG - VERTICAL SIDEBAR UI v3.0
  * ============================================================================
- * Версия: 2.1.0
- * Дата: 2025-06-17 00:00:00
+ * Версия: 3.0.0
+ * Дата: 2025-06-18 00:00:00
  *
  * ИЗМЕНЕНИЯ:
- * - ✅ Новый UI с боковой панелью шаблонов (70% контент, 30% сайдбар)
- * - ✅ Collapsible управление шаблонами (свернуто по умолчанию)
- * - ✅ Иконки вместо текста + tooltips
- * - ✅ Убрана дублирующая кнопка "Сохранить"
- * - ✅ Responsive дизайн (вертикальная раскладка на <768px)
- * - ✅ Полная совместимость с Apps Script HTML Service
+ * - ✅ Новый вертикальный sidebar интерфейс (только один столбец)
+ * - ✅ Все элементы строго по вертикали - никакого горизонтального грид
+ * - ✅ Sidebar вместо модального диалога (showSidebar вместо showModalDialog)
+ * - ✅ Collapsible управление шаблонами через <details>/<summary>
+ * - ✅ Кнопки-иконки с tooltips
+ * - ✅ Отделенные секции с визуальными разделителями
+ * - ✅ Адаптивная ширина 350-500px для боковой панели
+ * - ✅ Убрана информация о версии из UI
+ * - ✅ Обязательные превью для каждого источника данных
  * ============================================================================
  */
 
-const COLLECT_CONFIG_VERSION = '2.1.0';
-const COLLECT_CONFIG_LAST_UPDATE = '2025-06-17 00:00:00';
+const COLLECT_CONFIG_VERSION = '3.0.0';
+const COLLECT_CONFIG_LAST_UPDATE = '2025-06-18 00:00:00';
 
 // ============================================================================
 // ЛОКАЛЬНОЕ ЛОГИРОВАНИЕ ДЛЯ UI (не конфликтует с глобальным addLog)
@@ -48,7 +51,7 @@ const addCollectLog = (message, level) => {
   } catch (e) {
     Logger.log(`[${level}] ${message}`);
   }
-}
+};
 
 /**
  * Очищает локальный UI-лог (НЕ влияет на глобальный лог)
@@ -65,23 +68,24 @@ const getCollectLog = () => {
 };
 
 // ============================================================================
-// ГЛАВНАЯ ФУНКЦИЯ: Открыть UI
+// ГЛАВНАЯ ФУНКЦИЯ: Открыть UI (Vertical Sidebar)
 // ============================================================================
 const openCollectConfigUI = () => {
   try {
-    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi')
-      .setWidth(900)
+    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi_vertical')
+      .setWidth(400)
       .setTitle('🎯 AI Конструктор');
 
-    SpreadsheetApp.getUi().showModalDialog(html, 'AI Конструктор');
+    SpreadsheetApp.getUi().showSidebar(html);
   } catch (error) {
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
   }
-}
+};
 
 // ============================================================================
 // ИНИЦИАЛИЗАЦИЯ UI
 // ============================================================================
+// eslint-disable-next-line no-unused-vars
 function getCollectConfigInitData() {
   try {
     clearCollectLog();
@@ -161,6 +165,7 @@ function createDefaultTemplate() {
 // ============================================================================
 // ГЛАВНАЯ ФУНКЦИЯ: СОХРАНИТЬ И ВЫПОЛНИТЬ
 // ============================================================================
+// eslint-disable-next-line no-unused-vars
 function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
   try {
     clearCollectLog();
@@ -444,6 +449,32 @@ function loadCollectConfig(sheetName, cellAddress) {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
+function deleteCollectConfig(sheetName, cellAddress) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ConfigData');
+
+    if (!configSheet) {
+      return false;
+    }
+
+    const data = configSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
+        configSheet.deleteRow(i + 1);
+        addCollectLog(`🗑️ Конфигурация удалена: ${sheetName}!${cellAddress}`, 'INFO');
+        return true;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    addCollectLog(`Ошибка удаления: ${error.message}`, 'ERROR');
+    return false;
+  }
+}
+
 function updateLastRun(sheetName, cellAddress) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -468,6 +499,7 @@ function updateLastRun(sheetName, cellAddress) {
 // ============================================================================
 // ФУНКЦИИ ДЛЯ UI: PREVIEW
 // ============================================================================
+// eslint-disable-next-line no-unused-vars
 function getCellPreview(sheetName, cellAddress) {
   try {
     if (!sheetName || !cellAddress) {
@@ -493,6 +525,7 @@ function getCellPreview(sheetName, cellAddress) {
 // ============================================================================
 // ОБНОВЛЕНИЕ ЯЧЕЙКИ
 // ============================================================================
+// eslint-disable-next-line no-unused-vars
 function refreshCellWithConfig() {
   try {
     const ui = SpreadsheetApp.getUi();
@@ -538,6 +571,7 @@ function refreshCellWithConfig() {
 // ============================================================================
 // ШАБЛОНЫ - ENDPOINTS ДЛЯ UI
 // ============================================================================
+// eslint-disable-next-line no-unused-vars
 function serverGetAllTemplates() {
   try {
     const user = Session.getActiveUser().getEmail() || 'anonymous';
@@ -556,6 +590,18 @@ function serverGetAllTemplates() {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
+function serverGetTemplate(templateName) {
+  try {
+    const user = Session.getActiveUser().getEmail() || 'anonymous';
+    const template = getTemplate(user, templateName);
+    return template ? (template.config || template) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// eslint-disable-next-line no-unused-vars
 function serverGetTemplatesStats() {
   try {
     const user = Session.getActiveUser().getEmail() || 'anonymous';
@@ -565,6 +611,7 @@ function serverGetTemplatesStats() {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 function serverSaveTemplate(templateName, config) {
   try {
     const user = Session.getActiveUser().getEmail() || 'anonymous';
@@ -574,6 +621,7 @@ function serverSaveTemplate(templateName, config) {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 function serverDeleteTemplate(templateName) {
   try {
     const user = Session.getActiveUser().getEmail() || 'anonymous';
@@ -586,12 +634,14 @@ function serverDeleteTemplate(templateName) {
 // ============================================================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================================================
+// eslint-disable-next-line no-unused-vars
 function getAllSheetNames() {
   return SpreadsheetApp.getActiveSpreadsheet().getSheets().map(function(s) {
     return s.getName();
   });
 }
 
+// eslint-disable-next-line no-unused-vars
 function hasConfigForCurrentCell() {
   try {
     const sheet = SpreadsheetApp.getActiveSheet();
@@ -612,6 +662,7 @@ function hasConfigForCurrentCell() {
 /**
  * Обновить рефлексию - выполняет все конфигурации для листа "Рефлексия"
  */
+// eslint-disable-next-line no-unused-vars
 function updateReflectionConfigs() {
   try {
     clearCollectLog();
