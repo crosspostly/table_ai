@@ -72,7 +72,7 @@ const getCollectLog = () => {
 // ============================================================================
 const openCollectConfigUI = () => {
   try {
-    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi_vertical')
+    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi')
       .setWidth(400)
       .setTitle('🎯 AI Конструктор');
 
@@ -654,3 +654,233 @@ function hasConfigForCurrentCell() {
     return false;
   }
 }
+
+/**
+ * Batch-обновление для РЕФЛЕКСИЯ (ConfigData строки 2-32)
+ */
+function batchUpdateRefleksiya() {
+  try {
+    const ss = SpreadsheetApp.getActive();
+    const configSheet = ss.getSheetByName('ConfigData');
+
+    if (!configSheet) {
+      SpreadsheetApp.getUi().alert(
+        '❌ Ошибка',
+        'Лист "ConfigData" не найден',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+
+    // Читаем строки 2-32 (A:B = Sheet, Cell)
+    const range = configSheet.getRange(2, 1, 31, 2);
+    const data = range.getValues();
+
+    const cellsToUpdate = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const sheet = String(data[i][0] || '').trim();
+      const cell = String(data[i][1] || '').trim();
+
+      if (sheet && cell) {
+        cellsToUpdate.push({sheet: sheet, cell: cell});
+      }
+    }
+
+    console.log(`📋 Рефлексия: Найдено ячеек для обновления: ${cellsToUpdate.length}`);
+    addLog(`🔄 Рефлексия: Найдено ${cellsToUpdate.length} ячеек для обновления`, 'INFO');
+
+    if (cellsToUpdate.length === 0) {
+      SpreadsheetApp.getUi().alert(
+        '⚠️ Нет данных',
+        'В ConfigData (строки 2-32) не найдено ячеек для обновления',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+
+    updateCellsBatch(cellsToUpdate, '📋 Рефлексия');
+
+  } catch (error) {
+    addLog(`❌ Ошибка Рефлексия: ${error.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
+  }
+}
+
+/**
+ * Batch-обновление для РАСПАКОВКА (ConfigData строки 33-71)
+ */
+function batchUpdateRaspravka() {
+  try {
+    const ss = SpreadsheetApp.getActive();
+    const configSheet = ss.getSheetByName('ConfigData');
+
+    if (!configSheet) {
+      SpreadsheetApp.getUi().alert(
+        '❌ Ошибка',
+        'Лист "ConfigData" не найден',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+
+    // Читаем строки 33-71 (A:B = Sheet, Cell)
+    const range = configSheet.getRange(33, 1, 39, 2);
+    const data = range.getValues();
+
+    const cellsToUpdate = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const sheet = String(data[i][0] || '').trim();
+      const cell = String(data[i][1] || '').trim();
+
+      if (sheet && cell) {
+        cellsToUpdate.push({sheet: sheet, cell: cell});
+      }
+    }
+
+    console.log(`📦 Распаковка: Найдено ячеек для обновления: ${cellsToUpdate.length}`);
+    addLog(`🔄 Распаковка: Найдено ${cellsToUpdate.length} ячеек для обновления`, 'INFO');
+
+    if (cellsToUpdate.length === 0) {
+      SpreadsheetApp.getUi().alert(
+        '⚠️ Нет данных',
+        'В ConfigData (строки 33-71) не найдено ячеек для обновления',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+
+    updateCellsBatch(cellsToUpdate, '📦 Распаковка');
+
+  } catch (error) {
+    addLog(`❌ Ошибка Распаковка: ${error.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
+  }
+}
+
+/**
+ * Batch-обновление для АНАЛИЗ ЦА (ConfigData строки 72-78)
+ */
+function batchUpdateAnalizCA() {
+  try {
+    const ss = SpreadsheetApp.getActive();
+    const configSheet = ss.getSheetByName('ConfigData');
+
+    if (!configSheet) {
+      SpreadsheetApp.getUi().alert(
+        '❌ Ошибка',
+        'Лист "ConfigData" не найден',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+
+    // Читаем строки 72-78 (A:B = Sheet, Cell)
+    const range = configSheet.getRange(72, 1, 7, 2);
+    const data = range.getValues();
+
+    const cellsToUpdate = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const sheet = String(data[i][0] || '').trim();
+      const cell = String(data[i][1] || '').trim();
+
+      if (sheet && cell) {
+        cellsToUpdate.push({sheet: sheet, cell: cell});
+      }
+    }
+
+    console.log(`🎯 Анализ ЦА: Найдено ячеек для обновления: ${cellsToUpdate.length}`);
+    addLog(`🔄 Анализ ЦА: Найдено ${cellsToUpdate.length} ячеек для обновления`, 'INFO');
+
+    if (cellsToUpdate.length === 0) {
+      SpreadsheetApp.getUi().alert(
+        '⚠️ Нет данных',
+        'В ConfigData (строки 72-78) не найдено ячеек для обновления',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+
+    updateCellsBatch(cellsToUpdate, '🎯 Анализ ЦА');
+
+  } catch (error) {
+    addLog(`❌ Ошибка Анализ ЦА: ${error.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
+  }
+}
+
+/**
+ * Общая функция обновления (используется всеми тремя функциями)
+ */
+function updateCellsBatch(cellsToUpdate, batchName) {
+  const ss = SpreadsheetApp.getActive();
+  let successCount = 0;
+  let errorCount = 0;
+  const errors = [];
+
+  addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+  addLog(`🚀 НАЧАЛО: ${batchName}`, 'INFO');
+  addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+
+  for (let idx = 0; idx < cellsToUpdate.length; idx++) {
+    const item = cellsToUpdate[idx];
+    const cellRef = `${item.sheet}!${item.cell}`;
+
+    try {
+      console.log(`[${idx + 1}/${cellsToUpdate.length}] 🔄 ${cellRef}`);
+      addLog(`[${idx + 1}/${cellsToUpdate.length}] Обновление ${cellRef}`, 'INFO');
+
+      // Выполняем обновление
+      const result = executeCollectConfig(item.sheet, item.cell);
+
+      if (result.success) {
+        console.log(`✅ ${cellRef}`);
+        addLog(`✅ ${cellRef} успешно`, 'SUCCESS');
+        successCount++;
+      } else {
+        throw new Error(result.error || 'Unknown error');
+      }
+
+    } catch (e) {
+      errorCount++;
+      const errorMsg = `❌ ${cellRef}: ${e.message}`;
+      console.error(errorMsg);
+      addLog(errorMsg, 'ERROR');
+      errors.push(errorMsg);
+    }
+
+    // Небольшая задержка для предотвращения Rate Limiting
+    Utilities.sleep(500);
+  }
+
+  // === РЕЗУЛЬТАТ ===
+  addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+  addLog(`📊 ${batchName}: ✅ ${successCount} успешно, ❌ ${errorCount} ошибок`, 'INFO');
+  addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+
+  const message = `${batchName}\n\n✅ Успешно: ${successCount}\n❌ С ошибками: ${errorCount}`;
+
+  if (errors.length > 0 && errors.length <= 5) {
+    SpreadsheetApp.getUi().alert(
+      '📊 Результат',
+      message + '\n\n' + errors.join('\n'),
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  } else if (errors.length > 5) {
+    SpreadsheetApp.getUi().alert(
+      '📊 Результат',
+      message + '\n\n' + errors.slice(0, 5).join('\n') + `\n... и ещё ${errors.length - 5}`,
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  } else {
+    SpreadsheetApp.getUi().alert(
+      '📊 Результат',
+      message,
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  }
+}
+
+
