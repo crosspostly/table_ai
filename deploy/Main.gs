@@ -1162,6 +1162,7 @@ function serverGM(prompt, maxTokens, temperature) {
   const email = getLicenseEmail();
   const token = getLicenseToken();
   const apiKey = getGeminiApiKey();
+  const sheetId = SpreadsheetApp.getActive().getId();
 
   // DEV логирование
   if (DEV_MODE) {
