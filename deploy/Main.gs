@@ -673,17 +673,12 @@ function onOpen() {
   try {
     const ui = SpreadsheetApp.getUi();
     ui.createMenu('🤖 Table AI')
-      .addItem('▶️ Подготовить формулы (умный режим)', 'prepareChainSmart')
-      .addItem('🔁 Обновить текущую ячейку (GM)', 'refreshCurrentGMCell')
-      .addSeparator()
-      .addItem('🧹 Очистить B3..G3', 'clearChainForA3')
-      .addSeparator()
       .addSubMenu(ui.createMenu('🎯 AI Конструктор')
         .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
         .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
         .addSeparator()
-        .addItem('🔄 Обновить рефлексию', 'updateReflectionConfigs'), // → CollectConfig.gs
-        .addItem('📦 Обновить распаковку', 'updateUnpackingConfigs'), // → UnpackingViewer.gs (!)
+        .addItem('🔄 Обновить рефлексию', 'updateReflectionConfigs') // → CollectConfig.gs
+        .addItem('📦 Обновить распаковку', 'updateUnpackingConfigs') // → UnpackingViewer.gs (!)
         .addSeparator()
         .addItem('🗂️ Управление шаблонами', 'openTemplatesUI')
         .addItem('❓ Справка', 'showCollectConfigHelp'),
@@ -1299,8 +1294,8 @@ function GM(prompt, maxTokens, temperature) {
   let serr = null;
 
   try {
-    addLog('🚀 Отправка запроса через serverGM_...', 'DEBUG');
-    const r = serverGM_(prompt, maxTokens, temperature);
+    addLog('🚀 Отправка запроса через serverGM...', 'DEBUG');
+    const r = serverGM(prompt, maxTokens, temperature);
     if (r && r.ok) {
       ok = true;
       text = r.data || '';
@@ -1311,7 +1306,7 @@ function GM(prompt, maxTokens, temperature) {
     }
   } catch (e) {
     serr = e.message;
-    addLog('❌ Исключение при вызове serverGM_: ' + serr, 'ERROR');
+    addLog('❌ Исключение при вызове serverGM: ' + serr, 'ERROR');
   }
 
   if (ok) {
