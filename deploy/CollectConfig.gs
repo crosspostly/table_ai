@@ -69,9 +69,9 @@ const getCollectLog = () => {
 // ============================================================================
 const openCollectConfigUI = () => {
   try {
-    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi_v2.1')
+    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi')
       .setWidth(900)
-      .setTitle('🎯 AI Конструктор v2.1');
+      .setTitle('🎯 AI Конструктор');
 
     SpreadsheetApp.getUi().showModalDialog(html, 'AI Конструктор');
   } catch (error) {
