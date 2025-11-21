@@ -673,7 +673,7 @@ function onOpen() {
   try {
     const ui = SpreadsheetApp.getUi();
     ui.createMenu('🤖 Table AI')
-      .addSubMenu(ui.createMenu('🎯 AI Конструктор')
+      .addSubMenu(ui.createMenu('🎯 AI Конструктор v2.1')
         .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
         .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
         .addSeparator()

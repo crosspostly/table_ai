@@ -1,37 +1,35 @@
 /**
  * ============================================================================
- * COLLECT CONFIG - ПОЛНОСТЬЮ НОВАЯ ВЕРСИЯ С НУЛЯ
+ * COLLECT CONFIG - РЕФАКТОРИНГ UI v2.1
  * ============================================================================
- * Версия: 3.0.1
- * Дата: 2025-11-20 12:22:00
+ * Версия: 2.1.0
+ * Дата: 2025-06-17 00:00:00
  *
- * ЦЕЛЬ: ПРОСТОТА И НАДЁЖНОСТЬ!
+ * ИЗМЕНЕНИЯ:
+ * - ✅ Новый UI с боковой панелью шаблонов (70% контент, 30% сайдбар)
+ * - ✅ Collapsible управление шаблонами (свернуто по умолчанию)
+ * - ✅ Иконки вместо текста + tooltips
+ * - ✅ Убрана дублирующая кнопка "Сохранить"
+ * - ✅ Responsive дизайн (вертикальная раскладка на <768px)
+ * - ✅ Полная совместимость с Apps Script HTML Service
  * ============================================================================
  */
 
-const COLLECT_CONFIG_VERSION = '3.0.1';
-const COLLECT_CONFIG_LAST_UPDATE = '2025-11-20 12:22:00';
+const COLLECT_CONFIG_VERSION = '2.1.0';
+const COLLECT_CONFIG_LAST_UPDATE = '2025-06-17 00:00:00';
 
 // ============================================================================
 // ЛОКАЛЬНОЕ ЛОГИРОВАНИЕ ДЛЯ UI (не конфликтует с глобальным addLog)
 // ============================================================================
-let GLOBAL_LOG = [];
-
-/**
- * Локальный лог для передачи в UI CollectConfig
- * НЕ ЗАМЕНЯЕТ глобальную функцию addLog() из Main.gs!
- */
-var COLLECT_CONFIG_UI_LOG = [];
+let COLLECT_CONFIG_UI_LOG = [];
 
 /**
  * Добавляет запись в UI-лог И в глобальную систему логирования
- * @param {string} message - Сообщение
- * @param {string} level - Уровень: INFO, DEBUG, WARN, ERROR, SUCCESS
+ * НЕ ЗАМЕНЯЕТ глобальную функцию addLog() из Main.gs!
  */
-function addCollectLog(message, level) {
+const addCollectLog = (message, level) => {
   level = level || 'INFO';
   const timestamp = new Date().toLocaleTimeString('ru-RU');
-  
   // Добавляем в локальный UI-лог
   const logEntry = {
     timestamp: timestamp,
@@ -39,7 +37,7 @@ function addCollectLog(message, level) {
     level: level.toUpperCase(),
   };
   COLLECT_CONFIG_UI_LOG.push(logEntry);
-  
+
   // ВАЖНО: Добавляем также в глобальную систему логирования
   try {
     if (typeof addLog === 'function') {
@@ -55,25 +53,25 @@ function addCollectLog(message, level) {
 /**
  * Очищает локальный UI-лог (НЕ влияет на глобальный лог)
  */
-function clearCollectLog() {
+const clearCollectLog = () => {
   COLLECT_CONFIG_UI_LOG = [];
-}
+};
 
 /**
  * Возвращает локальный UI-лог для отображения в интерфейсе
  */
-function getCollectLog() {
+const getCollectLog = () => {
   return COLLECT_CONFIG_UI_LOG;
-}
+};
 
 // ============================================================================
 // ГЛАВНАЯ ФУНКЦИЯ: Открыть UI
 // ============================================================================
-function openCollectConfigUI() {
+const openCollectConfigUI = () => {
   try {
-    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi')
-      .setWidth(700)
-      .setTitle('🎯 AI Конструктор v3.0');
+    const html = HtmlService.createHtmlOutputFromFile('CollectConfigUi_v2.1')
+      .setWidth(900)
+      .setTitle('🎯 AI Конструктор v2.1');
 
     SpreadsheetApp.getUi().showModalDialog(html, 'AI Конструктор');
   } catch (error) {
