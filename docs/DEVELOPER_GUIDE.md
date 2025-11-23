@@ -17,19 +17,18 @@ Table AI построен по принципу **"Тонкий клиент, т
 ### 🏗️ Структура
 ```
 deploy/
-├── Main.gs              # Клиентский центр
-├── server.gs            # Серверный бэкенд
-├── Menu.gs              # Меню и навигация
-├── GeminiClient.gs      # Обёртки Gemini API
-├── Utils.gs             # Вспомогательные функции
-├── Constants.gs         # Все константы
-├── LoggingService.gs    # Единое логирование
+├── Main.gs              # Клиентский код и меню
+├── server.gs            # Серверный бэкенд и API
 ├── CollectConfig.gs     # AI конструктор UI
 ├── VK.gs                # VK импорт
 ├── UnpackingViewer.gs   # Просмотр данных
 ├── TemplateService.gs   # Сервис шаблонов
 ├── ocrRunV2_client.gs  # OCR клиент
 └── reniewcell.gs        # Batch обновления
+
+docs/                    # Публичная документация
+__tests__/               # Unit тесты
+system_integrations/     # CI/CD и автоматизация
 ```
 
 ---

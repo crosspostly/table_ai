@@ -161,7 +161,6 @@ table-ai/
 ├── deploy/               # Основной код Apps Script
 │   ├── *.gs             # Apps Script файлы
 │   └── *.html           # HTML файлы для UI
-├── shared/              # Общие утилиты
 ├── __tests__/           # Тесты
 ├── docs/                # Документация
 └── system_integrations/ # CI/CD скрипты
