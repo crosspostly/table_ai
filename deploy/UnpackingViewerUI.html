@@ -480,6 +480,7 @@
     }
 
     // Создание одной карточки
+    // Создание одной карточки
     function createFieldCard(field, index) {
       const card = document.createElement('div');
       card.className = 'field-card collapsed';
@@ -487,12 +488,18 @@
       
       // Определяем длину текста для индикации
       const isLongText = field.value.length > 300;
-      const lengthIndicator = isLongText ? ' (длинный текст)' : '';
+      const lengthIndicator = isLongText ? '' : '';
+      
+      // Индикация количества элементов
+      const countIndicator = field.count > 1 ? `` : '';
+      
+      // Объединяем оба индикатора
+      const indicators = countIndicator + lengthIndicator;
       
       card.innerHTML = `
         <div class="field-header" onclick="toggleCard(${index})">
           <span class="expand-icon">▼</span>
-          <span class="field-title">📌 ${field.header}${lengthIndicator}</span>
+          <span class="field-title">📌 ${field.header}${indicators}</span>
           <span class="toggle-btn">▼</span>
         </div>
         <div class="field-content collapsed">
