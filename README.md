@@ -20,30 +20,29 @@
 
 ## 🏗️ Архитектура
 
+### 📁 Структура проекта
+```
+table-ai/
+├── deploy/                 # Основной код для продакшена
+│   ├── Main.gs            # Клиентский код и меню
+│   ├── server.gs          # Серверный код и API
+│   ├── CollectConfig.gs   # AI конструктор
+│   ├── VK.gs              # VK импорт
+│   ├── UnpackingViewer.gs # Просмотр данных
+│   ├── TemplateService.gs # Сервис шаблонов
+│   ├── ocrRunV2_client.gs # OCR клиент
+│   └── reniewcell.gs      # Batch обновления
+├── docs/                  # Публичная документация
+├── __tests__/            # Unit тесты
+├── system_integrations/  # CI/CD и автоматизация
+└── package.json          # Node.js зависимости
+```
+
 ### 🖥️ Клиентская часть (Main.gs)
-**Размер:** ~200 строк  
 **Роль:** UI, меню, обёртки над сервером
 
-```javascript
-// Основные функции:
-- onOpen() // создание меню
-- GM(prompt) // обёртка над Gemini API
-- openDialog() // UI диалоги
-- Utils // вспомогательные функции
-```
-
 ### 🖥️ Серверная часть (server.gs)
-**Размер:** ~800 строк  
 **Роль:** Вся бизнес-логика, API, лицензирование
-
-```javascript
-// Основные функции:
-- doPost() // роутинг запросов
-- handleGemini() // обработка Gemini API
-- handleCollectConfig() // AI конструктор
-- handleOcrProcess() // OCR обработка
-- checkLicense_() // лицензирование
-```
 
 ### 📦 Модули
 - **CollectConfig.gs** - UI конструктора конфигураций
@@ -162,19 +161,19 @@ npm run setup
 ### Структура проекта
 ```
 table-ai/
-├── deploy/                 # Основной код
-│   ├── Main.gs            # Клиентский код (~200 строк)
-│   ├── server.gs          # Серверный код (~800 строк)
+├── deploy/                 # Основной код для продакшена
+│   ├── Main.gs            # Клиентский код и меню
+│   ├── server.gs          # Серверный код и API
 │   ├── CollectConfig.gs   # AI конструктор
 │   ├── VK.gs              # VK импорт
 │   ├── UnpackingViewer.gs # Просмотр данных
 │   ├── TemplateService.gs # Сервис шаблонов
 │   ├── ocrRunV2_client.gs # OCR клиент
 │   └── reniewcell.gs      # Batch обновления
-├── shared/                # Общие утилиты
+├── docs/                  # Публичная документация
 ├── __tests__/            # Unit тесты
-├── docs/                 # Документация
-└── system_integrations/  # CI/CD и автоматизация
+├── system_integrations/  # CI/CD и автоматизация
+└── package.json          # Node.js зависимости
 ```
 
 ### Стандарты кодирования
@@ -186,24 +185,11 @@ table-ai/
 ### Как добавить новую функцию
 1. **Бизнес-логику** → `server.gs`
 2. **UI обёртку** → соответствующий модуль или `Main.gs`
-3. **Пункт меню** → `Menu.gs`
+3. **Пункт меню** → `Main.gs` (функция `onOpen()`)
 4. **Тесты** → `__tests__/`
 
 ### Конфигурация
-Все константы в `Constants.gs`:
-```javascript
-const API_ENDPOINTS = {
-  GEMINI: '...',
-  SERVER: '...',
-  VK_PARSER: '...'
-};
-
-const LIMITS = {
-  MAX_LOGS: 300,
-  OCR_BATCH_LIMIT: 50,
-  // ...
-};
-```
+Основные константы и настройки хранятся в соответствующих файлах модулей и в Script Properties.
 
 ---
 

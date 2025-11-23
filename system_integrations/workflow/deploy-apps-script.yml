@@ -189,8 +189,9 @@ jobs:
           echo "Copying shared files into server directory..."
           
           # Copy shared files directly into server directory (no subdirectory)
-          cp table/shared/*.gs table/server/
-          echo "✅ Copied shared files to table/server/"
+          # Note: shared/ directory removed - utilities are now in individual modules
+          # cp table/shared/*.gs table/server/
+          # echo "✅ Copied shared files to table/server/"
           
           # Verify appsscript.json exists in server
           if [ ! -f table/server/appsscript.json ]; then
@@ -336,18 +337,19 @@ jobs:
           
           echo "Copying shared files into client directory..."
           # Copy shared files directly into client directory
-          for file in table/shared/*.gs; do
-            if [ -f "$file" ]; then
-              # Skip server-related shared files (they shouldn't exist but just in case)
-              filename=$(basename "$file")
-              if [[ "$filename" =~ ^.*Server.*\.gs$ ]] && [[ ! "$filename" =~ ^ClientUtilities\.gs$ ]]; then
-                echo "⚠️ Skipping server-related shared file: $filename"
-                continue
-              fi
-              cp "$file" table/client/
-              echo "  ✅ Copied $filename"
-            fi
-          done
+          # Note: shared/ directory removed - utilities are now in individual modules
+          # for file in table/shared/*.gs; do
+          #   if [ -f "$file" ]; then
+          #     # Skip server-related shared files (they shouldn't exist but just in case)
+          #     filename=$(basename "$file")
+          #     if [[ "$filename" =~ ^.*Server.*\.gs$ ]] && [[ ! "$filename" =~ ^ClientUtilities\.gs$ ]]; then
+          #       echo "⚠️ Skipping server-related shared file: $filename"
+          #       continue
+          #     fi
+          #     cp "$file" table/client/
+          #     echo "  ✅ Copied $filename"
+          #   fi
+          # done
           echo "✅ Shared files copied to table/client/"
           
           # 🔄 COPY web files for deployment (Apps Script needs them!)
@@ -518,5 +520,5 @@ jobs:
       - name: Summary
         run: |
           echo "🎉 All deployments completed successfully!"
-          echo "📋 Server: table/server/ + table/shared/ → Script ID 1ncX8FGqT7QP-LxqrRJu0_z_FmUTGsbqmbWDCRePLfHgW8x85bX_Yu9uP"
-          echo "📋 Client: table/client/ + table/shared/ + table/web/ → Script ID 1DdlYfvo0EfEA1O1nb5DRI0o-WJoIivtfIPNSE1C1bt3IvvWC91sGE6Xs"
+          echo "📋 Server: table/server/ → Script ID 1ncX8FGqT7QP-LxqrRJu0_z_FmUTGsbqmbWDCRePLfHgW8x85bX_Yu9uP"
+          echo "📋 Client: table/client/ + table/web/ → Script ID 1DdlYfvo0EfEA1O1nb5DRI0o-WJoIivtfIPNSE1C1bt3IvvWC91sGE6Xs (shared/ removed)"
