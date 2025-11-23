@@ -1,37 +1,48 @@
 /**
- * VK Import Module
- * Модуль для импорта и обработки постов VK
- * Вынесен из Main.gs для лучшей организации кода
+ * VK Import Module — v4
+ * Импорт постов VK с фильтрацией и ПОЛНОЙ защитой первых 2 строк + ширины колонок
+ * 1 строка — пустая/параметры (не трогаем)
+ * 2 строка — заголовки (не трогаем)
+ * 3+ строки — данные/формулы (перезаписываем)
  */
+function addLog(message, level) {
+  Logger.log(`[${level || 'INFO'}] ${message}`);
+}
 
-// ====== VK Parser URL ======
-const VK_PARSER_URL = 'https://script.google.com/macros/s/AKfycbzttbqz16EmmcXbEYCuYhNlXkCxAnCG77phspFL1_rTCi4xVqoorByJAPa4dI4iwT8/exec';
 
 /**
- * Импорт VK-постов с фильтрацией
- * Вынесено из Main.gs в отдельный модуль
+ * Главная функция импорта постов ВК
  */
 function importVkPosts() {
   addLog('→ Импорт VK-постов с фильтрацией', 'INFO');
   const ss = SpreadsheetApp.getActive();
-  const params = ss.getSheetByName('Параметры');
+  const params = ss.getSheetByName('Посты');
+
   if (!params) {
-    addLog('❌ Нет листа "Параметры"', 'ERROR'); 
-    SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Параметры" не найден!', SpreadsheetApp.getUi().ButtonSet.OK); 
+    addLog('❌ Нет листа "Посты"', 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Посты" не найден!', SpreadsheetApp.getUi().ButtonSet.OK);
     return;
   }
-  const owner = params.getRange('B1').getValue();
-  const count = params.getRange('B2').getValue();
+
+  const owner = params.getRange('C1').getValue();
+  const count = params.getRange('E1').getValue();
+
   if (!owner || !count) {
-    addLog('❌ Не указаны owner или count', 'ERROR'); 
-    SpreadsheetApp.getUi().alert('Ошибка', 'Введите owner и count на листе "Параметры"', SpreadsheetApp.getUi().ButtonSet.OK); 
+    addLog('❌ Не указаны owner или count', 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка', 'Введите owner и count на листе "Посты"', SpreadsheetApp.getUi().ButtonSet.OK);
     return;
   }
+
   const url = VK_PARSER_URL + '?owner=' + encodeURIComponent(owner) + '&count=' + encodeURIComponent(count);
-  
-  let arr; // Объявляем переменную вне try-catch блока
+
+  let arr;
   try {
-    const resp = UrlFetchApp.fetch(url);
+    const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) {
+      Logger.log('HTTP ERROR: ' + resp.getResponseCode());
+      Logger.log('BODY: ' + resp.getContentText());
+      throw new Error('Ошибка VK Parser: ' + resp.getResponseCode());
+    }
     arr = JSON.parse(resp.getContentText());
   } catch (e) {
     addLog('❌ Ошибка запроса VK: ' + e.message, 'ERROR');
@@ -40,83 +51,71 @@ function importVkPosts() {
   }
   
   if (!Array.isArray(arr)) {
-    addLog('❌ Неверный массив от VK', 'ERROR'); 
-    SpreadsheetApp.getUi().alert('Ошибка', 'Неверный формат данных от VK Parser', SpreadsheetApp.getUi().ButtonSet.OK); 
+    addLog('❌ Неверный массив от VK', 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка', 'Неверный формат данных от VK Parser', SpreadsheetApp.getUi().ButtonSet.OK);
     return;
   }
 
-  const headers = [
-    'Дата', 'Ссылка на пост', 'Текст поста', 'Номер поста',
-    'Стоп-слова', 'Отфильтрованные посты', 'Новый номер',
-    'Позитивные слова', 'Посты с позитивными словами', 'Новый номер (позитивные)',
-  ];
-  const out = [headers];
+  const sheet = ss.getSheetByName('Посты');
+  if (!sheet) {
+    addLog('❌ Лист "Посты" не найден!', 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка', 'Создайте лист "Посты".', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+
+  // Очищаем ТОЛЬКО с 3-й строки и ниже
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 2) {
+    const lastCol = sheet.getLastColumn();
+    sheet.getRange(3, 1, lastRow - 2, lastCol).clearContent().clearFormat();
+  }
+
+  // Формируем данные для вывода
+  const out = [];
   arr.forEach(function(o, i) {
-    const number = o.number !== undefined ? o.number : i + 1;
+    const number = o.number !== undefined ? o.number : i + 2;
     out.push([o.date, o.link, o.text, number, '', '', '', '', '', '']);
   });
 
-  const sheet = ss.getSheetByName('посты');
-  if (!sheet) {
-    addLog('❌ Лист "посты" не найден!', 'ERROR'); 
-    SpreadsheetApp.getUi().alert('Ошибка', 'Создайте лист "посты".', SpreadsheetApp.getUi().ButtonSet.OK); 
-    return;
+  // Записываем данные строго с 3-й строки
+  if (out.length > 0) {
+    sheet.getRange(3, 1, out.length, 10).setValues(out);
   }
 
-  sheet.clear();
-  sheet.getRange(1, 1, out.length, headers.length).setValues(out);
-  applyUniformFormatting(sheet);
-  createStopWordsFormulas(sheet, out.length);
-  addLog('✅ Импортировано ' + (out.length-1) + ' постов', 'INFO');
-  SpreadsheetApp.getUi().alert('Импорт завершён: ' + (out.length - 1) + ' постов. Формулы фильтрации добавлены.');
+  createStopWordsFormulas(sheet, out.length + 2);
+
+  addLog('✅ Импортировано ' + out.length + ' постов', 'INFO');
+  SpreadsheetApp.getUi().alert('Импорт завершён: ' + out.length + ' постов. Формулы фильтрации добавлены.');
 }
 
+
 /**
- * Создание формул для фильтрации стоп-слов и позитивных слов
- * Вынесено из Main.gs в отдельный модуль
+ * Фильтрация стоп-слов/позитивных слов (только с 3-й строки)
  */
 function createStopWordsFormulas(sheet, totalRows) {
   try {
-    addLog('→ Создание формул фильтрации (оптимизированная batch-версия)', 'INFO');
+    addLog('→ Создание формул фильтрации (batch)', 'INFO');
     const startTime = new Date().getTime();
 
-    const stopWordsRange = '$E$2:$E$100';
-    const positiveWordsRange = '$H$2:$H$100';
-
-    // Собираем ВСЕ формулы в один массив для batch-операции
+    const stopWordsRange = '$E$3:$E$100';
+    const positiveWordsRange = '$H$3:$H$100';
     const formulas = [];
-    for (let row = 2; row <= totalRows; row++) {
-      // F: Фильтрация стоп-слов
+
+    // Формулы ТОЛЬКО для строк с 3-й и до totalRows
+    for (let row = 3; row <= totalRows; row++) {
       const formulaF = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + stopWordsRange + ', C' + row + ')))*(' + stopWordsRange + '<>"")) > 0, "", C' + row + ')';
-
-      // G: Номер отфильтрованного поста
-      const formulaG = '=IF(F' + row + '<>"", COUNTA(F$2:F' + row + '), "")';
-
-      // H: Пусто (колонка для позитивных слов - заполняется вручную)
-
-      // I: Фильтрация позитивных слов
+      const formulaG = '=IF(F' + row + '<>"", COUNTA(F$3:F' + row + '), "")';
       const formulaI = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + positiveWordsRange + ', C' + row + ')))*(' + positiveWordsRange + '<>"")) > 0, C' + row + ', "")';
-
-      // J: Номер поста с позитивными словами
-      const formulaJ = '=IF(I' + row + '<>"", COUNTA(I$2:I' + row + '), "")';
-
-      // Формируем строку: F, G, H (пусто), I, J
+      const formulaJ = '=IF(I' + row + '<>"", COUNTA(I$3:I' + row + '), "")';
       formulas.push([formulaF, formulaG, '', formulaI, formulaJ]);
     }
 
-    // ОДИН batch-запрос вместо 400 отдельных!
-    // Устанавливаем формулы для колонок F, G, H, I, J (с E:6 по J:10)
     if (formulas.length > 0) {
-      sheet.getRange(2, 6, formulas.length, 5).setFormulas(formulas);
+      sheet.getRange(3, 6, formulas.length, 5).setFormulas(formulas);
     }
 
-    // Форматирование заголовков
-    sheet.getRange(1, 5, 1, 3).setFontWeight('bold').setBackground('#FFF2CC'); // E, F, G - стоп-слова
-    sheet.getRange(1, 8, 1, 3).setFontWeight('bold').setBackground('#D9EAD3'); // H, I, J - позитивные
-    sheet.autoResizeColumns(5, 6);
-
     const elapsed = new Date().getTime() - startTime;
-    addLog('✅ Формулы фильтрации созданы за ' + elapsed + 'мс (batch-режим)', 'INFO');
+    addLog('✅ Формулы фильтрации созданы за ' + elapsed + 'мс (batch)', 'INFO');
   } catch (e) {
     addLog('❌ Ошибка создания формул: ' + e.message, 'ERROR');
     SpreadsheetApp.getUi().alert('Ошибка создания формул: ' + e.message);
