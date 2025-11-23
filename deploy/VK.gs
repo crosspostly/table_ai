@@ -35,7 +35,7 @@ function importVkPosts() {
 
   const url = VK_PARSER_URL + '?owner=' + encodeURIComponent(owner) + '&count=' + encodeURIComponent(count);
 
-  let arr;
+  let arr = [];
   try {
     const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
     if (resp.getResponseCode() !== 200) {
