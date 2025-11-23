@@ -574,19 +574,21 @@ function applyUniformFormatting(sheet) {
 }
 
 // ====== Меню ======
-// eslint-disable-next-line no-unused-vars
 function onOpen() {
   try {
     const ui = SpreadsheetApp.getUi();
+    const aiMenu = ui.createMenu('🎯 AI Конструктор')
+      .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
+      .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
+      .addSeparator();
+    
+    for (const [key, config] of Object.entries(BATCH_OPERATIONS)) {
+      const funcName = key.charAt(0).toUpperCase() + key.slice(1);
+      aiMenu.addItem(config.name, funcName);
+    }
+    
     ui.createMenu('🤖 Table AI')
-      .addSubMenu(ui.createMenu('🎯 AI Конструктор')
-        .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
-        .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
-        .addSeparator()
-        .addItem('📋 обновить Рефлексия', 'batchUpdateRefleksiya')
-        .addItem('📦 обновить Распаковка', 'batchUpdateRaspravka')
-        .addItem('🎯 обновить Анализ ЦА', 'batchUpdateAnalizCA')
-      )
+      .addSubMenu(aiMenu)
       .addSeparator()
       .addItem('📦 Просмотр Распаковки', 'openUnpackingViewer')
       .addSeparator()
@@ -597,7 +599,6 @@ function onOpen() {
       .addItem('🔒 Проверить лицензию', 'checkLicenseStatusUI')
       .addToUi();
 
-    // ✅ ИСПРАВЛЕНО DEV МЕНЮ:
     if (DEV_MODE) {
       ui.createMenu('🧰 DEV')
         .addItem('📝 Показать логи', 'showLogsDialog')
@@ -605,15 +606,15 @@ function onOpen() {
         .addItem('🗑 Очистить логи', 'clearLogs')
         .addItem('🔍 Тест сервера', 'testServerConnection')
         .addItem('🧪 Dev Self Test', 'runDevSelfTest')
-        .addToUi(); // ← ДОБАВЛЕН .addToUi()!
+        .addToUi();
     }
 
-    addLog('✅ Меню загружено успешно', 'INFO');
+    addLog('✅ Меню загружено', 'INFO');
   } catch (e) {
-    addLog('❌ Ошибка загрузки меню: ' + e.message, 'ERROR');
-    console.error('Menu error:', e);
+    addLog('❌ Ошибка меню: ' + e.message, 'ERROR');
   }
 }
+
 
 
 // Быстрое обновление активной GM-ячейки: пересоздаём формулу, чтобы заново вызвать Gemini
