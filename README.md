@@ -1,336 +1,363 @@
-# Table AI - Google Sheets AI Automation
+# 📋 README.md - Table AI
 
-[![Version](https://img.shields.io/badge/version-3.0.1-blue.svg)](https://github.com/crosspostly/table_ai)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
-> **⚠️ КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ ДЛЯ РАЗРАБОТЧИКОВ:**
-> 
-> При добавлении новых функций обновления (типа `updateXXXConfigs()`):
-> 
-> 1. 🚫 **НЕ ИСПОЛЬЗУЙТЕ систему CollectConfig (ConfigData)** если ваш модуль не связан с AI Constructor
-> 2. 🚫 **НЕ ПЕРЕОПРЕДЕЛЯЙТЕ функцию `addLog()`** - используйте обёртки (`logXXX()`)
-> 3. ✅ **Создавайте независимые функции** в файле вашего модуля
-> 4. ✅ **Документируйте зависимости** явно в комментариях
-> 
-> **Пример правильной реализации:** см. `UnpackingViewer.gs` → `updateUnpackingConfigs()`
-> 
-> **Нарушение этих правил ЛОМАЕТ весь AI Constructor!**
-
-## О проекте
-
-Table AI - система автоматизации работы с AI в Google Sheets через Gemini API.
-
-### Основные модули
-
-- **Main.gs** - Центральная система управления, меню, логирование
-- **CollectConfig.gs** - AI Constructor (сбор данных из разных источников)
-- **UnpackingViewer.gs** - Просмотр и экспорт данных распаковки
-- **OCR Module** - Распознавание текста с изображений
-- **VK Parser** - Импорт постов из ВКонтакте
-
-### Архитектура логирования
-
-```
-Main.gs (глобальное логирование)
-↓
-addLog() - централизованная функция
-↓
-├── CollectConfig.gs → addCollectLog() - обёртка для UI
-├── UnpackingViewer.gs → logUnpacking() - безопасная обёртка
-└── Другие модули → используют addLog() напрямую
-```
-
-**⚠️ ВАЖНО:** Каждый модуль должен использовать СВОЮ обёртку, не переопределять `addLog()`!
+**Google Sheets AI Automation System**  
+**Версия:** 3.0.0  
+**Статус:** Production Ready  
 
 ---
 
-## 🚨 Критические правила разработки
+## 🎯 Что это?
 
-### 1. Система логирования
+**Table AI** - это система автоматизации Google Sheets с использованием Gemini AI, которая позволяет:
 
-#### ✅ ПРАВИЛЬНО:
+- 🤖 **AI Конструктор** - создавать сложные AI-конфигурации через визуальный интерфейс
+- 📦 **Просмотр Распаковки** - анализировать и экспортировать обработанные данные
+- 📥 **Импорт VK постов** - загружать и обрабатывать посты из ВКонтакте
+- 🔍 **OCR распознавание** - распознавать текст с изображений
+- ⚡ **Batch обновления** - массово обновлять ячейки с AI
+
+---
+
+## 🏗️ Архитектура
+
+### 🖥️ Клиентская часть (Main.gs)
+**Размер:** ~200 строк  
+**Роль:** UI, меню, обёртки над сервером
 
 ```javascript
-// В вашем модуле создайте обёртку:
-function logYourModule(message, level) {
-  try {
-    if (typeof addLog === 'function') {
-      addLog(`[YourModule] ${message}`, level || 'INFO');
-    } else {
-      Logger.log(`[${level || 'INFO'}] ${message}`);
+// Основные функции:
+- onOpen() // создание меню
+- GM(prompt) // обёртка над Gemini API
+- openDialog() // UI диалоги
+- Utils // вспомогательные функции
+```
+
+### 🖥️ Серверная часть (server.gs)
+**Размер:** ~800 строк  
+**Роль:** Вся бизнес-логика, API, лицензирование
+
+```javascript
+// Основные функции:
+- doPost() // роутинг запросов
+- handleGemini() // обработка Gemini API
+- handleCollectConfig() // AI конструктор
+- handleOcrProcess() // OCR обработка
+- checkLicense_() // лицензирование
+```
+
+### 📦 Модули
+- **CollectConfig.gs** - UI конструктора конфигураций
+- **VK.gs** - импорт постов из VK
+- **UnpackingViewer.gs** - просмотр данных распаковки
+- **TemplateService.gs** - управление шаблонами
+- **ocrRunV2_client.gs** - OCR клиент
+- **reniewcell.gs** - batch обновления
+
+---
+
+## 🚀 Быстрый старт
+
+### 1. Установка
+```bash
+# Клонировать репозиторий
+git clone https://github.com/your-repo/table-ai.git
+cd table-ai
+
+# Установить зависимости
+npm install
+
+# Настроить clasp
+npm run setup
+```
+
+### 2. Конфигурация
+1. Откройте Google Apps Script проект
+2. Установите API ключ Gemini в `Script Properties`:
+   - Ключ: `GEMINI_API_KEY`
+   - Значение: `ваш-gemini-api-ключ`
+
+3. Настройте лицензирование (если требуется)
+4. Создайте необходимые листы в таблице
+
+### 3. Использование
+1. Откройте Google Sheet
+2. В меню выберите `🤖 Table AI`
+3. Выберите нужную функцию:
+   - `🎯 AI Конструктор` - создать AI-конфигурацию
+   - `📦 Просмотр Распаковки` - просмотреть результаты
+   - `📥 Импорт VK постов` - загрузить посты из VK
+   - `🔍 Распознать текст (OCR)` - распознать текст
+
+---
+
+## 📚 Подробное руководство
+
+### 🎯 AI Конструктор
+
+Создаёт сложные AI-запросы из множественных источников данных:
+
+1. **Откройте AI Конструктор** через меню
+2. **Выберите целевую ячейку** для результата
+3. **Настройте System Prompt** (инструкции для AI)
+4. **Добавьте источники данных** (листы и диапазоны)
+5. **Сохраните шаблон** для будущего использования
+6. **Выполните запрос** - результат появится в целевой ячейке
+
+**Пример конфигурации:**
+```json
+{
+  "systemPrompt": {
+    "sheet": "Prompt_box",
+    "cell": "E2"
+  },
+  "userData": [
+    {
+      "sheet": "отзывы",
+      "cell": "B:B"
+    },
+    {
+      "sheet": "данные",
+      "cell": "A2:A100"
     }
-  } catch (e) {
-    Logger.log(`[${level || 'INFO'}] ${message}`);
-  }
-}
-
-// Используйте только свою обёртку:
-logYourModule('✅ Модуль запущен', 'INFO');
-```
-
-#### ❌ НЕПРАВИЛЬНО:
-
-```javascript
-// НЕ переопределяйте addLog()!
-function addLog(message, level) { // ← ЭТО ЛОМАЕТ ВСЁ!
-  // ваш код
-}
-
-// НЕ используйте напрямую без проверки:
-addLog('Сообщение'); // ← может упасть с ReferenceError
-```
-
----
-
-### 2. Функции обновления конфигураций
-
-#### ✅ ПРАВИЛЬНО - Независимая функция:
-
-```javascript
-// deploy/YourModule.gs
-/**
- * Обновляет ваш модуль
- * ВАЖНО: НЕ использует CollectConfig (ConfigData)!
- */
-function updateYourModuleConfigs() {
-  logYourModule('🔄 Обновление модуля', 'INFO');
-  
-  const sheet = SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName('YourSheet');
-  
-  if (!sheet) {
-    logYourModule('❌ Лист не найден', 'ERROR');
-    return;
-  }
-  
-  // Ваша логика обновления
-  // Работает ТОЛЬКО с данными вашего модуля
-  
-  logYourModule('✅ Обновление завершено', 'SUCCESS');
+  ]
 }
 ```
 
-#### ❌ НЕПРАВИЛЬНО - Использование чужой системы:
+### 📦 Просмотр Распаковки
 
-```javascript
-// НЕ ДЕЛАЙТЕ ТАК!
-function updateYourModuleConfigs() {
-  // ❌ Пытается использовать ConfigData из CollectConfig
-  const configSheet = ss.getSheetByName('ConfigData');
-  const configs = /* читаем конфигурации */;
-  
-  // ❌ Вызывает executeCollectConfig() - это для AI Constructor!
-  const result = executeCollectConfig(sheetName, cellAddress);
-  
-  // ЭТО ЛОМАЕТ AI CONSTRUCTOR!
-}
-```
+Анализирует и экспортирует данные из листа "Распаковка":
 
----
+1. **Откройте Просмотр Распаковки** через меню
+2. **Данные автоматически загружаются** из листа "Распаковка"
+3. **Экспортируйте в Google Docs** - создаётся форматированный документ
+4. **Скачайте в DOCX** - готовый файл для дальнейшей работы
 
-### 3. Независимость модулей
+### 📥 Импорт VK постов
 
-**Каждый модуль должен быть самодостаточным:**
+Загружает посты из ВКонтакте с автоматической фильтрацией:
 
-| Модуль | Ответственность | Система хранения | Функции обновления |
-|--------|-----------------|------------------|--------------------|
-| **CollectConfig** | AI Constructor | `ConfigData` (лист) | `updateReflectionConfigs()` |
-| **UnpackingViewer** | Просмотр распаковки | Напрямую `Распаковка!B3:G3` | `updateUnpackingConfigs()` |
-| **OCR Module** | Распознавание | `отзывы` (лист) | Собственные функции |
-| **VK Parser** | Импорт постов | `посты` (лист) | Собственные функции |
+1. **Создайте лист "Посты"** с заголовками
+2. **Введите параметры** в ячейки C1 (owner) и E1 (count)
+3. **Запустите импорт** через меню
+4. **Данные загружаются** с 3-й строки (первые строки защищены)
+5. **Формулы фильтрации** создаются автоматически
 
-**Правило:** Если ваш модуль НЕ про AI Constructor → НЕ используйте ConfigData!
+### 🔍 OCR Распознавание
 
----
+Распознаёт текст с изображений из различных источников:
 
-## 📚 Структура проекта
-
-```
-table_ai/
-├── deploy/
-│   ├── Main.gs                 # Центральная система (меню, логи, GM)
-│   ├── CollectConfig.gs        # AI Constructor (ConfigData)
-│   ├── UnpackingViewer.gs      # Просмотр распаковки (независимый)
-│   ├── UnpackingViewerUI.html  # UI для UnpackingViewer
-│   ├── SettingsUI.html         # Настройки
-│   └── ...
-├── docs/
-│   ├── CollectConfig.md        # Документация AI Constructor
-│   ├── UnpackingViewer.md      # Документация просмотра распаковки
-│   ├── LOGGING.md              # ⚠️ НОВЫЙ ФАЙЛ - правила логирования
-│   └── MODULE_INDEPENDENCE.md  # ⚠️ НОВЫЙ ФАЙЛ - независимость модулей
-├── tests/
-│   └── ...
-└── README.md                   # Этот файл
-```
+1. **Добавьте URL изображений** в лист "Отзывы" (колонка A)
+2. **Запустите OCR** через меню
+3. **Текст появляется** в колонке B
+4. **Поддерживаются источники:**
+   - Прямые ссылки на изображения
+   - Google Drive файлы и папки
+   - VK альбомы и обсуждения
+   - Yandex.Disk и Dropbox
 
 ---
 
 ## 🔧 Разработка
 
-### Добавление нового модуля
-
-**1. Создайте файл модуля:**
-
-```javascript
-// deploy/YourModule.gs
-/**
- * YOUR MODULE - Module Description
- * v1.0.0
- * 
- * ВАЖНО: Независимый модуль, НЕ использует CollectConfig!
- */
-
-/**
- * Безопасное логирование для вашего модуля
- */
-function logYourModule(message, level) {
-  const logLevel = level || 'INFO';
-  try {
-    if (typeof addLog === 'function') {
-      addLog(`[YourModule] ${message}`, logLevel);
-    } else {
-      const timestamp = Utilities.formatDate(
-        new Date(),
-        Session.getScriptTimeZone(),
-        'yyyy-MM-dd HH:mm:ss'
-      );
-      Logger.log(`[${timestamp}] ${logLevel}: ${message}`);
-    }
-  } catch (error) {
-    console.log(`[${logLevel}] ${message}`);
-  }
-}
-
-/**
- * Ваши функции модуля
- */
-function yourModuleFunction() {
-  logYourModule('🚀 Запуск функции', 'INFO');
-  // ваш код
-}
+### Структура проекта
+```
+table-ai/
+├── deploy/                 # Основной код
+│   ├── Main.gs            # Клиентский код (~200 строк)
+│   ├── server.gs          # Серверный код (~800 строк)
+│   ├── CollectConfig.gs   # AI конструктор
+│   ├── VK.gs              # VK импорт
+│   ├── UnpackingViewer.gs # Просмотр данных
+│   ├── TemplateService.gs # Сервис шаблонов
+│   ├── ocrRunV2_client.gs # OCR клиент
+│   └── reniewcell.gs      # Batch обновления
+├── shared/                # Общие утилиты
+├── __tests__/            # Unit тесты
+├── docs/                 # Документация
+└── system_integrations/  # CI/CD и автоматизация
 ```
 
-**2. Добавьте в меню (Main.gs):**
+### Стандарты кодирования
+- **ESLint** для линтинга
+- **Prettier** для форматирования
+- **Jest** для тестирования
+- **clasp** для деплоя
 
+### Как добавить новую функцию
+1. **Бизнес-логику** → `server.gs`
+2. **UI обёртку** → соответствующий модуль или `Main.gs`
+3. **Пункт меню** → `Menu.gs`
+4. **Тесты** → `__tests__/`
+
+### Конфигурация
+Все константы в `Constants.gs`:
 ```javascript
-// В функции onOpen()
-  .addSeparator()
-  .addItem('🔥 Ваша функция', 'yourModuleFunction') // → YourModule.gs
-```
+const API_ENDPOINTS = {
+  GEMINI: '...',
+  SERVER: '...',
+  VK_PARSER: '...'
+};
 
-**3. Создайте документацию:**
-
-```markdown
-# docs/YourModule.md
-
-## Обзор
-Описание вашего модуля
-
-## Независимость
-- ✅ НЕ использует ConfigData
-- ✅ НЕ использует CollectConfig систему
-- ✅ Работает с собственными листами/данными
-- ✅ Использует logYourModule() для логирования
-
-## Функции
-...
+const LIMITS = {
+  MAX_LOGS: 300,
+  OCR_BATCH_LIMIT: 50,
+  // ...
+};
 ```
 
 ---
 
 ## 🧪 Тестирование
 
-### Перед коммитом проверьте:
-
-- [ ] **Логирование работает** - логи появляются в DEV меню
-- [ ] **AI Constructor НЕ сломан** - можно открыть и использовать
-- [ ] **Ваш модуль работает независимо**
-- [ ] **Нет конфликтов имён функций**
-- [ ] **Документация обновлена**
-
-### Команды для проверки:
-
+### Запуск тестов
 ```bash
-# Проверка конфликтов функций
-grep -n "function addLog" deploy/*.gs
-# Должна быть ТОЛЬКО ОДНА функция в Main.gs!
+# Запустить все тесты
+npm test
 
-# Проверка использования ConfigData
-grep -n "ConfigData" deploy/YourModule.gs
-# НЕ должно быть, если модуль НЕ про AI Constructor!
+# Запустить конкретный тест
+npm test -- --testNamePattern="GeminiClient"
 
-# Проверка логирования
-grep -n "addLog(" deploy/YourModule.gs
-# Должно быть 0 прямых вызовов, только через обёртку!
+# Запустить с покрытием
+npm run test:coverage
 ```
 
----
-
-## 📖 Дополнительная документация
-
-- [docs/LOGGING.md](docs/LOGGING.md) - Детальное руководство по логированию
-- [docs/MODULE_INDEPENDENCE.md](docs/MODULE_INDEPENDENCE.md) - Правила независимости модулей
-- [docs/CollectConfig.md](docs/CollectConfig.md) - AI Constructor документация
-- [docs/UnpackingViewer.md](docs/UnpackingViewer.md) - Пример независимого модуля
+### Типы тестов
+- **Unit тесты** - для отдельных функций
+- **Интеграционные тесты** - для взаимодействия модулей
+- **E2E тесты** - для полных сценариев использования
 
 ---
 
-## 🐛 Известные проблемы и решения
+## 📊 Мониторинг и логирование
 
-### Проблема: "Конфигурация не найдена"
+### Логи
+Все логи централизованы в `LoggingService.gs`:
+- **Уровни:** ERROR, WARN, INFO, DEBUG
+- **Хранение:** CacheService (24 часа)
+- **Экспорт:** в лист "Логи"
 
-**Причина:** Функция `updateXXXConfigs()` пытается использовать ConfigData, но она для AI Constructor!
-
-**Решение:** Создайте независимую функцию в файле вашего модуля, см. `UnpackingViewer.gs`
-
-### Проблема: "ReferenceError: addLog is not defined"
-
-**Причина:** Прямой вызов `addLog()` без проверки наличия
-
-**Решение:** Используйте безопасную обёртку `logYourModule()`
-
-### Проблема: Логи не появляются в DEV меню
-
-**Причина:** Переопределена функция `addLog()` в другом модуле
-
-**Решение:** Удалите переопределение, используйте обёртку
+### Метрики
+- **Производительность:** время выполнения операций
+- **Использование:** количество запросов, потребление памяти
+- **Ошибки:** частота и типы ошибок
 
 ---
 
-## 📞 Поддержка
+## 🔒 Безопасность
 
-При возникновении проблем:
-1. Проверьте логи: **🧰 DEV → 📝 Показать логи**
-2. Экспортируйте логи: **🧰 DEV → ⬇️ Экспорт логов**
-3. Создайте Issue с логами и описанием проблемы
+### API ключи
+- **Gemini API ключ** хранится в Script Properties
+- **Серверные операции** используют прокси для защиты ключей
+- **Rate limiting** для предотвращения злоупотреблений
 
----
-
-## 🏆 Best Practices
-
-### ✅ DO:
-- Создавайте обёртки для логирования (`logYourModule()`)
-- Делайте модули независимыми
-- Документируйте зависимости
-- Тестируйте перед коммитом
-- Используйте префиксы в логах `[ModuleName]`
-
-### ❌ DON'T:
-- Не переопределяйте `addLog()`
-- Не используйте ConfigData вне AI Constructor
-- Не вызывайте `executeCollectConfig()` из других модулей
-- Не забывайте обновлять документацию
-- Не коммитьте без тестирования AI Constructor
+### Лицензирование
+- **Проверка лицензий** через серверную часть
+- **Привязка к таблицам** для контроля доступа
+- **Квоты** для управления использованием
 
 ---
 
-## 📜 Лицензия
+## 🚀 Деплой
 
-MIT License - see [LICENSE](LICENSE) for details
+### Подготовка к деплою
+```bash
+# Установка зависимостей
+npm install
+
+# Проверка кода
+npm run lint
+npm test
+
+# Сборка
+npm run build
+```
+
+### Деплой
+```bash
+# Деплой в production
+npm run deploy
+
+# Деплой в staging
+npm run deploy:staging
+
+# Открыть редактор Apps Script
+npm run open
+```
+
+### Versioning
+- **Semantic Versioning** (major.minor.patch)
+- **Changelog** ведётся автоматически
+- **Git tags** для версий
 
 ---
 
-**⚠️ ПОМНИТЕ: Каждый сломанный AI Constructor - это потерянное время команды!**
+## 📚 Документация
 
-**Следуйте правилам, читайте документацию, тестируйте изменения!**
+### Для разработчиков
+- [Developer Guide](docs/DEVELOPER_GUIDE.md) - руководство разработчика
+- [API Documentation](docs/API_DOCUMENTATION.md) - описание API
+- [Architecture](docs/ARCHITECTURE.md) - архитектура системы
+
+### Для пользователей
+- [User Manual](docs/USER_MANUAL.md) - руководство пользователя
+- [Video Tutorials](docs/VIDEO_TUTORIALS.md) - видео инструкции
+- [FAQ](docs/FAQ.md) - часто задаваемые вопросы
+
+---
+
+## 🤝 Сообщество
+
+### Поддержка
+- **GitHub Issues** - для баг-репортов и фич-реквестов
+- **Discord Community** - для обсуждений и вопросов
+- **Email Support** - для коммерческой поддержки
+
+### Вклад в проект
+1. Fork репозитория
+2. Создайте feature branch
+3. Внесите изменения
+4. Добавьте тесты
+5. Отправьте Pull Request
+
+---
+
+## 📄 Лицензия
+
+**MIT License** - см. файл [LICENSE](LICENSE)
+
+---
+
+## 🎯 Roadmap
+
+### v3.1 (Q3 2025)
+- [ ] Улучшенный UI с drag-and-drop
+- [ ] Поддержка Gemini 1.5 Pro
+- [ ] Расширенные шаблоны
+- [ ] Mobile UI
+
+### v3.2 (Q4 2025)
+- [ ] Интеграция с GPT-4
+- [ ] Advanced analytics
+- [ ] Team collaboration
+- [ ] API для внешних интеграций
+
+### v4.0 (Q1 2026)
+- [ ] Multi-language support
+- [ ] Cloud deployment
+- [ ] Enterprise features
+- [ ] Advanced security
+
+---
+
+## 📞 Контакты
+
+- **Автор:** Droid (Factory AI)
+- **Email:** support@table-ai.com
+- **Website:** https://table-ai.com
+- **GitHub:** https://github.com/your-repo/table-ai
+
+---
+
+**Спасибо за использование Table AI!** 🚀
+
+Если у вас есть вопросы или предложения, пожалуйста, создайте Issue или свяжитесь с нами.
