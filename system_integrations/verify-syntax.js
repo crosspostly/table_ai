@@ -7,13 +7,14 @@ const fs = require('fs');
 const vm = require('vm');
 
 const files = [
-  'table/client/GeminiClient.gs',
-  'table/client/ClientUtilities.gs',
-  'table/server/SmartChainService.gs',
-  'table/client/OcrHelpers.gs',
-  'table/server/SourceDetector.gs',
-  'table/shared/Utils.gs',
-  'table/client/ComprehensiveTestSuite.gs'
+  'deploy/Main.gs',
+  'deploy/server.gs',
+  'deploy/CollectConfig.gs',
+  'deploy/VK.gs',
+  'deploy/UnpackingViewer.gs',
+  'deploy/TemplateService.gs',
+  'deploy/ocrRunV2_client.gs',
+  'deploy/reniewcell.gs'
 ];
 
 console.log('🔍 ПРОВЕРКА СИНТАКСИСА ЧЕРЕЗ NODE.JS VM\n');

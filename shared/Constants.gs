@@ -1,1 +1,0 @@
-const SYSTEM_LOGS_NAME = 'SYSTEM_LOGS';

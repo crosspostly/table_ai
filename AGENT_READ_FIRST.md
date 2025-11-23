@@ -31,13 +31,8 @@
 
 ### Основные файлы в deploy/
 ```
-Main.gs              # Клиентский центр - меню, UI, обёртки
+Main.gs              # Клиентский код - меню, UI, обёртки
 server.gs            # Серверный бэкенд - API, бизнес-логика
-Menu.gs              # Меню и навигация
-GeminiClient.gs      # Обёртки для Gemini API
-Utils.gs             # Вспомогательные функции
-Constants.gs         # Все константы системы
-LoggingService.gs    # Единое логирование
 CollectConfig.gs     # UI AI конструктора
 VK.gs                # Модуль импорта VK
 UnpackingViewer.gs   # Просмотр данных распаковки
@@ -48,10 +43,9 @@ reniewcell.gs        # Batch обновления
 
 ### Вспомогательные папки
 ```
-shared/              # Общие утилиты и константы
-__tests__/           # Unit тесты
-docs/                # Документация
-system_integrations/ # CI/CD и автоматизация
+docs/                    # Публичная документация
+__tests__/               # Unit тесты  
+system_integrations/     # CI/CD и автоматизация
 ```
 
 ---
@@ -310,12 +304,6 @@ npm run open
 - [README.md](../README.md) - Общая информация
 - [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - Руководство разработчика
 - [CLASP_SETUP.md](CLASP_SETUP.md) - Настройка clasp
-
-### 📋 Аналитические документы
-- [CODE_INVENTORY.md](../CODE_INVENTORY.md) - Реестр кода
-- [ISSUES_FOUND.md](../ISSUES_FOUND.md) - Проблемы кода
-- [CLIENT_SERVER_SPLIT.md](../CLIENT_SERVER_SPLIT.md) - Архитектура
-- [REFACTORING_PLAN.md](../REFACTORING_PLAN.md) - План рефакторинга
 
 ---
 
