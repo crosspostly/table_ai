@@ -238,11 +238,16 @@ function exportUnpackingToDoc() {
       fieldHeader.setSpacingAfter(4);
 
       // Значение поля
-      const fieldValue = body.appendParagraph('   ' + field.value);
-      fieldValue.setFontSize(12);
-      fieldValue.setIndentStart(20);
-      fieldValue.setSpacingAfter(8);
-
+// Значение поля, разбитое по \n на отдельные параграфы
+      const lines = (field.value || '').split('\n');
+      lines.forEach(line => {
+        const para = body.appendParagraph('   ' + line);
+        para.setFontSize(12);
+        para.setIndentStart(20);
+        para.setSpacingAfter(0);
+        para.setBold(false);  // ← Явно обычный текст, НЕ жирный
+      });
+      body.appendParagraph('');
       // Пустая строка между полями
       body.appendParagraph('');
     });
