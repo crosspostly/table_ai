@@ -270,6 +270,17 @@ function exportUnpackingToDoc() {
     const docUrl = 'https://docs.google.com/document/d/' + docId + '/edit';
     const downloadUrl = 'https://docs.google.com/document/d/' + docId + '/export?format=docx';
 
+  // Сохранить метаданные документа для "Мои файлы"
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('список_экспорт') || SpreadsheetApp.getActiveSpreadsheet().insertSheet('список_экспорт');
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['Наименование', 'Ссылка', 'Дата']);
+    }
+    sheet.appendRow([fileName, downloadUrl, new Date().toLocaleString()]);
+  } catch (e) {
+    logUnpacking('Ошибка при сохранении метаданных: ' + e.message, 'DEBUG');
+  }
+
     logUnpacking('📄 URL документа: ' + docUrl, 'DEBUG');
     logUnpacking('💾 URL скачивания: ' + downloadUrl, 'DEBUG');
 
@@ -295,4 +306,57 @@ function exportUnpackingToDoc() {
       error: 'Не удалось создать документ: ' + error.message,
     };
   }
+
+
+// Мой файлы - управление экспортированными документами
+
+/**
+ * Получить список с данными экспортированных документов
+ */
+function getExportedDocuments() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('список_экспорт') || null;
+  if (!sheet) return [];
+  
+  try {
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    
+    const data = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+    const documents = [];
+    
+    data.forEach((row, index) => {
+      if (row[0] && row[1]) {
+        documents.push({
+          id: index,
+          name: row[0],
+          url: row[1],
+          date: row[2] || new Date().toLocaleString()
+        });
+      }
+    });
+    
+    return documents;
+  } catch (e) {
+    logUnpacking('Ошибка при получении документов: ' + e.message, 'ERROR');
+    return [];
+  }
+}
+
+/**
+ * Удалить экспортированные документы
+ * @param {array} indices - Индексы для удаления
+ */
+function deleteExportedDocs(indices) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('список_экспорт') || null;
+  if (!sheet) return;
+  
+  try {
+    // Удалять по сортированным индексам в обратном порядке
+    indices.sort((a, b) => b - a).forEach(index => {
+      sheet.deleteRow(index + 2);
+    });
+  } catch (e) {
+    logUnpacking('Ошибка при удалении документов: ' + e.message, 'ERROR');
+  }
+}
 }
