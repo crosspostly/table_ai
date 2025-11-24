@@ -3,7 +3,7 @@
  * v1.0.1 - Fixed logging system
  *
  * Модуль для просмотра и экспорта данных из листа "Распаковка"
- * 
+ *
  * Функции:
  * - openUnpackingViewer(): открытие модального окна
  * - getUnpackingData(): чтение данных из листа
@@ -19,7 +19,7 @@
  */
 function logUnpacking(message, level) {
   const logLevel = level || 'INFO';
-  
+
   try {
     // Проверяем наличие глобальной функции addLog
     if (typeof addLog === 'function') {
@@ -27,9 +27,9 @@ function logUnpacking(message, level) {
     } else {
       // Fallback: используем встроенный Logger
       const timestamp = Utilities.formatDate(
-        new Date(), 
-        Session.getScriptTimeZone(), 
-        'yyyy-MM-dd HH:mm:ss'
+        new Date(),
+        Session.getScriptTimeZone(),
+        'yyyy-MM-dd HH:mm:ss',
       );
       Logger.log(`[${timestamp}] ${logLevel}: ${message}`);
     }
@@ -51,9 +51,9 @@ function openUnpackingViewer() {
     const html = HtmlService.createHtmlOutputFromFile('UnpackingViewerUI')
       .setWidth(700)
       .setHeight(800)
-      .setTitle('📦 Просмотр Распаковки');
+      .setTitle('📦 Просмотр Распаковка + ЦА');
 
-    SpreadsheetApp.getUi().showModalDialog(html, '📦 Просмотр Распаковки');
+    SpreadsheetApp.getUi().showModalDialog(html, '📦 Просмотр Распаковка + ЦА');
 
     logUnpacking('✅ Окно просмотра открыто', 'INFO');
   } catch (error) {
@@ -63,30 +63,82 @@ function openUnpackingViewer() {
 }
 
 /**
- * Читает данные из листа "Распаковка"
- * @return {Object} Объект с данными или ошибкой
- */
-/**
- * Читает данные из листа "Распаковка"
+ * Читает данные из листов "Распаковка" и "ЦА"
  * @return {Object} Объект с данными или ошибкой
  */
 // eslint-disable-next-line no-unused-vars
 function getUnpackingData() {
   try {
-    logUnpacking('📖 Чтение данных из листа Распаковка', 'INFO');
+    logUnpacking('📖 Чтение данных из листов Распаковка и ЦА', 'INFO');
 
     // Получаем активную таблицу
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    // Ищем лист "Распаковка"
-    const sheet = ss.getSheetByName('Распаковка');
+    // Получаем данные из обоих листов
+    const unpackingData = getSheetData(ss, 'Распаковка');
+    const caData = getSheetData(ss, 'ЦА');
 
-    if (!sheet) {
-      logUnpacking('❌ Лист "Распаковка" не найден', 'ERROR');
+    // Объединяем данные
+    const allData = [];
+
+    if (unpackingData.success && unpackingData.data.length > 0) {
+      allData.push(...unpackingData.data);
+      logUnpacking('✅ Добавлены данные из листа Распаковка: ' + unpackingData.data.length + ' полей', 'DEBUG');
+    } else {
+      logUnpacking('⚠️ Лист Распаковка пуст или не найден', 'DEBUG');
+    }
+
+    if (caData.success && caData.data.length > 0) {
+      allData.push(...caData.data);
+      logUnpacking('✅ Добавлены данные из листа ЦА: ' + caData.data.length + ' полей', 'DEBUG');
+    } else {
+      logUnpacking('⚠️ Лист ЦА пуст или не найден', 'DEBUG');
+    }
+
+    logUnpacking('📊 Всего полей из обоих листов: ' + allData.length, 'INFO');
+
+    if (allData.length === 0) {
       return {
         success: false,
         data: [],
-        error: 'Лист "Распаковка" не найден в таблице',
+        error: 'На листах "Распаковка" и "ЦА" нет данных для отображения',
+      };
+    }
+
+    return {
+      success: true,
+      data: allData,
+      error: null,
+    };
+  } catch (error) {
+    logUnpacking('❌ Ошибка чтения данных: ' + error.message, 'ERROR');
+    return {
+      success: false,
+      data: [],
+      error: 'Не удалось прочитать данные: ' + error.message,
+    };
+  }
+}
+
+/**
+ * Вспомогательная функция для чтения данных из одного листа
+ * @param {Spreadsheet} ss - Активная таблица
+ * @param {string} sheetName - Имя листа
+ * @return {Object} Объект с данными или ошибкой
+ */
+function getSheetData(ss, sheetName) {
+  try {
+    logUnpacking('📖 Чтение данных из листа ' + sheetName, 'DEBUG');
+
+    // Ищем лист
+    const sheet = ss.getSheetByName(sheetName);
+
+    if (!sheet) {
+      logUnpacking('❌ Лист "' + sheetName + '" не найден', 'DEBUG');
+      return {
+        success: false,
+        data: [],
+        error: 'Лист "' + sheetName + '" не найден в таблице',
       };
     }
 
@@ -96,13 +148,13 @@ function getUnpackingData() {
 
     // Находим последнюю заполненную строку в столбце A
     const lastRow = sheet.getLastRow();
-    
+
     // Если данных нет после заголовков
     if (lastRow < 3) {
       return {
         success: false,
         data: [],
-        error: 'На листе "Распаковка" нет данных для отображения',
+        error: 'На листе "' + sheetName + '" нет данных для отображения',
       };
     }
 
@@ -124,11 +176,14 @@ function getUnpackingData() {
         continue;
       }
 
+      // Добавляем префикс с названием листа для избежания дубликатов
+      const prefixedHeader = sheetName + ': ' + header.toString().trim();
+
       // Собираем все значения из этого столбца
       const columnValues = [];
       for (let rowIndex = 0; rowIndex < dataValues.length; rowIndex++) {
         const cellValue = dataValues[rowIndex][colIndex];
-        
+
         // Добавляем только непустые значения
         if (cellValue && cellValue.toString().trim() !== '') {
           columnValues.push(cellValue.toString().trim());
@@ -138,29 +193,21 @@ function getUnpackingData() {
       // Если в столбце есть данные, добавляем
       if (columnValues.length > 0) {
         result.push({
-          header: header.toString().trim(),
+          header: prefixedHeader,
           value: columnValues.join('\n'), // Объединяем значения через перенос строки
           count: columnValues.length, // Количество строк
         });
       } else {
         // Если данных нет, добавляем пустое поле
         result.push({
-          header: header.toString().trim(),
+          header: prefixedHeader,
           value: '(нет данных)',
           count: 0,
         });
       }
     }
 
-    logUnpacking('✅ Сформировано полей: ' + result.length, 'INFO');
-
-    if (result.length === 0) {
-      return {
-        success: false,
-        data: [],
-        error: 'На листе "Распаковка" нет данных для отображения',
-      };
-    }
+    logUnpacking('✅ Сформировано полей из ' + sheetName + ': ' + result.length, 'DEBUG');
 
     return {
       success: true,
@@ -168,18 +215,18 @@ function getUnpackingData() {
       error: null,
     };
   } catch (error) {
-    logUnpacking('❌ Ошибка чтения данных: ' + error.message, 'ERROR');
+    logUnpacking('❌ Ошибка чтения данных из ' + sheetName + ': ' + error.message, 'ERROR');
     return {
       success: false,
       data: [],
-      error: 'Не удалось прочитать данные: ' + error.message,
+      error: 'Не удалось прочитать данные из ' + sheetName + ': ' + error.message,
     };
   }
 }
 
 
 /**
- * Экспортирует данные из листа "Распаковка" в Google Docs документ
+ * Экспортирует данные из листов "Распаковка" и "ЦА" в Google Docs документ
  * @return {Object} Объект с результатом экспорта
  */
 // eslint-disable-next-line no-unused-vars
@@ -187,7 +234,7 @@ function exportUnpackingToDoc() {
   try {
     logUnpacking('📄 Начало экспорта в Google Docs', 'INFO');
 
-    // Получаем данные
+    // Получаем данные из обоих листов
     const dataResponse = getUnpackingData();
 
     if (!dataResponse.success) {
@@ -200,7 +247,7 @@ function exportUnpackingToDoc() {
     // Формируем имя файла
     const now = new Date();
     const dateStr = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd_HH-mm');
-    const fileName = 'Распаковка_' + dateStr;
+    const fileName = 'Распаковка_Экспорт_' + dateStr;
 
     logUnpacking('📝 Имя документа: ' + fileName, 'DEBUG');
 
@@ -212,7 +259,7 @@ function exportUnpackingToDoc() {
     body.clear();
 
     // === ЗАГОЛОВОК ДОКУМЕНТА ===
-    const title = body.appendParagraph('📦 Данные листа Распаковка');
+    const title = body.appendParagraph('📦 Данные листов Распаковка + ЦА');
     title.setHeading(DocumentApp.ParagraphHeading.HEADING1);
     title.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
 
@@ -238,15 +285,14 @@ function exportUnpackingToDoc() {
       fieldHeader.setSpacingBefore(8);
       fieldHeader.setSpacingAfter(4);
 
-      // Значение поля
-// Значение поля, разбитое по \n на отдельные параграфы
+      // Значение поля, разбитое по \n на отдельные параграфы
       const lines = (field.value || '').split('\n');
-      lines.forEach(line => {
+      lines.forEach((line) => {
         const para = body.appendParagraph('   ' + line);
         para.setFontSize(12);
         para.setIndentStart(20);
         para.setSpacingAfter(0);
-        para.setBold(false);  // ← Явно обычный текст, НЕ жирный
+        para.setBold(false); // ← Явно обычный текст, НЕ жирный
       });
       body.appendParagraph('');
       // Пустая строка между полями
@@ -256,7 +302,7 @@ function exportUnpackingToDoc() {
 
     // === ФУТЕР ===
     body.appendHorizontalRule();
-    const footer = body.appendParagraph('Документ создан автоматически');
+    const footer = body.appendParagraph('Документ создан автоматически (данные из Распаковка + ЦА)');
     footer.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
     footer.setFontSize(10);
     footer.setItalic(true);
@@ -270,16 +316,16 @@ function exportUnpackingToDoc() {
     const docUrl = 'https://docs.google.com/document/d/' + docId + '/edit';
     const downloadUrl = 'https://docs.google.com/document/d/' + docId + '/export?format=docx';
 
-  // Сохранить метаданные документа для "Мои файлы"
-  try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('список_экспорт') || SpreadsheetApp.getActiveSpreadsheet().insertSheet('список_экспорт');
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow(['Наименование', 'Ссылка', 'Дата']);
+    // Сохранить метаданные документа для "Мои файлы"
+    try {
+      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('список_экспорт') || SpreadsheetApp.getActiveSpreadsheet().insertSheet('список_экспорт');
+      if (sheet.getLastRow() === 0) {
+        sheet.appendRow(['Наименование', 'Ссылка', 'Дата']);
+      }
+      sheet.appendRow([fileName, downloadUrl, new Date().toLocaleString()]);
+    } catch (e) {
+      logUnpacking('Ошибка при сохранении метаданных: ' + e.message, 'DEBUG');
     }
-    sheet.appendRow([fileName, downloadUrl, new Date().toLocaleString()]);
-  } catch (e) {
-    logUnpacking('Ошибка при сохранении метаданных: ' + e.message, 'DEBUG');
-  }
 
     logUnpacking('📄 URL документа: ' + docUrl, 'DEBUG');
     logUnpacking('💾 URL скачивания: ' + downloadUrl, 'DEBUG');
@@ -306,6 +352,7 @@ function exportUnpackingToDoc() {
       error: 'Не удалось создать документ: ' + error.message,
     };
   }
+}
 
 
 // Мой файлы - управление экспортированными документами
@@ -313,28 +360,29 @@ function exportUnpackingToDoc() {
 /**
  * Получить список с данными экспортированных документов
  */
+// eslint-disable-next-line no-unused-vars
 function getExportedDocuments() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('список_экспорт') || null;
   if (!sheet) return [];
-  
+
   try {
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) return [];
-    
+
     const data = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
     const documents = [];
-    
+
     data.forEach((row, index) => {
       if (row[0] && row[1]) {
         documents.push({
-          id: index,
+          rowIndex: index, // Используем rowIndex для совместимости с deleteExportedDocs
           name: row[0],
           url: row[1],
-          date: row[2] || new Date().toLocaleString()
+          date: row[2] || new Date().toLocaleString(),
         });
       }
     });
-    
+
     return documents;
   } catch (e) {
     logUnpacking('Ошибка при получении документов: ' + e.message, 'ERROR');
@@ -346,17 +394,17 @@ function getExportedDocuments() {
  * Удалить экспортированные документы
  * @param {array} indices - Индексы для удаления
  */
+// eslint-disable-next-line no-unused-vars
 function deleteExportedDocs(indices) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('список_экспорт') || null;
   if (!sheet) return;
-  
+
   try {
     // Удалять по сортированным индексам в обратном порядке
-    indices.sort((a, b) => b - a).forEach(index => {
+    indices.sort((a, b) => b - a).forEach((index) => {
       sheet.deleteRow(index + 2);
     });
   } catch (e) {
     logUnpacking('Ошибка при удалении документов: ' + e.message, 'ERROR');
   }
-}
 }
