@@ -401,7 +401,7 @@
     
     <!-- Заголовок -->
     <div class="header">
-      <h1 class="title">📦 Просмотр данных - Распаковка + ЦА</h1>
+      <h1 class="title">📦 Просмотр данных - Распаковка</h1>
       <div class="stats">
         <span id="expand-counter">Развёрнуто: 1 из 8</span>
       </div>
@@ -433,8 +433,6 @@
       </button>
       <button class="btn-primary" onclick="exportToDoc()">
         📄 Экспорт в документ
-      </button>
-              <button class="btn-primary" onclick="openMyFilesDialog()">📁 Мои файлы</button>
     </div>
 
   </div>
@@ -721,27 +719,27 @@
     }
 
     function displayMyFiles(docs) {
-  const body = document.getElementById('myfiles-body');
-  
-  if (!docs || docs.length === 0) {
-    body.innerHTML = '<p>Нет распакованных документов</p>';
-  } else {
-    let html = '<div class="files-list">';
-    docs.forEach((doc, index) => {
-      html += `<div class="file-item">`;
-      html += `<input type="checkbox" id="file-${index}" class="file-checkbox" value="${doc.rowIndex}">`;
-      html += `<label for="file-${index}" class="file-name">${doc.name}</label>`;
-      html += `<a href="${doc.url}" target="_blank" class="file-link">Открыть</a>`;
-      html += `</div>`;
-    });
-    html += '</div>';
-    html += '<button onclick="deleteSelectedFiles()" class="btn-secondary" style="margin-top: 10px;">Delete Selected</button>';
-    body.innerHTML = html;
-  }
-  
-  // Открыть модаль ПОСЛЕ заполнения данными
-  document.getElementById('myfiles-modal').style.display = 'flex';
-}
+      const body = document.getElementById('myfiles-body');
+      if (!docs || docs.length === 0) {
+        body.innerHTML = '<p>Нет распакованных документов</p>';
+        return;
+          // Открыть модаль после заполнения данных
+          document.getElementById('myfiles-modal').style.display = 'block';
+        
+      }
+
+      let html = '<div class="files-list">';
+      docs.forEach((doc, index) => {
+        html += `<div class="file-item">`;
+        html += `<input type="checkbox" id="file-${index}" class="file-checkbox" value="${index}">`;
+        html += `<label for="file-${index}" class="file-name">${doc.name}</label>`;
+        html += `<a href="${doc.url}" target="_blank" class="file-link">Открыть</a>`;
+        html += `</div>`;
+      });
+      html += '</div>';
+      html += '<button onclick="deleteSelectedFiles()" class="btn-secondary" style="margin-top: 10px;">Delete Selected</button>';
+      body.innerHTML = html;
+    }
 
     function deleteSelectedFiles() {
       const checkboxes = document.querySelectorAll('.file-checkbox:checked');
