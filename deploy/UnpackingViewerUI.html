@@ -742,6 +742,20 @@
     html += '<button onclick="deleteSelectedFiles()" class="btn-secondary" style="margin-top: 10px;">Delete Selected</button>';
     body.innerHTML = html;
   }
+  
+  // Закрыть модаль Мои файлы при клике на фон
+  document.getElementById('myfiles-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+      closeMyFilesModal();
+    }
+  });
+  
+  // Закрыть модаль экспорта при клике на фон
+  document.getElementById('export-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+      closeModal();
+    }
+  });
 
   function deleteSelectedFiles() {
     const checkboxes = document.querySelectorAll('.file-checkbox:checked');
