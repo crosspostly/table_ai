@@ -23,11 +23,11 @@ const BATCH_OPERATIONS = {
   etap2_2: {
     name: '🎯 обновить Рефлексия (часть 2)',
     startRow: 24,
-    endRow: 37,
+    endRow: 36,
   },
   faza1: {
     name: '🎯 обновить Фаза 1',
-    startRow: 38,
+    startRow: 37,
     endRow: 41,
   },
   archetype: {
