@@ -711,61 +711,60 @@
       alert('❌ ' + message);
     }
 
-  // Закрыть модаль Мои файлы при клике на фон
-  document.getElementById('myfiles-modal').addEventListener('click', function(e) {
-    if (e.target === this) {
-      closeMyFilesModal();
+    // Модальное окно "Мои файлы"
+    function openMyFilesDialog() {
+      google.script.run.withSuccessHandler(displayMyFiles).getExportedDocuments();
+      document.getElementById('myfiles-modal').style.display = 'block';
     }
-  });
 
-  // Закрыть модаль экспорта при клике на фон
-  document.getElementById('export-modal').addEventListener('click', function(e) {
-    if (e.target === this) {
-      closeModal();
+    function closeMyFilesModal() {
+      document.getElementById('myfiles-modal').style.display = 'none';
     }
-  });
+
+    function displayMyFiles(docs) {
+      const body = document.getElementById('myfiles-body');
+      if (!docs || docs.length === 0) {
+        body.innerHTML = '<p>Нет распакованных документов</p>';
+        return;
+      }
+
+      let html = '<div class="files-list">';
+      docs.forEach((doc, index) => {
+        html += `<div class="file-item">`;
+        html += `<input type="checkbox" id="file-${index}" class="file-checkbox" value="${index}">`;
+        html += `<label for="file-${index}" class="file-name">${doc.name}</label>`;
+        html += `<a href="${doc.url}" target="_blank" class="file-link">Открыть</a>`;
+        html += `</div>`;
+      });
+      html += '</div>';
+      html += '<button onclick="deleteSelectedFiles()" class="btn-secondary" style="margin-top: 10px;">Delete Selected</button>';
+      body.innerHTML = html;
+    }
+
+    function deleteSelectedFiles() {
+      const checkboxes = document.querySelectorAll('.file-checkbox:checked');
+      const indices = Array.from(checkboxes).map(cb => parseInt(cb.value));
+      if (indices.length === 0) {
+        alert('Выберите документы для удаления');
+        return;
+      }
+      google.script.run.deleteExportedDocs(indices);
+      openMyFilesDialog();
+    }
+
+    // Закрыть модаль Мои файлы при клике на фон
+    document.getElementById('myfiles-modal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeMyFilesModal();
+      }
+    });
+
+    // Закрыть модаль экспорта при клике на фон
+    document.getElementById('export-modal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeModal();
+      }
+    });
     </script>
 </body>
-  
-  // Модальное окно "Мои файлы"
-  function openMyFilesDialog() {
-    google.script.run.withSuccessHandler(displayMyFiles).getExportedDocuments();
-    document.getElementById('myfiles-modal').style.display = 'block';
-  }
-
-  function closeMyFilesModal() {
-    document.getElementById('myfiles-modal').style.display = 'none';
-  }
-
-  function displayMyFiles(docs) {
-    const body = document.getElementById('myfiles-body');
-    if (!docs || docs.length === 0) {
-      body.innerHTML = '<p>Нет распакованных документов</p>';
-      return;
-    }
-
-    let html = '<div class="files-list">';
-    docs.forEach((doc, index) => {
-      html += `<div class="file-item">`;
-      html += `<input type="checkbox" id="file-${index}" class="file-checkbox" value="${index}">`;
-      html += `<label for="file-${index}" class="file-name">${doc.name}</label>`;
-      html += `<a href="${doc.url}" target="_blank" class="file-link">Открыть</a>`;
-      html += `</div>`;
-    });
-    html += '</div>';
-    html += '<button onclick="deleteSelectedFiles()" class="btn-secondary" style="margin-top: 10px;">Delete Selected</button>';
-    body.innerHTML = html;
-  }
-  
-
-  function deleteSelectedFiles() {
-    const checkboxes = document.querySelectorAll('.file-checkbox:checked');
-    const indices = Array.from(checkboxes).map(cb => parseInt(cb.value));
-    if (indices.length === 0) {
-      alert('Выберите документы для удаления');
-      return;
-    }
-    google.script.run.deleteExportedDocs(indices);
-    openMyFilesDialog();
-  }
 </html>
