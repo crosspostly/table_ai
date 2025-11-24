@@ -1,12 +1,18 @@
 /**
  * TABLE AI - Unpacking Viewer Module
- * v1.0.1 - Fixed logging system
+ * v1.1.0 - Redesigned data structure for proper A1/B1 heading display
  *
- * Модуль для просмотра и экспорта данных из листа "Распаковка"
+ * Модуль для просмотра и экспорта данных из листов "Распаковка" и "ЦА"
+ *
+ * Структура данных:
+ * - A1 & B1: Основные заголовки
+ * - A2: Подзаголовок для столбца A (отображается под A1)
+ * - B2: Подзаголовок для столбца B (содержимое как обычный текст)
+ * - Строки 3+: Данные для соответствующих столбцов
  *
  * Функции:
  * - openUnpackingViewer(): открытие модального окна
- * - getUnpackingData(): чтение данных из листа
+ * - getUnpackingData(): чтение данных из листов с новой структурой
  * - exportUnpackingToDoc(): экспорт в Google Docs
  * - logUnpacking(): безопасное логирование с fallback
  */
@@ -63,7 +69,8 @@ function openUnpackingViewer() {
 }
 
 /**
- * Читает данные из листов "Распаковка" и "ЦА"
+ * Читает данные из листов "Распаковка" и "ЦА" с новой структурой заголовков
+ * A1/B1 - основные заголовки, A2/B2 - подзаголовки, строки 3+ - данные
  * @return {Object} Объект с данными или ошибкой
  */
 // eslint-disable-next-line no-unused-vars
@@ -121,7 +128,8 @@ function getUnpackingData() {
 }
 
 /**
- * Вспомогательная функция для чтения данных из одного листа
+ * Вспомогательная функция для чтения данных из одного листа с новой структурой
+ * Читает A1:B1 (основные заголовки), A2:B2 (подзаголовки), строки 3+ (данные)
  * @param {Spreadsheet} ss - Активная таблица
  * @param {string} sheetName - Имя листа
  * @return {Object} Объект с данными или ошибкой
@@ -142,15 +150,11 @@ function getSheetData(ss, sheetName) {
       };
     }
 
-    // Читаем заголовки (строка 2, A2:H2)
-    const headersRange = sheet.getRange('A2:H2');
-    const headersValues = headersRange.getValues()[0];
-
     // Находим последнюю заполненную строку в столбце A
     const lastRow = sheet.getLastRow();
 
-    // Если данных нет после заголовков
-    if (lastRow < 3) {
+    // Если данных нет
+    if (lastRow < 1) {
       return {
         success: false,
         data: [],
@@ -158,53 +162,80 @@ function getSheetData(ss, sheetName) {
       };
     }
 
-    // Читаем ВСЕ данные от строки 3 до последней строки (A3:H{lastRow})
-    const dataRange = sheet.getRange(3, 1, lastRow - 2, 8); // строка 3, столбец 1, количество строк, 8 столбцов
-    const dataValues = dataRange.getValues();
+    // Читаем основные заголовки из A1:B1
+    const mainHeadersRange = sheet.getRange('A1:B1');
+    const mainHeadersValues = mainHeadersRange.getValues()[0];
 
-    logUnpacking('📊 Прочитано заголовков: ' + headersValues.length, 'DEBUG');
+    // Читаем подзаголовки из A2:B2
+    const subHeadersRange = sheet.getRange('A2:B2');
+    const subHeadersValues = subHeadersRange.getValues()[0];
+
+    // Читаем данные из строк 3+ для столбцов A и B
+    let dataValues = [];
+    if (lastRow >= 3) {
+      const dataRange = sheet.getRange(3, 1, lastRow - 2, 2); // строки 3+, столбцы A-B
+      dataValues = dataRange.getValues();
+    }
+
+    logUnpacking('📊 Прочитано основных заголовков: ' + mainHeadersValues.filter((h) => h).length, 'DEBUG');
+    logUnpacking('📊 Прочитано подзаголовков: ' + subHeadersValues.filter((h) => h).length, 'DEBUG');
     logUnpacking('📊 Прочитано строк данных: ' + dataValues.length, 'DEBUG');
 
-    // Формируем массив объектов {header, values[]}
+    // Формируем массив объектов с правильной структурой
     const result = [];
 
-    for (let colIndex = 0; colIndex < headersValues.length; colIndex++) {
-      const header = headersValues[colIndex];
+    // Обрабатываем столбец A (A1 + A2 + данные)
+    if (mainHeadersValues[0]) {
+      const mainTitle = mainHeadersValues[0].toString().trim();
+      const subTitle = subHeadersValues[0] ? subHeadersValues[0].toString().trim() : '';
 
-      // Пропускаем пустые заголовки
-      if (!header || header.toString().trim() === '') {
-        continue;
-      }
-
-      // Добавляем префикс с названием листа для избежания дубликатов
-      const prefixedHeader = sheetName + ': ' + header.toString().trim();
-
-      // Собираем все значения из этого столбца
-      const columnValues = [];
+      // Собираем все данные из столбца A
+      const columnData = [];
       for (let rowIndex = 0; rowIndex < dataValues.length; rowIndex++) {
-        const cellValue = dataValues[rowIndex][colIndex];
-
-        // Добавляем только непустые значения
+        const cellValue = dataValues[rowIndex][0];
         if (cellValue && cellValue.toString().trim() !== '') {
-          columnValues.push(cellValue.toString().trim());
+          columnData.push(cellValue.toString().trim());
         }
       }
 
-      // Если в столбце есть данные, добавляем
-      if (columnValues.length > 0) {
-        result.push({
-          header: prefixedHeader,
-          value: columnValues.join('\n'), // Объединяем значения через перенос строки
-          count: columnValues.length, // Количество строк
-        });
-      } else {
-        // Если данных нет, добавляем пустое поле
-        result.push({
-          header: prefixedHeader,
-          value: '(нет данных)',
-          count: 0,
-        });
+      // Формируем заголовок
+      let fullHeader = sheetName + ': ' + mainTitle;
+      if (subTitle) {
+        fullHeader += ' → ' + subTitle;
       }
+
+      result.push({
+        header: fullHeader,
+        value: columnData.length > 0 ? columnData.join('\n') : '(нет данных)',
+        count: columnData.length,
+      });
+    }
+
+    // Обрабатываем столбец B (B1 + B2 + данные как обычный текст)
+    if (mainHeadersValues[1]) {
+      const mainTitle = mainHeadersValues[1].toString().trim();
+      const subTitle = subHeadersValues[1] ? subHeadersValues[1].toString().trim() : '';
+
+      // Собираем все данные из столбца B
+      const columnData = [];
+      for (let rowIndex = 0; rowIndex < dataValues.length; rowIndex++) {
+        const cellValue = dataValues[rowIndex][1];
+        if (cellValue && cellValue.toString().trim() !== '') {
+          columnData.push(cellValue.toString().trim());
+        }
+      }
+
+      // Формируем заголовок
+      let fullHeader = sheetName + ': ' + mainTitle;
+      if (subTitle) {
+        fullHeader += ' → ' + subTitle;
+      }
+
+      result.push({
+        header: fullHeader,
+        value: columnData.length > 0 ? columnData.join('\n') : '(нет данных)',
+        count: columnData.length,
+      });
     }
 
     logUnpacking('✅ Сформировано полей из ' + sheetName + ': ' + result.length, 'DEBUG');
