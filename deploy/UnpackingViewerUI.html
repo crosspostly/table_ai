@@ -710,7 +710,21 @@
     function showError(message) {
       alert('❌ ' + message);
     }
-  </script>
+
+  // Закрыть модаль Мои файлы при клике на фон
+  document.getElementById('myfiles-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+      closeMyFilesModal();
+    }
+  });
+
+  // Закрыть модаль экспорта при клике на фон
+  document.getElementById('export-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+      closeModal();
+    }
+  });
+    </script>
 </body>
   
   // Модальное окно "Мои файлы"
@@ -743,19 +757,6 @@
     body.innerHTML = html;
   }
   
-  // Закрыть модаль Мои файлы при клике на фон
-  document.getElementById('myfiles-modal').addEventListener('click', function(e) {
-    if (e.target === this) {
-      closeMyFilesModal();
-    }
-  });
-  
-  // Закрыть модаль экспорта при клике на фон
-  document.getElementById('export-modal').addEventListener('click', function(e) {
-    if (e.target === this) {
-      closeModal();
-    }
-  });
 
   function deleteSelectedFiles() {
     const checkboxes = document.querySelectorAll('.file-checkbox:checked');
