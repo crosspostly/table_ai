@@ -234,6 +234,7 @@ function exportUnpackingToDoc() {
       const fieldHeader = body.appendParagraph('📌 ' + field.header);
       fieldHeader.setFontSize(14);
       fieldHeader.setBold(true);
+      fieldHeader.setHeading(DocumentApp.ParagraphHeading.HEADING2);
       fieldHeader.setSpacingBefore(8);
       fieldHeader.setSpacingAfter(4);
 
@@ -250,6 +251,7 @@ function exportUnpackingToDoc() {
       body.appendParagraph('');
       // Пустая строка между полями
       body.appendParagraph('');
+      body.appendPageBreak();
     });
 
     // === ФУТЕР ===
