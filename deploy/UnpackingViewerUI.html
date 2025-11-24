@@ -401,7 +401,7 @@
     
     <!-- Заголовок -->
     <div class="header">
-      <h1 class="title">📦 Просмотр данных - Распаковка</h1>
+      <h1 class="title">📦 Просмотр данных - Распаковка + ЦА</h1>
       <div class="stats">
         <span id="expand-counter">Развёрнуто: 1 из 8</span>
       </div>
@@ -729,7 +729,7 @@
     let html = '<div class="files-list">';
     docs.forEach((doc, index) => {
       html += `<div class="file-item">`;
-      html += `<input type="checkbox" id="file-${index}" class="file-checkbox" value="${index}">`;
+      html += `<input type="checkbox" id="file-${index}" class="file-checkbox" value="${doc.rowIndex}">`;
       html += `<label for="file-${index}" class="file-name">${doc.name}</label>`;
       html += `<a href="${doc.url}" target="_blank" class="file-link">Открыть</a>`;
       html += `</div>`;
@@ -742,18 +742,6 @@
   // Открыть модаль ПОСЛЕ заполнения данными
   document.getElementById('myfiles-modal').style.display = 'flex';
 }
-      let html = '<div class="files-list">';
-      docs.forEach((doc, index) => {
-        html += `<div class="file-item">`;
-        html += `<input type="checkbox" id="file-${index}" class="file-checkbox" value="${index}">`;
-        html += `<label for="file-${index}" class="file-name">${doc.name}</label>`;
-        html += `<a href="${doc.url}" target="_blank" class="file-link">Открыть</a>`;
-        html += `</div>`;
-      });
-      html += '</div>';
-      html += '<button onclick="deleteSelectedFiles()" class="btn-secondary" style="margin-top: 10px;">Delete Selected</button>';
-      body.innerHTML = html;
-    }
 
     function deleteSelectedFiles() {
       const checkboxes = document.querySelectorAll('.file-checkbox:checked');
