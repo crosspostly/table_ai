@@ -714,7 +714,6 @@
     // Модальное окно "Мои файлы"
     function openMyFilesDialog() {
       google.script.run.withSuccessHandler(displayMyFiles).getExportedDocuments();
-      document.getElementById('myfiles-modal').style.display = 'block';
     }
 
     function closeMyFilesModal() {
@@ -726,6 +725,9 @@
       if (!docs || docs.length === 0) {
         body.innerHTML = '<p>Нет распакованных документов</p>';
         return;
+          // Открыть модаль после заполнения данных
+          document.getElementById('myfiles-modal').style.display = 'block';
+        
       }
 
       let html = '<div class="files-list">';
