@@ -8,24 +8,24 @@ describe('UnpackingViewer', () => {
   beforeEach(() => {
     global.addLog = jest.fn();
     global.Logger = {
-      log: jest.fn()
+      log: jest.fn(),
     };
     global.Utilities = {
-      formatDate: jest.fn().mockReturnValue('2023-12-01 10:00:00')
+      formatDate: jest.fn().mockReturnValue('2023-12-01 10:00:00'),
     };
     global.Session = {
-      getScriptTimeZone: jest.fn().mockReturnValue('GMT')
+      getScriptTimeZone: jest.fn().mockReturnValue('GMT'),
     };
     global.SpreadsheetApp = {
       getActiveSpreadsheet: jest.fn(),
-      getUi: jest.fn()
+      getUi: jest.fn(),
     };
     global.HtmlService = {
       createHtmlOutputFromFile: jest.fn().mockReturnValue({
         setWidth: jest.fn().mockReturnThis(),
         setHeight: jest.fn().mockReturnThis(),
-        setTitle: jest.fn().mockReturnThis()
-      })
+        setTitle: jest.fn().mockReturnThis(),
+      }),
     };
     global.DocumentApp = {
       create: jest.fn().mockReturnValue({
@@ -39,11 +39,11 @@ describe('UnpackingViewer', () => {
             setBold: jest.fn().mockReturnThis(),
             setSpacingBefore: jest.fn().mockReturnThis(),
             setSpacingAfter: jest.fn().mockReturnThis(),
-            setIndentStart: jest.fn().mockReturnThis()
+            setIndentStart: jest.fn().mockReturnThis(),
           }),
-          appendHorizontalRule: jest.fn()
-        })
-      })
+          appendHorizontalRule: jest.fn(),
+        }),
+      }),
     };
   });
 
@@ -74,17 +74,17 @@ describe('UnpackingViewer', () => {
           }
         }
       `;
-      
+
       eval(mockCode);
-      
+
       logUnpacking('Test message', 'INFO');
-      
+
       expect(global.addLog).toHaveBeenCalledWith('[UnpackingViewer] Test message', 'INFO');
     });
 
     test('should fallback to Logger when addLog is not available', () => {
       delete global.addLog;
-      
+
       const mockCode = `
         function logUnpacking(message, level) {
           const logLevel = level || 'INFO';
@@ -109,11 +109,11 @@ describe('UnpackingViewer', () => {
           }
         }
       `;
-      
+
       eval(mockCode);
-      
+
       logUnpacking('Test message', 'INFO');
-      
+
       expect(global.Logger.log).toHaveBeenCalledWith('[2023-12-01 10:00:00] INFO: Test message');
     });
 
@@ -142,11 +142,11 @@ describe('UnpackingViewer', () => {
           }
         }
       `;
-      
+
       eval(mockCode);
-      
+
       logUnpacking('Test message');
-      
+
       expect(global.addLog).toHaveBeenCalledWith('[UnpackingViewer] Test message', 'INFO');
     });
   });
@@ -156,11 +156,11 @@ describe('UnpackingViewer', () => {
       const testData = {
         success: true,
         data: [
-          { header: 'Test Header', value: 'Test Value' }
+          {header: 'Test Header', value: 'Test Value'},
         ],
-        error: null
+        error: null,
       };
-      
+
       expect(testData.success).toBe(true);
       expect(Array.isArray(testData.data)).toBe(true);
       expect(testData.data.length).toBeGreaterThan(0);
@@ -172,9 +172,9 @@ describe('UnpackingViewer', () => {
       const testData = {
         success: true,
         data: [],
-        error: null
+        error: null,
       };
-      
+
       expect(testData.success).toBe(true);
       expect(Array.isArray(testData.data)).toBe(true);
       expect(testData.data.length).toBe(0);
@@ -184,9 +184,9 @@ describe('UnpackingViewer', () => {
       const testData = {
         success: false,
         data: [],
-        error: 'Test error message'
+        error: 'Test error message',
       };
-      
+
       expect(testData.success).toBe(false);
       expect(testData.error).toBe('Test error message');
     });
@@ -196,12 +196,12 @@ describe('UnpackingViewer', () => {
     test('should have required function names defined', () => {
       const requiredFunctions = [
         'openUnpackingViewer',
-        'getUnpackingData', 
+        'getUnpackingData',
         'exportUnpackingToDoc',
-        'logUnpacking'
+        'logUnpacking',
       ];
-      
-      requiredFunctions.forEach(funcName => {
+
+      requiredFunctions.forEach((funcName) => {
         // Check that function names are valid JavaScript identifiers
         expect(funcName).toMatch(/^[a-zA-Z_$][a-zA-Z0-9_$]*$/);
       });

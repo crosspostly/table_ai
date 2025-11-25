@@ -9,13 +9,13 @@ const LOG_SHEET_NAME = 'Логи';
 const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
 
 // ===== Entry points =====
-function doGet(e) {
+function doGet(_e) {
   return json_({ok: true, ping: 'pong', time: new Date().toISOString()});
 }
 
-function doPost(e) {
+function doPost(_e) {
   try {
-    const data = parseBody_(e);
+    const data = parseBody_(_e);
     const action = (data.action || '').toString();
     const token = (data.token || '').toString();
     const email = (data.email || '').toString();
@@ -85,6 +85,100 @@ function doPost(e) {
         quota: status.quota || null, // ← ДОБАВЛЕНО
         message: status.message || null, // ← ДОБАВЛЕНО
       });
+    }
+    case 'collect_config_preview': {
+      const config = data.config || {};
+      const spreadsheetId = (data.spreadsheetId || '').toString();
+      const tableId = (data.tableId || '').toString();
+      const logs = [];
+
+      let ok = true;
+      let err = null;
+      let preview = '';
+      try {
+        if (!config) throw new Error('NO_CONFIG');
+        if (!spreadsheetId && !tableId) throw new Error('NO_SPREADSHEET_ID');
+
+        // Read data for preview
+        if (config.userData && config.userData.length > 0) {
+          const previews = [];
+          config.userData.forEach(function(source, index) {
+            if (source.sheet && source.cell) {
+              try {
+                const dataText = tableId ?
+                  serverReadData_(tableId, source.sheet, source.cell, logs) :
+                  serverReadData_(spreadsheetId, source.sheet, source.cell, logs);
+                const trimmed = dataText.length > 100 ? dataText.substring(0, 100) + '...' : dataText;
+                previews.push(`Источник ${index + 1} (${source.sheet}!${source.cell}): ${trimmed}`);
+              } catch (e) {
+                previews.push(`Источник ${index + 1}: Ошибка - ${e.message}`);
+              }
+            }
+          });
+          preview = previews.join('\n\n');
+        } else {
+          preview = '(нет данных для предпросмотра)';
+        }
+      } catch (ex) {
+        ok = false;
+        err = String(ex && ex.message || ex);
+      }
+
+      try {
+        serverLog_({
+          action: 'collect_config_preview',
+          ok: ok,
+          error: err,
+          email: email,
+          token: token,
+          promptLen: preview.length,
+          ms: Date.now() - Date.now(),
+        });
+      } catch (_) {}
+      if (!ok) return json_({ok: false, error: err, logs: logs}, 400);
+      return json_({ok: true, data: preview, logs: logs});
+    }
+    case 'collect_config_execute': {
+      const config = data.config || {};
+      const spreadsheetId = (data.spreadsheetId || '').toString();
+      const sheetName = (data.sheetName || '').toString();
+      const cellAddress = (data.cellAddress || '').toString();
+      const apiKey = (data.apiKey || '').toString();
+      const logs = [];
+
+      // Validate required fields
+      if (!config) return json_({ok: false, error: 'NO_CONFIG', logs: logs}, 400);
+      if (!spreadsheetId) return json_({ok: false, error: 'NO_SPREADSHEET_ID', logs: logs}, 400);
+      if (!sheetName) return json_({ok: false, error: 'NO_SHEET_NAME', logs: logs}, 400);
+      if (!cellAddress) return json_({ok: false, error: 'NO_CELL_ADDRESS', logs: logs}, 400);
+      if (!apiKey) return json_({ok: false, error: 'NO_API_KEY', logs: logs}, 400);
+
+      // Rate limit for execute calls
+      if (!rateLimitOk_(token)) return json_({ok: false, error: 'RATE_LIMIT', logs: logs}, 429);
+
+      const t0 = Date.now();
+      let ok = true;
+      let err = null;
+      let result = '';
+      try {
+        result = serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, apiKey, logs);
+      } catch (ex) {
+        ok = false;
+        err = String(ex && ex.message || ex);
+      }
+      try {
+        serverLog_({
+          action: 'collect_config_execute',
+          ok: ok,
+          error: err,
+          email: email,
+          token: token,
+          promptLen: result.length,
+          ms: Date.now() - t0,
+        });
+      } catch (_) {}
+      if (!ok) return json_({ok: false, error: err, logs: logs}, 500);
+      return json_({ok: true, data: result, logs: logs});
     }
     default:
       return json_({ok: false, error: 'UNKNOWN_ACTION'}, 400);
@@ -193,8 +287,8 @@ function checkLicense_(token, email, sheetId) {
             const newCopiesCount = copiesCount - 1;
 
             // Обновляем лицензионную таблицу
-            sh.getRange(r + 1, 5).setValue(bindingInfo); // колонка 4 (sheet_ids) = индекс 4, но getRange начинается с 1
-            sh.getRange(r + 1, 6).setValue(newCopiesCount); // колонка 5 (copies_count) = индекс 5, но getRange начинается с 1
+            sh.getRange(r + 1, 5).setValue(bindingInfo); // колонка 4 (sheet_ids) = индекс 4, но getRange с 1
+            sh.getRange(r + 1, 6).setValue(newCopiesCount); // колонка 5 (copies_count) = индекс 5, но getRange с 1
 
             return {
               ok: true,
@@ -251,16 +345,6 @@ function checkLicense_(token, email, sheetId) {
   }
 }
 
-function findHeader_(headerArr, keys) {
-  for (let i = 0; i < headerArr.length; i++) {
-    const h = headerArr[i];
-    for (let j = 0; j < keys.length; j++) {
-      if (h === keys[j]) return i;
-    }
-  }
-  return -1;
-}
-
 // ===== Gemini (server-side) =====
 function serverGM_(prompt, maxTokens, temperature, apiKey) {
   if (!prompt || typeof prompt !== 'string') throw new Error('EMPTY_PROMPT');
@@ -268,7 +352,10 @@ function serverGM_(prompt, maxTokens, temperature, apiKey) {
 
   const requestBody = {
     contents: [{parts: [{text: prompt}]}],
-    generationConfig: {maxOutputTokens: maxTokens, temperature: temperature},
+    generationConfig: {
+      maxOutputTokens: maxTokens,
+      temperature: temperature,
+    },
   };
   const options = {
     method: 'POST',
@@ -403,4 +490,177 @@ function maskToken_(t) {
   const s = String(t || '');
   if (s.length <= 4) return '****';
   return s.substring(0, 4) + '****';
+}
+
+// ===== CollectConfig Server Functions =====
+
+/**
+ * Execute CollectConfig configuration on the server
+ * @param {Object} config - CollectConfig configuration
+ * @param {string} spreadsheetId - Target spreadsheet ID
+ * @param {string} sheetName - Target sheet name
+ * @param {string} cellAddress - Target cell address
+ * @param {string} apiKey - Gemini API key
+ * @param {Array} logs - Array to collect log entries
+ * @return {string} AI response text
+ */
+function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, apiKey, logs) {
+  logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🚀 Начало выполнения CollectConfig на сервере'});
+
+  try {
+    // Get system prompt
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📖 Загрузка System Prompt...'});
+    const systemPrompt = serverGetSystemPrompt_(config, spreadsheetId, logs);
+    if (systemPrompt) {
+      logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `✅ System Prompt загружен: ${systemPrompt.length} символов`});
+    } else {
+      logs.push({timestamp: new Date().toISOString(), level: 'WARN', message: '⚠️ System Prompt не задан'});
+    }
+
+    // Get user data
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📦 Загрузка User Data...'});
+    const userDataParts = [];
+    if (config.userData && config.userData.length > 0) {
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📦 User Data: ${config.userData.length} источников`});
+
+      config.userData.forEach(function(source, index) {
+        if (source.sheet && source.cell) {
+          logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  📍 Источник ${index + 1}: ${source.sheet}!${source.cell}`});
+          try {
+            const data = serverReadData_(spreadsheetId, source.sheet, source.cell, logs);
+            logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `  ✅ Прочитано: ${data.length} символов`});
+            userDataParts.push(`Источник (${source.sheet}!${source.cell}):\n${data}`);
+          } catch (e) {
+            logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `  ❌ Ошибка: ${e.message}`});
+            userDataParts.push(`Источник (${source.sheet}!${source.cell}):\n[ОШИБКА: ${e.message}]`);
+          }
+        }
+      });
+    } else {
+      logs.push({timestamp: new Date().toISOString(), level: 'WARN', message: '⚠️ User Data не задан'});
+    }
+
+    // Build final prompt
+    let finalPrompt = '';
+    if (systemPrompt) {
+      finalPrompt += systemPrompt + '\n\n---\n\n';
+    }
+    if (userDataParts.length > 0) {
+      finalPrompt += 'ДАННЫЕ:\n' + userDataParts.join('\n\n');
+    }
+
+    if (!finalPrompt.trim()) {
+      throw new Error('Нет данных для обработки!');
+    }
+
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📝 Финальный промпт: ${finalPrompt.length} символов`});
+
+    // Call AI with defaults or config overrides
+    const maxTokens = config.maxTokens || 25000;
+    const temperature = config.temperature || 0.7;
+
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🤖 Отправка запроса в Gemini...'});
+    const aiResult = serverGM_(finalPrompt, maxTokens, temperature, apiKey);
+
+    if (!aiResult || aiResult.startsWith('Error:')) {
+      throw new Error('Ошибка AI: ' + aiResult);
+    }
+
+    logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `✅ Получен ответ от AI: ${aiResult.length} символов`});
+
+    // Write result to target sheet
+    try {
+      const targetSpreadsheet = SpreadsheetApp.openById(spreadsheetId);
+      const targetSheet = targetSpreadsheet.getSheetByName(sheetName);
+      if (targetSheet) {
+        targetSheet.getRange(cellAddress).setValue(aiResult);
+        logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `✅ Результат записан в ${sheetName}!${cellAddress}`});
+      } else {
+        throw new Error(`Лист "${sheetName}" не найден`);
+      }
+    } catch (e) {
+      logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `❌ Ошибка записи результата: ${e.message}`});
+      throw new Error(`Не удалось записать результат в ${sheetName}!${cellAddress}: ${e.message}`);
+    }
+
+    logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ Выполнение CollectConfig завершено успешно'});
+    return aiResult;
+  } catch (error) {
+    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `❌ Ошибка выполнения: ${error.message}`});
+    throw error;
+  }
+}
+
+/**
+ * Get system prompt from configuration
+ * @param {Object} config - CollectConfig configuration
+ * @param {string} defaultSpreadsheetId - Default spreadsheet ID
+ * @param {Array} logs - Array to collect log entries
+ * @return {string} System prompt text
+ */
+function serverGetSystemPrompt_(config, defaultSpreadsheetId, logs) {
+  if (!config.systemPrompt || !config.systemPrompt.sheet || !config.systemPrompt.cell) {
+    return '';
+  }
+
+  const sheet = config.systemPrompt.sheet;
+  const cell = config.systemPrompt.cell;
+  const tableId = config.systemPrompt.tableId || '';
+
+  logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📍 System Prompt: ${sheet}!${cell}${tableId ? ' (защищенная таблица: ' + tableId + ')' : ''}`});
+
+  try {
+    const spreadsheetId = tableId || defaultSpreadsheetId;
+    const prompt = serverReadData_(spreadsheetId, sheet, cell, logs);
+    logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `✅ System Prompt успешно прочитан: ${prompt.length} символов`});
+    return prompt;
+  } catch (e) {
+    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `❌ Ошибка чтения System Prompt: ${e.message}`});
+    throw new Error(`Не удалось прочитать System Prompt из ${sheet}!${cell}: ${e.message}`);
+  }
+}
+
+/**
+ * Read data from spreadsheet
+ * @param {string} spreadsheetId - Spreadsheet ID
+ * @param {string} sheetName - Sheet name
+ * @param {string} cellAddress - Cell/range address
+ * @param {Array} logs - Array to collect log entries
+ * @return {string} Flattened text data
+ */
+function serverReadData_(spreadsheetId, sheetName, cellAddress, logs) {
+  logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  → Чтение ${sheetName}!${cellAddress} из ${spreadsheetId}`});
+
+  try {
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const sheet = ss.getSheetByName(sheetName);
+
+    if (!sheet) {
+      throw new Error(`Лист "${sheetName}" не найден`);
+    }
+
+    // Read range
+    const range = sheet.getRange(cellAddress);
+    const values = range.getValues();
+
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  → Прочитано: ${values.length} строк × ${values[0].length} столбцов`});
+
+    // Flatten and filter empty values
+    const result = [];
+    for (let r = 0; r < values.length; r++) {
+      for (let c = 0; c < values[r].length; c++) {
+        const val = values[r][c];
+        if (val !== null && val !== undefined && val.toString().trim() !== '') {
+          result.push(val.toString());
+        }
+      }
+    }
+
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  → После фильтрации: ${result.length} значений`});
+
+    return result.join('\n');
+  } catch (error) {
+    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `  ❌ Ошибка чтения: ${error.message}`});
+    throw new Error(`Не удалось прочитать ${sheetName}!${cellAddress}: ${error.message}`);
+  }
 }

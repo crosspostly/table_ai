@@ -37,7 +37,7 @@ function importVkPosts() {
 
   let arr = [];
   try {
-    const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    const resp = UrlFetchApp.fetch(url, {muteHttpExceptions: true});
     if (resp.getResponseCode() !== 200) {
       Logger.log('HTTP ERROR: ' + resp.getResponseCode());
       Logger.log('BODY: ' + resp.getContentText());
@@ -49,7 +49,7 @@ function importVkPosts() {
     SpreadsheetApp.getUi().alert('Ошибка запроса VK Parser: ' + e);
     return;
   }
-  
+
   if (!Array.isArray(arr)) {
     addLog('❌ Неверный массив от VK', 'ERROR');
     SpreadsheetApp.getUi().alert('Ошибка', 'Неверный формат данных от VK Parser', SpreadsheetApp.getUi().ButtonSet.OK);
