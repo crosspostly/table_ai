@@ -387,9 +387,10 @@ function updateSingleCell(sheetName, cellName) {
       };
     }
 
-    const result = executeCollectConfig(sheetName, cellName);
+    // Use server-based execution (NO local fallback)
+    const result = callCollectConfigServer_(config, sheetName, cellName);
 
-    if (result && result.success) {
+    if (result && result.ok) {
       updateLastRunWithStatus(sheetName, cellName, true); // ⭐ Пишем TRUE
       return {success: true};
     }

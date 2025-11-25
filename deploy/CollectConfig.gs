@@ -169,190 +169,71 @@ function createDefaultTemplate() {
 function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
   try {
     clearCollectLog();
-    addCollectLog(`🚀 CollectConfig v${COLLECT_CONFIG_VERSION} (обновлено: ${COLLECT_CONFIG_LAST_UPDATE})`, 'INFO');
+    addCollectLog(`🚀 CollectConfig v${COLLECT_CONFIG_VERSION}`, 'INFO');
     addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
     addCollectLog('📋 НАЧАЛО ВЫПОЛНЕНИЯ', 'INFO');
     addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
 
     // Валидация
-    addCollectLog(`📍 Целевая ячейка: ${sheetName}!${cellAddress}`, 'INFO');
-    addCollectLog(`📊 Конфигурация: ${JSON.stringify(config).substring(0, 100)}...`, 'INFO');
-
     if (!sheetName || !cellAddress || !config) {
       throw new Error('Отсутствуют обязательные параметры!');
     }
 
-    // Сохраняем конфигурацию
+    addCollectLog(`📍 Целевая ячейка: ${sheetName}!${cellAddress}`, 'INFO');
+
+    // Сохраняем конфигурацию локально (для повторного использования)
     addCollectLog('💾 Сохранение конфигурации...', 'INFO');
     const saved = saveCollectConfig(sheetName, cellAddress, config);
     if (saved) {
       addCollectLog('✅ Конфигурация сохранена', 'SUCCESS');
-    } else {
-      addCollectLog('⚠️ Ошибка сохранения', 'WARN');
     }
 
-    // Выполняем через сервер (с fallback на локальное выполнение)
-    addCollectLog('🔥 Выполнение запроса...', 'INFO');
-    const result = executeCollectConfigViaServer_(sheetName, cellAddress, config);
+    // ═══════════════════════════════════════════════════════════════
+    // ТОЛЬКО СЕРВЕРНОЕ ВЫПОЛНЕНИЕ (БЕЗ FALLBACK)
+    // ═══════════════════════════════════════════════════════════════
+    addCollectLog('📡 Отправка запроса на сервер...', 'INFO');
 
-    addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
-    if (result.success) {
-      addCollectLog('✅ УСПЕХ!', 'SUCCESS');
-      addCollectLog(`📝 Результат: ${result.result.length} символов`, 'INFO');
-    } else {
-      addCollectLog('❌ ОШИБКА!', 'ERROR');
-      addCollectLog(`❌ ${result.error}`, 'ERROR');
+    const serverResult = callCollectConfigServer_(config, sheetName, cellAddress);
+
+    if (!serverResult || !serverResult.ok) {
+      const errorMsg = serverResult && serverResult.error ? serverResult.error : 'Сервер вернул ошибку';
+      throw new Error(errorMsg);
     }
+
+    // Объединяем логи сервера с UI логами
+    if (serverResult.logs && Array.isArray(serverResult.logs)) {
+      mergeServerLogs_(serverResult.logs);
+    }
+
+    addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+    addCollectLog('✅ УСПЕХ!', 'SUCCESS');
+    addCollectLog(`📝 Результат: ${serverResult.data.length} символов`, 'INFO');
     addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
 
-    result.logs = getCollectLog();
-    return result;
+    return {
+      success: true,
+      result: serverResult.data,
+      logs: getCollectLog(),
+    };
   } catch (error) {
+    addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
     addCollectLog(`💥 КРИТИЧЕСКАЯ ОШИБКА: ${error.message}`, 'ERROR');
-    addCollectLog(`Stack: ${error.stack}`, 'ERROR');
+    addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+
+    // Понятные сообщения об ошибках
+    if (error.message.includes('SERVER_URL не настроен')) {
+      addCollectLog('', 'ERROR');
+      addCollectLog('📝 Инструкция:', 'ERROR');
+      addCollectLog('1. Откройте меню Settings', 'ERROR');
+      addCollectLog('2. Настройте SERVER_URL', 'ERROR');
+      addCollectLog('3. Настройте лицензионные данные', 'ERROR');
+    }
+
     return {
       success: false,
       error: error.message,
       logs: getCollectLog(),
     };
-  }
-}
-
-// ============================================================================
-// ВЫПОЛНЕНИЕ КОНФИГУРАЦИИ
-// ============================================================================
-function executeCollectConfig(sheetName, cellAddress) {
-  try {
-    // Загружаем конфигурацию
-    const config = loadCollectConfig(sheetName, cellAddress);
-    if (!config) {
-      throw new Error('Конфигурация не найдена!');
-    }
-
-    addCollectLog('📖 Конфигурация загружена', 'INFO');
-
-    // Собираем System Prompt
-    let systemPrompt = '';
-    if (config.systemPrompt && config.systemPrompt.sheet && config.systemPrompt.cell) {
-      addCollectLog(`📍 System Prompt: ${config.systemPrompt.sheet}!${config.systemPrompt.cell}`, 'INFO');
-      try {
-        systemPrompt = readData(config.systemPrompt.sheet, config.systemPrompt.cell);
-        addCollectLog(`✅ System Prompt: ${systemPrompt.length} символов`, 'SUCCESS');
-      } catch (e) {
-        addCollectLog(`❌ Ошибка чтения System Prompt: ${e.message}`, 'ERROR');
-        throw e;
-      }
-    } else {
-      addCollectLog('⚠️ System Prompt не задан', 'WARN');
-    }
-
-    // Собираем User Data
-    const userDataParts = [];
-    if (config.userData && config.userData.length > 0) {
-      addCollectLog(`📦 User Data: ${config.userData.length} источников`, 'INFO');
-
-      config.userData.forEach(function(source, index) {
-        if (source.sheet && source.cell) {
-          addCollectLog(`  📍 Источник ${index + 1}: ${source.sheet}!${source.cell}`, 'INFO');
-          try {
-            const data = readData(source.sheet, source.cell);
-            addCollectLog(`  ✅ Прочитано: ${data.length} символов`, 'SUCCESS');
-            userDataParts.push(`Источник (${source.sheet}!${source.cell}):\n${data}`);
-          } catch (e) {
-            addCollectLog(`  ❌ Ошибка: ${e.message}`, 'ERROR');
-            userDataParts.push(`Источник (${source.sheet}!${source.cell}):\n[ОШИБКА: ${e.message}]`);
-          }
-        }
-      });
-    } else {
-      addCollectLog('⚠️ User Data не задан', 'WARN');
-    }
-
-    // Формируем финальный промпт
-    let finalPrompt = '';
-    if (systemPrompt) {
-      finalPrompt += systemPrompt + '\n\n---\n\n';
-    }
-    if (userDataParts.length > 0) {
-      finalPrompt += 'ДАННЫЕ:\n' + userDataParts.join('\n\n');
-    }
-
-    if (!finalPrompt.trim()) {
-      throw new Error('Нет данных для обработки!');
-    }
-
-    addCollectLog(`📝 Финальный промпт: ${finalPrompt.length} символов`, 'INFO');
-
-    // Вызываем AI
-    addCollectLog('🤖 Отправка запроса в Gemini...', 'INFO');
-    const aiResult = GM(finalPrompt);
-
-    if (!aiResult || aiResult.startsWith('Error:')) {
-      throw new Error('Ошибка AI: ' + aiResult);
-    }
-
-    addCollectLog(`✅ Получен ответ от AI: ${aiResult.length} символов`, 'SUCCESS');
-
-    // Записываем результат
-    const targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-    if (targetSheet) {
-      targetSheet.getRange(cellAddress).setValue(aiResult);
-      addCollectLog(`✅ Результат записан в ${sheetName}!${cellAddress}`, 'SUCCESS');
-    }
-
-    // Обновляем lastRun
-    updateLastRun(sheetName, cellAddress);
-
-    return {
-      success: true,
-      result: aiResult,
-    };
-  } catch (error) {
-    addCollectLog(`❌ executeCollectConfig ERROR: ${error.message}`, 'ERROR');
-    return {
-      success: false,
-      error: error.message,
-    };
-  }
-}
-
-// ============================================================================
-// ЧТЕНИЕ ДАННЫХ - МАКСИМАЛЬНО ПРОСТАЯ ВЕРСИЯ
-// ============================================================================
-function readData(sheetName, cellAddress) {
-  addCollectLog(`  → Чтение ${sheetName}!${cellAddress}`, 'INFO');
-
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(sheetName);
-
-    if (!sheet) {
-      throw new Error(`Лист "${sheetName}" не найден`);
-    }
-
-    // ПРОСТЕЙШИЙ подход: просто читаем диапазон как есть
-    const range = sheet.getRange(cellAddress);
-    const values = range.getValues();
-
-    addCollectLog(`  → Прочитано: ${values.length} строк × ${values[0].length} столбцов`, 'INFO');
-
-    // Превращаем в плоский массив и фильтруем пустые
-    const result = [];
-    for (let r = 0; r < values.length; r++) {
-      for (let c = 0; c < values[r].length; c++) {
-        const val = values[r][c];
-        if (val !== null && val !== undefined && val.toString().trim() !== '') {
-          result.push(val.toString());
-        }
-      }
-    }
-
-    addCollectLog(`  → После фильтрации: ${result.length} значений`, 'INFO');
-
-    return result.join('\n');
-  } catch (error) {
-    addCollectLog(`  ❌ Ошибка чтения: ${error.message}`, 'ERROR');
-    throw new Error(`Не удалось прочитать ${sheetName}!${cellAddress}: ${error.message}`);
   }
 }
 
@@ -475,6 +356,7 @@ function deleteCollectConfig(sheetName, cellAddress) {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 function updateLastRun(sheetName, cellAddress) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -506,29 +388,14 @@ function getCellPreview(sheetName, cellAddress, tableId) {
       return '⚠️ Не указаны параметры';
     }
 
-    // Try server preview first
-    try {
-      const serverPreview = callCollectConfigPreview_(sheetName, cellAddress, tableId);
-      if (serverPreview) {
-        return serverPreview.length <= 100 ? serverPreview : serverPreview.substring(0, 100) + '...';
-      }
-    } catch (serverError) {
-      // Server failed, fallback to local readData
-      addCollectLog(`⚠️ Превью через сервер недоступно, используем локальное: ${serverError.message}`, 'WARN');
-    }
+    // Only server preview (NO fallback)
+    const serverPreview = callCollectConfigPreview_(sheetName, cellAddress, tableId);
 
-    // Fallback to local readData
-    const data = readData(sheetName, cellAddress);
-
-    if (!data || data.length === 0) {
+    if (!serverPreview || serverPreview.length === 0) {
       return '(пусто)';
     }
 
-    if (data.length <= 100) {
-      return data;
-    }
-
-    return data.substring(0, 100) + '...';
+    return serverPreview.length <= 100 ? serverPreview : (serverPreview.substring(0, 100) + '...');
   } catch (error) {
     return `❌ Ошибка: ${error.message}`;
   }
@@ -566,14 +433,16 @@ function refreshCellWithConfig() {
       return;
     }
 
-    ui.alert('🚀 Запуск...', 'Выполняю запрос...', ui.ButtonSet.OK);
+    ui.alert('🚀 Запуск...', 'Выполняю запрос через сервер...', ui.ButtonSet.OK);
 
-    const result = executeCollectConfig(sheetName, cellAddress);
+    // ONLY server execution (NO fallback)
+    const serverResult = callCollectConfigServer_(config, sheetName, cellAddress);
 
-    if (result.success) {
+    if (serverResult && serverResult.ok) {
       ui.alert('✅ Готово!', `Результат записан в ${cellAddress}`, ui.ButtonSet.OK);
     } else {
-      ui.alert('❌ Ошибка', result.error, ui.ButtonSet.OK);
+      const errorMsg = serverResult && serverResult.error ? serverResult.error : 'Неизвестная ошибка';
+      ui.alert('❌ Ошибка', errorMsg, ui.ButtonSet.OK);
     }
   } catch (error) {
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
@@ -648,47 +517,6 @@ function serverDeleteTemplate(templateName) {
 // ============================================================================
 
 /**
- * Execute CollectConfig via server with fallback to local execution
- * @param {string} sheetName - Target sheet name
- * @param {string} cellAddress - Target cell address
- * @param {Object} config - CollectConfig configuration
- * @return {Object} Result object with success flag and data
- */
-function executeCollectConfigViaServer_(sheetName, cellAddress, config) {
-  try {
-    // Try server execution first
-    addCollectLog('📡 Попытка выполнения через сервер...', 'INFO');
-    const serverResult = callCollectConfigServer_(config, sheetName, cellAddress);
-
-    if (serverResult && serverResult.ok) {
-      addCollectLog('✅ Выполнено через сервер!', 'SUCCESS');
-
-      // Merge server logs into UI log
-      if (serverResult.logs && Array.isArray(serverResult.logs)) {
-        mergeServerLogs_(serverResult.logs);
-      }
-
-      return {
-        success: true,
-        result: serverResult.data || '',
-      };
-    }
-
-    // Server returned error, fallback to local
-    const errorMsg = serverResult && serverResult.error ? serverResult.error : 'UNKNOWN_ERROR';
-    addCollectLog(`⚠️ Сервер вернул ошибку: ${errorMsg}`, 'WARN');
-    addCollectLog('🔄 Переключение на локальное выполнение...', 'INFO');
-  } catch (error) {
-    // Network or other error, fallback to local
-    addCollectLog(`⚠️ Ошибка связи с сервером: ${error.message}`, 'WARN');
-    addCollectLog('🔄 Переключение на локальное выполнение...', 'INFO');
-  }
-
-  // Fallback to local execution
-  return executeCollectConfig(sheetName, cellAddress);
-}
-
-/**
  * Call CollectConfig server for execution
  * @param {Object} config - CollectConfig configuration
  * @param {string} sheetName - Target sheet name
@@ -696,6 +524,10 @@ function executeCollectConfigViaServer_(sheetName, cellAddress, config) {
  * @return {Object} Server response
  */
 function callCollectConfigServer_(config, sheetName, cellAddress) {
+  // ═══════════════════════════════════════════════════════════════
+  // VALIDATION OF SETTINGS (detailed error messages)
+  // ═══════════════════════════════════════════════════════════════
+
   // Get credentials from ScriptProperties
   const props = PropertiesService.getScriptProperties();
   const serverUrl = props.getProperty('SERVER_URL') || (typeof SERVER_URL !== 'undefined' ? SERVER_URL : '');
@@ -704,15 +536,15 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
   const geminiApiKey = props.getProperty('GEMINI_API_KEY') || '';
 
   if (!serverUrl) {
-    throw new Error('SERVER_URL не настроен');
+    throw new Error('SERVER_URL не настроен. Откройте Settings и настройте URL сервера.');
   }
 
   if (!licenseEmail || !licenseToken) {
-    throw new Error('Лицензионные данные не настроены (LICENSEEMAIL/LICENSETOKEN)');
+    throw new Error('Лицензионные данные не настроены. Откройте Settings и укажите LICENSEEMAIL и LICENSETOKEN.');
   }
 
   if (!geminiApiKey) {
-    throw new Error('GEMINI_API_KEY не настроен');
+    throw new Error('GEMINI_API_KEY не настроен. Откройте Settings и укажите API ключ Gemini.');
   }
 
   const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
