@@ -436,6 +436,10 @@ function serverProcessMarkdown_(text) {
 }
 
 // ===== Utils =====
+function isTableId(str) {
+  return /^[a-zA-Z0-9_-]{44}$/.test(str);
+}
+
 function parseBody_(e) {
   try {
     const raw = e && e.postData && e.postData.contents;
@@ -604,20 +608,34 @@ function serverGetSystemPrompt_(config, defaultSpreadsheetId, logs) {
     return '';
   }
 
-  const sheet = config.systemPrompt.sheet;
-  const cell = config.systemPrompt.cell;
-  const tableId = config.systemPrompt.tableId || '';
+  let spreadsheetId;
+  let sheetName;
 
-  logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📍 System Prompt: ${sheet}!${cell}${tableId ? ' (защищенная таблица: ' + tableId + ')' : ''}`});
+  const promptSource = config.systemPrompt.sheet;
 
   try {
-    const spreadsheetId = tableId || defaultSpreadsheetId;
-    const prompt = serverReadData_(spreadsheetId, sheet, cell, logs);
-    logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `✅ System Prompt успешно прочитан: ${prompt.length} символов`});
+    if (isTableId(promptSource)) {
+      // ID защищённой таблицы
+      spreadsheetId = promptSource;
+      sheetName = 'Промты'; // ВСЕГДА Промты!
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Защищённая таблица: ' + spreadsheetId});
+    } else {
+      // Название листа в текущей таблице
+      spreadsheetId = defaultSpreadsheetId;
+      sheetName = promptSource;
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Текущая таблица, лист: ' + sheetName});
+    }
+
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📍 Ячейка: ' + config.systemPrompt.cell});
+
+    const prompt = serverReadData_(spreadsheetId, sheetName, config.systemPrompt.cell, logs);
+
+    logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ Промпт прочитан, ' + prompt.length + ' символов'});
+
     return prompt;
-  } catch (e) {
-    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `❌ Ошибка чтения System Prompt: ${e.message}`});
-    throw new Error(`Не удалось прочитать System Prompt из ${sheet}!${cell}: ${e.message}`);
+  } catch (error) {
+    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: '❌ Ошибка чтения System Prompt: ' + error.message});
+    throw new Error('Не удалось прочитать System Prompt: ' + error.message);
   }
 }
 
