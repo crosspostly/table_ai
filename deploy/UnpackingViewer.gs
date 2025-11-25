@@ -151,7 +151,7 @@ function getSheetData(ss, sheetName) {
 
     const lastRow = sheet.getLastRow();
 
-    if (lastRow < 1) {
+    if (lastRow < 2) {
       return {
         success: false,
         data: [],
@@ -160,14 +160,13 @@ function getSheetData(ss, sheetName) {
     }
 
     const result = [];
-    
+
+    // ============ ЛОГИКА ДЛЯ ЛИСТА "ЦА" ============
     if (sheetName === 'ЦА') {
-      // === ДЛЯ ЦА ===
-      
-      // Столбец A: A1 - заголовок, A2 - ОДНО значение (не массив!)
+      // Столбец A: A1 - заголовок, A2 - ОДНО значение
       const headerA = sheet.getRange('A1').getValue();
       const valueA = sheet.getRange('A2').getValue();
-      
+
       if (headerA) {
         result.push({
           header: 'ЦА: ' + headerA.toString().trim(),
@@ -175,16 +174,16 @@ function getSheetData(ss, sheetName) {
           count: valueA ? 1 : 0,
         });
       }
-      
+
       // Столбец B: B1 - заголовок, B2+ - ВСЕ значения
       const headerB = sheet.getRange('B1').getValue();
-      
+
       if (headerB) {
         const columnDataB = [];
         if (lastRow >= 2) {
           const dataRangeB = sheet.getRange(2, 2, lastRow - 1, 1);
           const dataValuesB = dataRangeB.getValues();
-          
+
           for (let i = 0; i < dataValuesB.length; i++) {
             const cellValue = dataValuesB[i][0];
             if (cellValue && cellValue.toString().trim() !== '') {
@@ -192,7 +191,7 @@ function getSheetData(ss, sheetName) {
             }
           }
         }
-        
+
         result.push({
           header: 'ЦА: ' + headerB.toString().trim(),
           value: columnDataB.length > 0 ? columnDataB.join('\n') : '(нет данных)',
@@ -201,65 +200,44 @@ function getSheetData(ss, sheetName) {
       }
       
     } else {
-      // === ДЛЯ РАСПАКОВКИ (как было) ===
-      
-      const mainHeadersRange = sheet.getRange('A1:B1');
-      const mainHeadersValues = mainHeadersRange.getValues()[0];
+      // ============ ЛОГИКА ДЛЯ ЛИСТА "Распаковка" ============
+      // Строка 2: заголовки A2:H2 (8 столбцов)
+      const headersRange = sheet.getRange('A2:H2');
+      const headersValues = headersRange.getValues()[0];
 
-      const subHeadersRange = sheet.getRange('A2:B2');
-      const subHeadersValues = subHeadersRange.getValues()[0];
-
+      // Строки 3+: данные A3:H{lastRow}
       let dataValues = [];
       if (lastRow >= 3) {
-        const dataRange = sheet.getRange(3, 1, lastRow - 2, 2);
+        const numRows = lastRow - 2;
+        const dataRange = sheet.getRange(3, 1, numRows, 8); // 8 столбцов A-H
         dataValues = dataRange.getValues();
       }
 
-      // Столбец A
-      if (mainHeadersValues[0]) {
-        const mainTitle = mainHeadersValues[0].toString().trim();
-        const subTitle = subHeadersValues[0] ? subHeadersValues[0].toString().trim() : '';
+      logUnpacking('📊 Прочитано заголовков: ' + headersValues.filter(h => h).length, 'DEBUG');
+      logUnpacking('📊 Прочитано строк данных: ' + dataValues.length, 'DEBUG');
 
+      // Проходим по каждому столбцу (A, B, C, D, E, F, G, H)
+      for (let colIndex = 0; colIndex < 8; colIndex++) {
+        const header = headersValues[colIndex];
+
+        // Пропускаем пустые заголовки
+        if (!header || header.toString().trim() === '') {
+          continue;
+        }
+
+        // Собираем все значения из этого столбца
         const columnData = [];
         for (let rowIndex = 0; rowIndex < dataValues.length; rowIndex++) {
-          const cellValue = dataValues[rowIndex][0];
+          const cellValue = dataValues[rowIndex][colIndex];
+          
           if (cellValue && cellValue.toString().trim() !== '') {
             columnData.push(cellValue.toString().trim());
           }
         }
 
-        let fullHeader = sheetName + ': ' + mainTitle;
-        if (subTitle) {
-          fullHeader += ' → ' + subTitle;
-        }
-
+        // Добавляем карточку
         result.push({
-          header: fullHeader,
-          value: columnData.length > 0 ? columnData.join('\n') : '(нет данных)',
-          count: columnData.length,
-        });
-      }
-
-      // Столбец B
-      if (mainHeadersValues[1]) {
-        const mainTitle = mainHeadersValues[1].toString().trim();
-        const subTitle = subHeadersValues[1] ? subHeadersValues[1].toString().trim() : '';
-
-        const columnData = [];
-        for (let rowIndex = 0; rowIndex < dataValues.length; rowIndex++) {
-          const cellValue = dataValues[rowIndex][1];
-          if (cellValue && cellValue.toString().trim() !== '') {
-            columnData.push(cellValue.toString().trim());
-          }
-        }
-
-        let fullHeader = sheetName + ': ' + mainTitle;
-        if (subTitle) {
-          fullHeader += ' → ' + subTitle;
-        }
-
-        result.push({
-          header: fullHeader,
+          header: sheetName + ': ' + header.toString().trim(),
           value: columnData.length > 0 ? columnData.join('\n') : '(нет данных)',
           count: columnData.length,
         });
@@ -282,8 +260,6 @@ function getSheetData(ss, sheetName) {
     };
   }
 }
-
-
 
 /**
  * Экспортирует данные из листов "Распаковка" и "ЦА" в Google Docs документ
