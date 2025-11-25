@@ -191,9 +191,9 @@ function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
       addCollectLog('⚠️ Ошибка сохранения', 'WARN');
     }
 
-    // Выполняем
+    // Выполняем через сервер (с fallback на локальное выполнение)
     addCollectLog('🔥 Выполнение запроса...', 'INFO');
-    const result = executeCollectConfig(sheetName, cellAddress);
+    const result = executeCollectConfigViaServer_(sheetName, cellAddress, config);
 
     addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
     if (result.success) {
@@ -500,12 +500,24 @@ function updateLastRun(sheetName, cellAddress) {
 // ФУНКЦИИ ДЛЯ UI: PREVIEW
 // ============================================================================
 // eslint-disable-next-line no-unused-vars
-function getCellPreview(sheetName, cellAddress) {
+function getCellPreview(sheetName, cellAddress, tableId) {
   try {
     if (!sheetName || !cellAddress) {
       return '⚠️ Не указаны параметры';
     }
 
+    // Try server preview first
+    try {
+      const serverPreview = callCollectConfigPreview_(sheetName, cellAddress, tableId);
+      if (serverPreview) {
+        return serverPreview.length <= 100 ? serverPreview : serverPreview.substring(0, 100) + '...';
+      }
+    } catch (serverError) {
+      // Server failed, fallback to local readData
+      addCollectLog(`⚠️ Превью через сервер недоступно, используем локальное: ${serverError.message}`, 'WARN');
+    }
+
+    // Fallback to local readData
     const data = readData(sheetName, cellAddress);
 
     if (!data || data.length === 0) {
@@ -629,6 +641,216 @@ function serverDeleteTemplate(templateName) {
   } catch (e) {
     return {success: false, message: e.message};
   }
+}
+
+// ============================================================================
+// SERVER INTEGRATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Execute CollectConfig via server with fallback to local execution
+ * @param {string} sheetName - Target sheet name
+ * @param {string} cellAddress - Target cell address
+ * @param {Object} config - CollectConfig configuration
+ * @return {Object} Result object with success flag and data
+ */
+function executeCollectConfigViaServer_(sheetName, cellAddress, config) {
+  try {
+    // Try server execution first
+    addCollectLog('📡 Попытка выполнения через сервер...', 'INFO');
+    const serverResult = callCollectConfigServer_(config, sheetName, cellAddress);
+
+    if (serverResult && serverResult.ok) {
+      addCollectLog('✅ Выполнено через сервер!', 'SUCCESS');
+
+      // Merge server logs into UI log
+      if (serverResult.logs && Array.isArray(serverResult.logs)) {
+        mergeServerLogs_(serverResult.logs);
+      }
+
+      return {
+        success: true,
+        result: serverResult.data || '',
+      };
+    }
+
+    // Server returned error, fallback to local
+    const errorMsg = serverResult && serverResult.error ? serverResult.error : 'UNKNOWN_ERROR';
+    addCollectLog(`⚠️ Сервер вернул ошибку: ${errorMsg}`, 'WARN');
+    addCollectLog('🔄 Переключение на локальное выполнение...', 'INFO');
+  } catch (error) {
+    // Network or other error, fallback to local
+    addCollectLog(`⚠️ Ошибка связи с сервером: ${error.message}`, 'WARN');
+    addCollectLog('🔄 Переключение на локальное выполнение...', 'INFO');
+  }
+
+  // Fallback to local execution
+  return executeCollectConfig(sheetName, cellAddress);
+}
+
+/**
+ * Call CollectConfig server for execution
+ * @param {Object} config - CollectConfig configuration
+ * @param {string} sheetName - Target sheet name
+ * @param {string} cellAddress - Target cell address
+ * @return {Object} Server response
+ */
+function callCollectConfigServer_(config, sheetName, cellAddress) {
+  // Get credentials from ScriptProperties
+  const props = PropertiesService.getScriptProperties();
+  const serverUrl = props.getProperty('SERVER_URL') || (typeof SERVER_URL !== 'undefined' ? SERVER_URL : '');
+  const licenseEmail = props.getProperty('LICENSEEMAIL') || '';
+  const licenseToken = props.getProperty('LICENSETOKEN') || '';
+  const geminiApiKey = props.getProperty('GEMINI_API_KEY') || '';
+
+  if (!serverUrl) {
+    throw new Error('SERVER_URL не настроен');
+  }
+
+  if (!licenseEmail || !licenseToken) {
+    throw new Error('Лицензионные данные не настроены (LICENSEEMAIL/LICENSETOKEN)');
+  }
+
+  if (!geminiApiKey) {
+    throw new Error('GEMINI_API_KEY не настроен');
+  }
+
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+
+  const payload = {
+    action: 'collect_config_execute',
+    config: config,
+    spreadsheetId: spreadsheetId,
+    sheetName: sheetName,
+    cellAddress: cellAddress,
+    apiKey: geminiApiKey,
+    email: licenseEmail,
+    token: licenseToken,
+    sheetId: spreadsheetId,
+  };
+
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+    timeout: 60, // 60 seconds timeout
+  };
+
+  addCollectLog(`📤 Отправка запроса на сервер: ${serverUrl}`, 'INFO');
+
+  const response = UrlFetchApp.fetch(serverUrl, options);
+  const responseCode = response.getResponseCode();
+  const responseText = response.getContentText();
+
+  addCollectLog(`📥 Ответ сервера: HTTP ${responseCode}`, 'INFO');
+
+  if (responseCode >= 400) {
+    throw new Error(`HTTP ${responseCode}: ${responseText}`);
+  }
+
+  let result;
+  try {
+    result = JSON.parse(responseText);
+  } catch (parseError) {
+    throw new Error(`Ошибка парсинга ответа сервера: ${parseError.message}`);
+  }
+
+  return result;
+}
+
+/**
+ * Call CollectConfig server for preview
+ * @param {string} sheetName - Sheet name
+ * @param {string} cellAddress - Cell address
+ * @param {string} tableId - Optional table ID
+ * @return {string} Preview text
+ */
+function callCollectConfigPreview_(sheetName, cellAddress, tableId) {
+  // Get credentials from ScriptProperties
+  const props = PropertiesService.getScriptProperties();
+  const serverUrl = props.getProperty('SERVER_URL') || (typeof SERVER_URL !== 'undefined' ? SERVER_URL : '');
+  const licenseEmail = props.getProperty('LICENSEEMAIL') || '';
+  const licenseToken = props.getProperty('LICENSETOKEN') || '';
+
+  if (!serverUrl || !licenseEmail || !licenseToken) {
+    throw new Error('Сервер не настроен');
+  }
+
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+
+  const config = {
+    userData: [{
+      sheet: sheetName,
+      cell: cellAddress,
+    }],
+  };
+
+  const payload = {
+    action: 'collect_config_preview',
+    config: config,
+    spreadsheetId: spreadsheetId,
+    tableId: tableId || '',
+    email: licenseEmail,
+    token: licenseToken,
+    sheetId: spreadsheetId,
+  };
+
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+    timeout: 30, // 30 seconds timeout
+  };
+
+  const response = UrlFetchApp.fetch(serverUrl, options);
+  const responseCode = response.getResponseCode();
+
+  if (responseCode >= 400) {
+    throw new Error(`HTTP ${responseCode}`);
+  }
+
+  const result = JSON.parse(response.getContentText());
+
+  if (!result.ok) {
+    throw new Error(result.error || 'UNKNOWN_ERROR');
+  }
+
+  return result.data || '';
+}
+
+/**
+ * Merge server logs into UI log
+ * @param {Array} serverLogs - Array of log entries from server
+ */
+function mergeServerLogs_(serverLogs) {
+  if (!serverLogs || !Array.isArray(serverLogs)) {
+    return;
+  }
+
+  serverLogs.forEach(function(logEntry) {
+    if (logEntry && logEntry.message) {
+      // Convert ISO timestamp to local time format
+      let timestamp;
+      try {
+        if (logEntry.timestamp) {
+          const date = new Date(logEntry.timestamp);
+          timestamp = date.toLocaleTimeString('ru-RU');
+        } else {
+          timestamp = new Date().toLocaleTimeString('ru-RU');
+        }
+      } catch (e) {
+        timestamp = new Date().toLocaleTimeString('ru-RU');
+      }
+
+      COLLECT_CONFIG_UI_LOG.push({
+        timestamp: timestamp,
+        message: logEntry.message,
+        level: (logEntry.level || 'INFO').toUpperCase(),
+      });
+    }
+  });
 }
 
 // ============================================================================
