@@ -138,7 +138,6 @@ function getSheetData(ss, sheetName) {
   try {
     logUnpacking('📖 Чтение данных из листа ' + sheetName, 'DEBUG');
 
-    // Ищем лист
     const sheet = ss.getSheetByName(sheetName);
 
     if (!sheet) {
@@ -150,10 +149,8 @@ function getSheetData(ss, sheetName) {
       };
     }
 
-    // Находим последнюю заполненную строку в столбце A
     const lastRow = sheet.getLastRow();
 
-    // Если данных нет
     if (lastRow < 1) {
       return {
         success: false,
@@ -162,80 +159,111 @@ function getSheetData(ss, sheetName) {
       };
     }
 
-    // Читаем основные заголовки из A1:B1
-    const mainHeadersRange = sheet.getRange('A1:B1');
-    const mainHeadersValues = mainHeadersRange.getValues()[0];
-
-    // Читаем подзаголовки из A2:B2
-    const subHeadersRange = sheet.getRange('A2:B2');
-    const subHeadersValues = subHeadersRange.getValues()[0];
-
-    // Читаем данные из строк 3+ для столбцов A и B
-    let dataValues = [];
-    if (lastRow >= 3) {
-      const dataRange = sheet.getRange(3, 1, lastRow - 2, 2); // строки 3+, столбцы A-B
-      dataValues = dataRange.getValues();
-    }
-
-    logUnpacking('📊 Прочитано основных заголовков: ' + mainHeadersValues.filter((h) => h).length, 'DEBUG');
-    logUnpacking('📊 Прочитано подзаголовков: ' + subHeadersValues.filter((h) => h).length, 'DEBUG');
-    logUnpacking('📊 Прочитано строк данных: ' + dataValues.length, 'DEBUG');
-
-    // Формируем массив объектов с правильной структурой
     const result = [];
-
-    // Обрабатываем столбец A (A1 + A2 + данные)
-    if (mainHeadersValues[0]) {
-      const mainTitle = mainHeadersValues[0].toString().trim();
-      const subTitle = subHeadersValues[0] ? subHeadersValues[0].toString().trim() : '';
-
-      // Собираем все данные из столбца A
-      const columnData = [];
-      for (let rowIndex = 0; rowIndex < dataValues.length; rowIndex++) {
-        const cellValue = dataValues[rowIndex][0];
-        if (cellValue && cellValue.toString().trim() !== '') {
-          columnData.push(cellValue.toString().trim());
+    
+    if (sheetName === 'ЦА') {
+      // === ДЛЯ ЦА ===
+      
+      // Столбец A: A1 - заголовок, A2 - ОДНО значение (не массив!)
+      const headerA = sheet.getRange('A1').getValue();
+      const valueA = sheet.getRange('A2').getValue();
+      
+      if (headerA) {
+        result.push({
+          header: 'ЦА: ' + headerA.toString().trim(),
+          value: valueA ? valueA.toString().trim() : '(нет данных)',
+          count: valueA ? 1 : 0,
+        });
+      }
+      
+      // Столбец B: B1 - заголовок, B2+ - ВСЕ значения
+      const headerB = sheet.getRange('B1').getValue();
+      
+      if (headerB) {
+        const columnDataB = [];
+        if (lastRow >= 2) {
+          const dataRangeB = sheet.getRange(2, 2, lastRow - 1, 1);
+          const dataValuesB = dataRangeB.getValues();
+          
+          for (let i = 0; i < dataValuesB.length; i++) {
+            const cellValue = dataValuesB[i][0];
+            if (cellValue && cellValue.toString().trim() !== '') {
+              columnDataB.push(cellValue.toString().trim());
+            }
+          }
         }
+        
+        result.push({
+          header: 'ЦА: ' + headerB.toString().trim(),
+          value: columnDataB.length > 0 ? columnDataB.join('\n') : '(нет данных)',
+          count: columnDataB.length,
+        });
+      }
+      
+    } else {
+      // === ДЛЯ РАСПАКОВКИ (как было) ===
+      
+      const mainHeadersRange = sheet.getRange('A1:B1');
+      const mainHeadersValues = mainHeadersRange.getValues()[0];
+
+      const subHeadersRange = sheet.getRange('A2:B2');
+      const subHeadersValues = subHeadersRange.getValues()[0];
+
+      let dataValues = [];
+      if (lastRow >= 3) {
+        const dataRange = sheet.getRange(3, 1, lastRow - 2, 2);
+        dataValues = dataRange.getValues();
       }
 
-      // Формируем заголовок
-      let fullHeader = sheetName + ': ' + mainTitle;
-      if (subTitle) {
-        fullHeader += ' → ' + subTitle;
-      }
+      // Столбец A
+      if (mainHeadersValues[0]) {
+        const mainTitle = mainHeadersValues[0].toString().trim();
+        const subTitle = subHeadersValues[0] ? subHeadersValues[0].toString().trim() : '';
 
-      result.push({
-        header: fullHeader,
-        value: columnData.length > 0 ? columnData.join('\n') : '(нет данных)',
-        count: columnData.length,
-      });
-    }
-
-    // Обрабатываем столбец B (B1 + B2 + данные как обычный текст)
-    if (mainHeadersValues[1]) {
-      const mainTitle = mainHeadersValues[1].toString().trim();
-      const subTitle = subHeadersValues[1] ? subHeadersValues[1].toString().trim() : '';
-
-      // Собираем все данные из столбца B
-      const columnData = [];
-      for (let rowIndex = 0; rowIndex < dataValues.length; rowIndex++) {
-        const cellValue = dataValues[rowIndex][1];
-        if (cellValue && cellValue.toString().trim() !== '') {
-          columnData.push(cellValue.toString().trim());
+        const columnData = [];
+        for (let rowIndex = 0; rowIndex < dataValues.length; rowIndex++) {
+          const cellValue = dataValues[rowIndex][0];
+          if (cellValue && cellValue.toString().trim() !== '') {
+            columnData.push(cellValue.toString().trim());
+          }
         }
+
+        let fullHeader = sheetName + ': ' + mainTitle;
+        if (subTitle) {
+          fullHeader += ' → ' + subTitle;
+        }
+
+        result.push({
+          header: fullHeader,
+          value: columnData.length > 0 ? columnData.join('\n') : '(нет данных)',
+          count: columnData.length,
+        });
       }
 
-      // Формируем заголовок
-      let fullHeader = sheetName + ': ' + mainTitle;
-      if (subTitle) {
-        fullHeader += ' → ' + subTitle;
-      }
+      // Столбец B
+      if (mainHeadersValues[1]) {
+        const mainTitle = mainHeadersValues[1].toString().trim();
+        const subTitle = subHeadersValues[1] ? subHeadersValues[1].toString().trim() : '';
 
-      result.push({
-        header: fullHeader,
-        value: columnData.length > 0 ? columnData.join('\n') : '(нет данных)',
-        count: columnData.length,
-      });
+        const columnData = [];
+        for (let rowIndex = 0; rowIndex < dataValues.length; rowIndex++) {
+          const cellValue = dataValues[rowIndex][1];
+          if (cellValue && cellValue.toString().trim() !== '') {
+            columnData.push(cellValue.toString().trim());
+          }
+        }
+
+        let fullHeader = sheetName + ': ' + mainTitle;
+        if (subTitle) {
+          fullHeader += ' → ' + subTitle;
+        }
+
+        result.push({
+          header: fullHeader,
+          value: columnData.length > 0 ? columnData.join('\n') : '(нет данных)',
+          count: columnData.length,
+        });
+      }
     }
 
     logUnpacking('✅ Сформировано полей из ' + sheetName + ': ' + result.length, 'DEBUG');
@@ -254,6 +282,7 @@ function getSheetData(ss, sheetName) {
     };
   }
 }
+
 
 
 /**
