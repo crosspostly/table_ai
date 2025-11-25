@@ -581,12 +581,12 @@ function onOpen() {
       .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
       .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
       .addSeparator();
-    
+
     for (const [key, config] of Object.entries(BATCH_OPERATIONS)) {
       const funcName = key.charAt(0).toUpperCase() + key.slice(1);
       aiMenu.addItem(config.name, funcName);
     }
-    
+
     ui.createMenu('🤖 Table AI')
       .addSubMenu(aiMenu)
       .addSeparator()
@@ -614,7 +614,6 @@ function onOpen() {
     addLog('❌ Ошибка меню: ' + e.message, 'ERROR');
   }
 }
-
 
 
 // Быстрое обновление активной GM-ячейки: пересоздаём формулу, чтобы заново вызвать Gemini
