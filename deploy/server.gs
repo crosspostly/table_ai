@@ -92,6 +92,7 @@ function doPost(_e) {
       const tableId = (data.tableId || '').toString();
       const logs = [];
 
+      const t0 = Date.now();
       let ok = true;
       let err = null;
       let preview = '';
@@ -132,7 +133,7 @@ function doPost(_e) {
           email: email,
           token: token,
           promptLen: preview.length,
-          ms: Date.now() - Date.now(),
+          ms: Date.now() - t0,
         });
       } catch (_) {}
       if (!ok) return json_({ok: false, error: err, logs: logs}, 400);
@@ -643,7 +644,12 @@ function serverReadData_(spreadsheetId, sheetName, cellAddress, logs) {
     const range = sheet.getRange(cellAddress);
     const values = range.getValues();
 
-    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  → Прочитано: ${values.length} строк × ${values[0].length} столбцов`});
+    if (!values || values.length === 0) {
+      logs.push({timestamp: new Date().toISOString(), level: 'WARN', message: `  → Пустой диапазон: ${cellAddress}`});
+      return '';
+    }
+
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  → Прочитано: ${values.length} строк × ${values[0] ? values[0].length : 0} столбцов`});
 
     // Flatten and filter empty values
     const result = [];
