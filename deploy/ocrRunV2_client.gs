@@ -377,7 +377,8 @@ function gmOcrFromBlobV2_(blob, lang){
   var mime = blob.getContentType()||'image/png'; var b64 = Utilities.base64Encode(blob.getBytes());
   var instruction = 'Транскрибируй текст на изображении БЕЗ добавления от себя. Верни только чистый текст. Если изображений несколько — разделяй отзывы строкой из четырёх подчёркиваний: ____ .'+(lang?(' Язык: '+lang+'.'):'');
   var body = { contents: [{ parts: [{ text: instruction }, { inlineData: { mimeType: mime, data: b64 } }] }], generationConfig: { maxOutputTokens: 2048, temperature: 0 } };
-  var resp = UrlFetchApp.fetch(GEMINI_API_URL + '?key=' + apiKey, { method:'post', contentType:'application/json', payload: JSON.stringify(body), muteHttpExceptions:true });
+  var geminiUrl = (typeof transformGeminiUrlForProxy_ === 'function' && typeof GEMINI_PROXY_URL !== 'undefined') ? transformGeminiUrlForProxy_(GEMINI_API_URL, GEMINI_PROXY_URL) : GEMINI_API_URL;
+  var resp = UrlFetchApp.fetch(geminiUrl + '?key=' + apiKey, { method:'post', contentType:'application/json', payload: JSON.stringify(body), muteHttpExceptions:true });
   var code = resp.getResponseCode(); var data = JSON.parse(resp.getContentText()); if (code !== 200) { var msg=(data&&data.error&&data.error.message)||('HTTP_'+code); throw new Error('Gemini OCR: '+msg); }
   var cand = data.candidates && data.candidates[0]; var part = cand && cand.content && cand.content.parts && cand.content.parts[0]; var text = part && part.text ? part.text : '';
   return (typeof processGeminiResponse === 'function') ? processGeminiResponse(text) : text;

@@ -3,10 +3,27 @@
 
 // ===== Constants =====
 const S_GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const S_GEMINI_PROXY_URL = 'https://subbot.sheepoff.workers.dev';
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
 const LICENSE_SHEET_NAME = 'Tokens';
 const LOG_SHEET_NAME = 'Логи';
 const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
+
+// ===== URL TRANSFORMATION HELPERS =====
+function transformGeminiUrlForProxy_(originalUrl, proxyDomain) {
+  if (!originalUrl || !proxyDomain) return originalUrl;
+  const original = String(originalUrl).trim();
+  const proxy = String(proxyDomain).trim();
+
+  if (original.indexOf('https://') !== 0) return original;
+
+  const apiDomain = 'generativelanguage.googleapis.com';
+  const newUrl = original
+    .replace('https://' + apiDomain, 'https://' + proxy)
+    .replace(/\/\//g, '/');
+
+  return newUrl;
+}
 
 // ===== Entry points =====
 function doGet(_e) {
@@ -364,7 +381,8 @@ function serverGM_(prompt, maxTokens, temperature, apiKey) {
     payload: JSON.stringify(requestBody),
     muteHttpExceptions: true,
   };
-  const resp = UrlFetchApp.fetch(S_GEMINI_API_URL + '?key=' + apiKey, options);
+  const geminiUrl = transformGeminiUrlForProxy_(S_GEMINI_API_URL, S_GEMINI_PROXY_URL);
+  const resp = UrlFetchApp.fetch(geminiUrl + '?key=' + apiKey, options);
   const code = resp.getResponseCode();
   const data = JSON.parse(resp.getContentText());
   if (code !== 200) {
@@ -397,7 +415,8 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
   }
   if (parts.length <= 1) throw new Error('NO_VALID_IMAGES');
   const body = {contents: [{parts: parts}], generationConfig: {maxOutputTokens: 4096, temperature: 0}};
-  const resp = UrlFetchApp.fetch(S_GEMINI_API_URL + '?key=' + apiKey, {
+  const geminiUrl = transformGeminiUrlForProxy_(S_GEMINI_API_URL, S_GEMINI_PROXY_URL);
+  const resp = UrlFetchApp.fetch(geminiUrl + '?key=' + apiKey, {
     method: 'post', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true,
   });
   const code = resp.getResponseCode();

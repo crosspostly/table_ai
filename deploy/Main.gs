@@ -18,6 +18,9 @@
 // eslint-disable-next-line no-unused-vars
 const VK_PARSER_URL = 'https://script.google.com/macros/s/AKfycbzttbqz16EmmcXbEYCuYhNlXkCxAnCG77phspFL1_rTCi4xVqoorByJAPa4dI4iwT8/exec';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+// Cloudflare Worker proxy for Gemini API (optional)
+// eslint-disable-next-line no-unused-vars
+const GEMINI_PROXY_URL = 'https://subbot.sheepoff.workers.dev';
 // Фиксированный сервер (веб‑приложение) для лицензий/логов
 const SERVER_URL = 'https://script.google.com/macros/s/AKfycbyyUlB5YWP4bwv3gHHniTv_12cAHlqjYfra7fQ3m3Vri5XvZTQ_uUZZovCYeTo2_u6gQw/exec';
 
@@ -42,6 +45,22 @@ const RETRY_DELAY_INCREMENT = 10000;
 const DEV_MODE = false; // DEV: показывать DEV-меню/логи
 // eslint-disable-next-line no-unused-vars
 const DEVMODE = DEV_MODE;
+
+// ====== URL TRANSFORMATION HELPERS ======
+function transformGeminiUrlForProxy_(originalUrl, proxyDomain) {
+  if (!originalUrl || !proxyDomain) return originalUrl;
+  const original = String(originalUrl).trim();
+  const proxy = String(proxyDomain).trim();
+
+  if (original.indexOf('https://') !== 0) return original;
+
+  const apiDomain = 'generativelanguage.googleapis.com';
+  const newUrl = original
+    .replace('https://' + apiDomain, 'https://' + proxy)
+    .replace(/\/\//g, '/');
+
+  return newUrl;
+}
 
 // В твоем мастер-листе добавь кнопку:
 // eslint-disable-next-line no-unused-vars
@@ -1238,7 +1257,8 @@ function GM(prompt, maxTokens, temperature) {
         generationConfig: {maxOutputTokens: maxTokens, temperature: temperature},
       };
       const options = {method: 'POST', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true};
-      const resp = UrlFetchApp.fetch(GEMINI_API_URL + '?key=' + apiKey, options);
+      const geminiUrl = transformGeminiUrlForProxy_(GEMINI_API_URL, GEMINI_PROXY_URL);
+      const resp = UrlFetchApp.fetch(geminiUrl + '?key=' + apiKey, options);
       const code = resp.getResponseCode();
       const data = JSON.parse(resp.getContentText());
       addLog('← GM (direct): HTTP ' + code, 'DEBUG');
