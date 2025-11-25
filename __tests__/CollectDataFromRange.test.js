@@ -54,7 +54,7 @@ describe('collectDataFromRange - ПОЛНОЕ ТЕСТИРОВАНИЕ', () => {
       return '';
     }
 
-    let normalizedAddress = cellAddress.trim().toUpperCase();
+    const normalizedAddress = cellAddress.trim().toUpperCase();
 
     try {
       // Случай 1: Полный столбец (C:C, A:B)

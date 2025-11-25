@@ -157,7 +157,7 @@ function enqueueTask(taskFn, taskName) {
   GLOBAL_CONFIG.QUEUE.push({
     fn: taskFn,
     name: taskName,
-    timestamp: new Date()
+    timestamp: new Date(),
   });
   processQueue();
 }
@@ -231,7 +231,7 @@ function batchUpdateWrapper(batchName, startRow, endRow) {
         try {
           const lastRun = new Date(lastRunStr);
           const diffMs = now - lastRun;
-          
+
           if (diffMs < skipThresholdMs) {
             const minutesAgo = Math.floor(diffMs / 60000);
             addLog(`⏭️ Пропуск ${sheet}!${cell} (✅ успешно ${minutesAgo} мин назад)`, 'INFO');
@@ -249,10 +249,10 @@ function batchUpdateWrapper(batchName, startRow, endRow) {
         } catch (e) {}
       }
 
-      cellsToUpdate.push({ 
-        sheet: sheet, 
+      cellsToUpdate.push({
+        sheet: sheet,
         cell: cell,
-        configRow: startRow + i
+        configRow: startRow + i,
       });
     }
 
@@ -261,9 +261,9 @@ function batchUpdateWrapper(batchName, startRow, endRow) {
 
     if (cellsToUpdate.length === 0) {
       SpreadsheetApp.getUi().alert(
-        `⏭️ Все ячейки успешно обновлены\n\n` +
+        '⏭️ Все ячейки успешно обновлены\n\n' +
         `Диапазон: строки ${startRow}-${endRow}\n` +
-        `Все ячейки успешно обновлены менее ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} минут назад.`
+        `Все ячейки успешно обновлены менее ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} минут назад.`,
       );
       return;
     }
@@ -274,7 +274,6 @@ function batchUpdateWrapper(batchName, startRow, endRow) {
     if (GLOBAL_CONFIG.AUTO_RETRY_ENABLED && result.errorCount > 0) {
       scheduleAutoRetry(batchName, startRow, endRow);
     }
-
   } catch (error) {
     addLog(`❌ Ошибка: ${error.message}`, 'ERROR');
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
@@ -288,12 +287,12 @@ function updateCellsBatch(cellsToUpdate, batchName) {
   let successCount = 0;
   let errorCount = 0;
   const errors = [];
-  
+
   const POOL_SIZE = 3;
   const RETRY_COUNT = 2;
   const DELAY = 800;
 
-  addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+  addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
   addLog(`🚀 НАЧАЛО: ${batchName}`, 'INFO');
 
   for (let idx = 0; idx < cellsToUpdate.length; idx += POOL_SIZE) {
@@ -303,7 +302,7 @@ function updateCellsBatch(cellsToUpdate, batchName) {
       const item = batch[i];
       const cellRef = `${item.sheet}!${item.cell}`;
       const totalIdx = idx + i + 1;
-      
+
       let retryCount = 0;
       let success = false;
       let lastError = null;
@@ -325,12 +324,12 @@ function updateCellsBatch(cellsToUpdate, batchName) {
         } catch (e) {
           lastError = e;
           const msg = e.message || String(e);
-          
+
           if (msg.includes('LICENSE_OR_SERVER') || msg.includes('<!DOCTYPE')) {
             addLog(`⚠️ ${cellRef}: Ошибка сервера`, 'WARN');
             break;
           }
-          
+
           retryCount++;
           if (retryCount <= RETRY_COUNT) {
             Utilities.sleep(DELAY * retryCount);
@@ -352,16 +351,16 @@ function updateCellsBatch(cellsToUpdate, batchName) {
   }
 
   addLog(`📊 ${batchName}: ✅ ${successCount}, ❌ ${errorCount}`, 'INFO');
-  addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'INFO');
+  addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
 
   const msg = `${batchName}\n✅ ${successCount}\n❌ ${errorCount}`;
-  
+
   // ⭐ Добавляем информацию об авто-повторе
   let finalMsg = msg;
   if (GLOBAL_CONFIG.AUTO_RETRY_ENABLED && errorCount > 0) {
     finalMsg += `\n\n⏰ Авто-повтор через ${GLOBAL_CONFIG.AUTO_RETRY_DELAY_MINUTES} минут`;
   }
-  
+
   if (errors.length <= 5) {
     const errorsMsg = errors.length > 0 ? '\n\n' + errors.join('\n') : '';
     SpreadsheetApp.getUi().alert(`📊 Результат\n\n${finalMsg}${errorsMsg}`);
@@ -370,7 +369,7 @@ function updateCellsBatch(cellsToUpdate, batchName) {
     SpreadsheetApp.getUi().alert(`📊 Результат\n\n${finalMsg}${errorsMsg}`);
   }
 
-  return { successCount, errorCount };
+  return {successCount, errorCount};
 }
 
 /**
@@ -379,37 +378,36 @@ function updateCellsBatch(cellsToUpdate, batchName) {
 function updateSingleCell(sheetName, cellName) {
   try {
     const config = loadCollectConfig(sheetName, cellName);
-    
+
     if (!config) {
       updateLastRunWithStatus(sheetName, cellName, false); // ⭐ Пишем FALSE
       return {
         success: false,
-        error: 'Конфигурация не найдена для ' + sheetName + '!' + cellName
+        error: 'Конфигурация не найдена для ' + sheetName + '!' + cellName,
       };
     }
 
     const result = executeCollectConfig(sheetName, cellName);
-    
+
     if (result && result.success) {
       updateLastRunWithStatus(sheetName, cellName, true); // ⭐ Пишем TRUE
-      return { success: true };
+      return {success: true};
     }
-    
+
     updateLastRunWithStatus(sheetName, cellName, false); // ⭐ Пишем FALSE
     return {
       success: false,
-      error: result?.error || 'Неизвестная ошибка'
+      error: result?.error || 'Неизвестная ошибка',
     };
-
   } catch (error) {
     const msg = error.message || String(error);
     updateLastRunWithStatus(sheetName, cellName, false); // ⭐ Пишем FALSE
-    
+
     if (msg.includes('<!DOCTYPE') || msg.includes('is not valid JSON')) {
-      return { success: false, error: 'LICENSE_OR_SERVER' };
+      return {success: false, error: 'LICENSE_OR_SERVER'};
     }
-    
-    return { success: false, error: msg };
+
+    return {success: false, error: msg};
   }
 }
 
@@ -429,13 +427,13 @@ function updateLastRunWithStatus(sheetName, cellAddress, success) {
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sheetName && data[i][1] === cellAddress) {
         const row = i + 1;
-        
+
         // ⭐ Колонка G: lastRun (время)
         configSheet.getRange(row, 7).setValue(new Date().toISOString());
-        
+
         // ⭐ Колонка H: Success (TRUE или FALSE)
         configSheet.getRange(row, 8).setValue(success);
-        
+
         addLog(`📝 ConfigData: ${sheetName}!${cellAddress} → ${success ? '✅ TRUE' : '❌ FALSE'}`, 'DEBUG');
         return;
       }
@@ -451,7 +449,7 @@ function updateLastRunWithStatus(sheetName, cellAddress, success) {
 function ensureConfigDataStructure(configSheet) {
   try {
     const headers = configSheet.getRange(1, 1, 1, 8).getValues()[0];
-    
+
     // Проверяем, есть ли колонка H (Success)
     if (!headers[7] || headers[7] !== 'Success') {
       // Добавляем заголовок
@@ -459,7 +457,7 @@ function ensureConfigDataStructure(configSheet) {
         .setFontWeight('bold')
         .setBackground('#4285f4')
         .setFontColor('white');
-      
+
       addLog('✅ Добавлена колонка H (Success) в ConfigData', 'INFO');
     }
   } catch (error) {
@@ -478,9 +476,9 @@ function scheduleAutoRetry(batchName, startRow, endRow) {
   try {
     const props = PropertiesService.getScriptProperties();
     const retryKey = `RETRY_${batchName}_${startRow}_${endRow}`;
-    
+
     const currentRetries = parseInt(props.getProperty(retryKey) || '0');
-    
+
     if (currentRetries >= GLOBAL_CONFIG.MAX_AUTO_RETRIES) {
       addLog(`⚠️ ${batchName}: Достигнут лимит авто-повторов (${GLOBAL_CONFIG.MAX_AUTO_RETRIES})`, 'WARN');
       props.deleteProperty(retryKey);
@@ -491,7 +489,7 @@ function scheduleAutoRetry(batchName, startRow, endRow) {
     deleteAutoRetryTriggers(batchName);
 
     const triggerTime = new Date(Date.now() + GLOBAL_CONFIG.AUTO_RETRY_DELAY_MINUTES * 60 * 1000);
-    
+
     ScriptApp.newTrigger('autoRetryExecutor')
       .timeBased()
       .at(triggerTime)
@@ -503,13 +501,12 @@ function scheduleAutoRetry(batchName, startRow, endRow) {
       endRow: endRow,
       scheduledAt: new Date().toISOString(),
       executeAt: triggerTime.toISOString(),
-      attempt: currentRetries + 1
+      attempt: currentRetries + 1,
     };
-    
+
     props.setProperty(`TRIGGER_DATA_${batchName}`, JSON.stringify(triggerData));
 
     addLog(`⏰ ${batchName}: Авто-повтор ${currentRetries + 1}/${GLOBAL_CONFIG.MAX_AUTO_RETRIES} на ${triggerTime.toLocaleString('ru-RU')}`, 'INFO');
-
   } catch (error) {
     addLog(`❌ Ошибка планирования: ${error.message}`, 'ERROR');
   }
@@ -527,14 +524,13 @@ function autoRetryExecutor() {
       if (key.startsWith('TRIGGER_DATA_')) {
         const triggerData = JSON.parse(allProps[key]);
         addLog(`🔄 Авто-повтор: ${triggerData.batchName} (попытка ${triggerData.attempt})`, 'INFO');
-        
+
         batchUpdateWrapper(triggerData.batchName, triggerData.startRow, triggerData.endRow);
         props.deleteProperty(key);
       }
     }
 
     cleanupOldTriggers();
-
   } catch (error) {
     addLog(`❌ Ошибка autoRetryExecutor: ${error.message}`, 'ERROR');
   }
@@ -610,7 +606,7 @@ function showAutoRetryStatus() {
         const data = JSON.parse(allProps[key]);
         status.push(
           `${data.batchName}: попытка ${data.attempt}/${GLOBAL_CONFIG.MAX_AUTO_RETRIES}\n` +
-          `Запланировано: ${new Date(data.executeAt).toLocaleString('ru-RU')}`
+          `Запланировано: ${new Date(data.executeAt).toLocaleString('ru-RU')}`,
         );
       }
     }
@@ -630,23 +626,22 @@ function unfreezeAllSheets() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheets = ss.getSheets();
-    
+
     let count = 0;
-    
+
     for (let i = 0; i < sheets.length; i++) {
       const sheet = sheets[i];
-      
+
       // Открепляем все frozen panes
       sheet.setFrozenRows(0);
       sheet.setFrozenColumns(0);
-      
+
       addLog(`🔓 ${sheet.getName()}: открепления`, 'INFO');
       count++;
     }
-    
+
     SpreadsheetApp.getUi().alert(`✅ Откреплено листов: ${count}`);
     addLog(`✅ Успешно откреплено ${count} листов`, 'INFO');
-    
   } catch (error) {
     addLog(`❌ Ошибка: ${error.message}`, 'ERROR');
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
@@ -659,22 +654,22 @@ function unfreezeAllSheets() {
 function unfreezeAllSheets() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheets = ss.getSheets();
-  
+
   let count = 0;
-  
+
   for (let i = 0; i < sheets.length; i++) {
     const sheet = sheets[i];
     const sheetName = sheet.getName();
-    
+
     // Открепляем строки и колонки
     sheet.setFrozenRows(0);
     sheet.setFrozenColumns(0);
-    
+
     console.log(`✅ ${sheetName}: откреплено`);
     count++;
   }
-  
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`✅ ИТОГО: откреплено ${count} листов`);
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }

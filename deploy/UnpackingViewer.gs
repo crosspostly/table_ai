@@ -198,7 +198,6 @@ function getSheetData(ss, sheetName) {
           count: columnDataB.length,
         });
       }
-      
     } else {
       // ============ ЛОГИКА ДЛЯ ЛИСТА "Распаковка" ============
       // Строка 2: заголовки A2:H2 (8 столбцов)
@@ -213,7 +212,7 @@ function getSheetData(ss, sheetName) {
         dataValues = dataRange.getValues();
       }
 
-      logUnpacking('📊 Прочитано заголовков: ' + headersValues.filter(h => h).length, 'DEBUG');
+      logUnpacking('📊 Прочитано заголовков: ' + headersValues.filter((h) => h).length, 'DEBUG');
       logUnpacking('📊 Прочитано строк данных: ' + dataValues.length, 'DEBUG');
 
       // Проходим по каждому столбцу (A, B, C, D, E, F, G, H)
@@ -229,7 +228,7 @@ function getSheetData(ss, sheetName) {
         const columnData = [];
         for (let rowIndex = 0; rowIndex < dataValues.length; rowIndex++) {
           const cellValue = dataValues[rowIndex][colIndex];
-          
+
           if (cellValue && cellValue.toString().trim() !== '') {
             columnData.push(cellValue.toString().trim());
           }
