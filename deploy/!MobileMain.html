@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f7fa;
+      color: #2d3748;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 16px 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+    
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    
+    .header .subtitle {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    
+    .menu-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    
+    .menu-card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      cursor: pointer;
+      transition: transform 0.2s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+    
+    .menu-card:active {
+      transform: scale(0.95);
+    }
+    
+    .menu-card .icon {
+      font-size: 36px;
+      margin-bottom: 8px;
+    }
+    
+    .menu-card .title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #2d3748;
+    }
+    
+    .menu-card .desc {
+      font-size: 11px;
+      color: #718096;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <h1>🤖 Table AI Mobile</h1>
+    <div class="subtitle"><?= email ?></div>
+  </div>
+  
+  <!-- Container -->
+  <div class="container">
+    <!-- Menu Grid -->
+    <div class="menu-grid">
+      <a href="#" class="menu-card" onclick="alert('CollectConfig - в разработке'); return false;">
+        <div class="icon">🎯</div>
+        <div class="title">AI Конструктор</div>
+        <div class="desc">CollectConfig</div>
+      </a>
+      
+      <a href="#" class="menu-card" onclick="alert('Refresh Cell - в разработке'); return false;">
+        <div class="icon">🔄</div>
+        <div class="title">Обновить ячейку</div>
+        <div class="desc">Refresh</div>
+      </a>
+      
+      <a href="#" class="menu-card" onclick="alert('Batch - в разработке'); return false;">
+        <div class="icon">📊</div>
+        <div class="title">Batch операции</div>
+        <div class="desc">Массовое обновление</div>
+      </a>
+      
+      <a href="#" class="menu-card" onclick="alert('Logs - в разработке'); return false;">
+        <div class="icon">📋</div>
+        <div class="title">Логи</div>
+        <div class="desc">История операций</div>
+      </a>
+      
+      <a href="#" class="menu-card" onclick="alert('Settings - в разработке'); return false;">
+        <div class="icon">⚙️</div>
+        <div class="title">Настройки</div>
+        <div class="desc">Конфигурация</div>
+      </a>
+      
+      <a href="#" class="menu-card" onclick="alert('VK Import - в разработке'); return false;">
+        <div class="icon">📦</div>
+        <div class="title">VK Import</div>
+        <div class="desc">Импорт из VK</div>
+      </a>
+    </div>
+  </div>
+</body>
+</html>
