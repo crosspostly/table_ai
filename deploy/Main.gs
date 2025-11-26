@@ -15,7 +15,6 @@
  */
 
 // VK Parser URL: используется в VK.gs
-// eslint-disable-next-line no-unused-vars
 const VK_PARSER_URL = 'https://script.google.com/macros/s/AKfycbzttbqz16EmmcXbEYCuYhNlXkCxAnCG77phspFL1_rTCi4xVqoorByJAPa4dI4iwT8/exec';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 // Фиксированный сервер (веб‑приложение) для лицензий/логов
