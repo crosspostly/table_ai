@@ -279,15 +279,29 @@ npm run open
 
 ## 📚 Документация
 
+### Основная документация
+- [README.md](README.md) - основная информация о проекте
+- [AGENT_READ_FIRST.md](AGENT_READ_FIRST.md) - информация для AI агентов
+
 ### Для разработчиков
 - [Developer Guide](docs/DEVELOPER_GUIDE.md) - руководство разработчика
-- [API Documentation](docs/API_DOCUMENTATION.md) - описание API
-- [Architecture](docs/ARCHITECTURE.md) - архитектура системы
+- [Functions Reference](docs/FUNCTIONS_REFERENCE.md) - справочник функций
+- [Comprehensive Public API](docs/COMPREHENSIVE_PUBLIC_API.md) - API документация
+- [CLASP Setup](docs/CLASP_SETUP.md) - настройка окружения разработки
 
 ### Для пользователей
-- [User Manual](docs/USER_MANUAL.md) - руководство пользователя
-- [Video Tutorials](docs/VIDEO_TUTORIALS.md) - видео инструкции
-- [FAQ](docs/FAQ.md) - часто задаваемые вопросы
+- [VK Import Documentation](docs/VK_IMPORT_DOCUMENTATION.md) - импорт постов из VK
+- [Template System](docs/TEMPLATE_SYSTEM.md) - система шаблонов
+- [UnpackingViewer](docs/UnpackingViewer.md) - просмотр данных
+- [Social Import Examples](docs/SocialImportExamples.md) - примеры импорта
+
+### Техническая документация
+- [Logging](docs/Logging.md) - система логирования
+- [Testing Guide](docs/TESTING_GUIDE.md) - руководство по тестированию
+- [Deployment Instructions](docs/DEPLOYMENT_INSTRUCTIONS.md) - инструкции по развертыванию
+
+### Архивная документация
+- [archive/](docs/archive/) - внутренние аудиты, тестовые заметки и устаревшая документация
 
 ---
 
