@@ -3,7 +3,18 @@ import React, { useState, useEffect } from 'react';
 import { AppState, DriveFile, Sheet } from './types';
 import { TableList } from './components/TableList';
 import { SheetViewer } from './components/SheetViewer';
-import { getUserSpreadsheets, getSpreadsheetMetadata, getLinkedScriptId } from './services/googleSheets';
+import { getUserSpreadsheets, getSpreadsheetMetadata } from './services/googleSheets';
+import { findScriptIdForSpreadsheet, getScriptFunctions, checkScriptAvailability } from './services/appsScriptService';
+
+// Временной интерфейс для ScriptStatus
+interface ScriptStatus {
+  scriptId: string | null;
+  available: boolean;
+  lastChecked: string;
+  searchLogs: any[];
+  functions: any[];
+  error?: string;
+}
 
 const GOOGLE_CLIENT_ID = '1050019271136-0j14tcqn5k4flnlgj0lc6tig5kkd8vke.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/script.projects https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email';
@@ -21,6 +32,16 @@ const App = () => {
   const [selectedFile, setSelectedFile] = useState<DriveFile | null>(null);
   const [sheetMetadata, setSheetMetadata] = useState<Sheet[]>([]);
   const [loadingSheet, setLoadingSheet] = useState(false);
+  
+  // Новое состояние для статуса скрипта
+  const [scriptStatus, setScriptStatus] = useState<ScriptStatus>({
+    scriptId: null,
+    available: false,
+    lastChecked: '',
+    searchLogs: [],
+    functions: []
+  });
+  const [searchingScript, setSearchingScript] = useState(false);
 
   const [tokenClient, setTokenClient] = useState<any>(null);
   const [gsiLoaded, setGsiLoaded] = useState(false);
@@ -97,18 +118,19 @@ const App = () => {
       const metadata = await getSpreadsheetMetadata(file.id, appState.token);
       setSheetMetadata(metadata);
       
-      // 2. Auto-detect Script ID
-      let scriptId = localStorage.getItem(`scriptId_${file.id}`);
-      if (!scriptId) {
-        // Try to find it via API
-        scriptId = await getLinkedScriptId(file.id, appState.token);
-        if (scriptId) {
-          localStorage.setItem(`scriptId_${file.id}`, scriptId);
-        }
-      }
+      // 2. Reset script status and start searching
+      setScriptStatus({
+        scriptId: null,
+        available: false,
+        lastChecked: '',
+        searchLogs: [],
+        functions: []
+      });
       
-      setAppState(prev => ({ ...prev, scriptId }));
       setSelectedFile(file);
+      
+      // 3. Автоматически ищем скрипт
+      await refreshScriptStatus(file.id);
 
     } catch (e) {
       alert("Не удалось открыть таблицу. Проверьте права доступа.");
@@ -126,11 +148,87 @@ const App = () => {
     }
   };
 
+  // Функция для поиска и обновления статуса скрипта
+  const refreshScriptStatus = async (spreadsheetId: string) => {
+    if (!appState.token) return;
+
+    setSearchingScript(true);
+    try {
+      // 1. Ищем Script ID
+      const searchResult = await findScriptIdForSpreadsheet(spreadsheetId, appState.token);
+      
+      let scriptId = searchResult.scriptId;
+      
+      // Если не нашли, пробуем взять из localStorage
+      if (!scriptId) {
+        scriptId = localStorage.getItem(`scriptId_${spreadsheetId}`);
+      }
+
+      // Если нашли Script ID, проверяем доступность и функции
+      let available = false;
+      let functions: any[] = [];
+      let error = searchResult.found ? undefined : searchResult.message;
+
+      if (scriptId) {
+        // Сохраняем в localStorage
+        localStorage.setItem(`scriptId_${spreadsheetId}`, scriptId);
+
+        // Проверяем доступность
+        const availabilityResult = await checkScriptAvailability(scriptId, appState.token);
+        available = availabilityResult.available;
+        
+        if (!availabilityResult.available) {
+          error = availabilityResult.error;
+        }
+
+        // Если доступен, получаем функции
+        if (available) {
+          const functionsResult = await getScriptFunctions(scriptId, appState.token);
+          functions = functionsResult.functions;
+          if (functionsResult.error) {
+            error = functionsResult.error;
+          }
+        }
+      }
+
+      // Обновляем статус
+      const newStatus: ScriptStatus = {
+        scriptId,
+        available,
+        lastChecked: new Date().toISOString(),
+        searchLogs: searchResult.logs,
+        functions,
+        error
+      };
+
+      setScriptStatus(newStatus);
+      setAppState(prev => ({ ...prev, scriptId }));
+
+    } catch (error: any) {
+      setScriptStatus(prev => ({
+        ...prev,
+        available: false,
+        lastChecked: new Date().toISOString(),
+        error: `Ошибка обновления статуса: ${error.message}`
+      }));
+    } finally {
+      setSearchingScript(false);
+    }
+  };
+
   const handleUpdateScriptId = (id: string) => {
     setAppState(prev => ({ ...prev, scriptId: id }));
     if (selectedFile) {
       localStorage.setItem(`scriptId_${selectedFile.id}`, id);
+      // Обновляем статус если есть ID
+      if (id) {
+        refreshScriptStatus(selectedFile.id);
+      }
     }
+  };
+
+  const handleClearLogs = () => {
+    setScriptStatus(prev => ({ ...prev, searchLogs: [] }));
   };
 
   // --- RENDER ---
@@ -162,7 +260,11 @@ const App = () => {
         sheets={sheetMetadata}
         token={appState.token}
         scriptId={appState.scriptId}
+        scriptStatus={scriptStatus}
+        searchingScript={searchingScript}
         onUpdateScriptId={handleUpdateScriptId}
+        onRefreshScript={() => refreshScriptStatus(selectedFile.id)}
+        onClearLogs={handleClearLogs}
         onBack={() => setSelectedFile(null)}
       />
     );

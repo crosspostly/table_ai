@@ -73,3 +73,30 @@ export interface ScriptProject {
   title: string;
   parentId: string;
 }
+
+export interface ScriptFunction {
+  name: string;
+  label: string;
+  description: string;
+  category: 'ai' | 'data' | 'settings' | 'dev';
+  menuPath: string;
+  order: number;
+  returnsHtml?: boolean;
+}
+
+export interface SearchScriptLog {
+  timestamp: string;
+  action: string;
+  details: string;
+  success?: boolean;
+  error?: string;
+}
+
+export interface ScriptStatus {
+  scriptId: string | null;
+  available: boolean;
+  lastChecked: string;
+  searchLogs: SearchScriptLog[];
+  functions: ScriptFunction[];
+  error?: string;
+}
