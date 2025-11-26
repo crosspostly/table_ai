@@ -39,7 +39,7 @@ const MAX_RETRY_ATTEMPTS = 5;
 const RETRY_DELAY_INCREMENT = 10000;
 
 // ====== DEV ФЛАГ ======
-const DEV_MODE = false; // DEV: показывать DEV-меню/логи
+const DEV_MODE = true; // DEV: показывать DEV-меню/логи
 // eslint-disable-next-line no-unused-vars
 const DEVMODE = DEV_MODE;
 
@@ -917,36 +917,49 @@ function setScriptProp(key, value) {
 function seedLicenseCredentialsFromParametersSheet() {
   try {
     const scriptProps = PropertiesService.getScriptProperties();
-    const curEmail = scriptProps.getProperty('LICENSEEMAIL');
-    const curToken = scriptProps.getProperty('LICENSETOKEN');
+    
+    // ✅ ПРОВЕРЯЕМ существующие значения
+    const curEmail = scriptProps.getProperty('LICENSE_EMAIL');
+    const curToken = scriptProps.getProperty('LICENSE_TOKEN');
+    
+    // Если УЖЕ есть - НЕ перезаписываем
     if (curEmail && curToken) {
-      logEvent('DEBUG', 'script_props_lic_present', 'client', 'EMAIL/TOKEN already set');
+      Logger.log('DEBUG: LICENSE_EMAIL and LICENSE_TOKEN already exist, skipping seed');
       return false;
     }
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName('Параметры');
     if (!sheet) {
-      logEvent('DEBUG', 'params_sheet_missing', 'client', 'Sheet "Параметры" not found');
+      Logger.log('DEBUG: Sheet "Параметры" not found');
       return false;
     }
 
+    // Читаем из G1 и H1
     const email = String(sheet.getRange('G1').getDisplayValue() || '').trim();
     const token = String(sheet.getRange('H1').getDisplayValue() || '').trim();
+    
     if (!email || !token) {
-      logEvent('DEBUG', 'params_cells_empty', 'client', `G1 or H1 empty (G1="${email}", H1="${token ? '***' : ''}')`);
+      Logger.log('DEBUG: G1 or H1 empty (G1="' + email + '", H1="' + (token ? '***' : '') + '")');
       return false;
     }
 
-    scriptProps.setProperty('LICENSEEMAIL', email);
-    scriptProps.setProperty('LICENSETOKEN', token);
-    logEvent('INFO', 'license_credentials_seeded', 'client', `Email=${email}, Token=${token.substring(0, 4)}***`);
+    // ✅ ПЕРЕЗАПИСЫВАЕМ (seed только если было пусто)
+    scriptProps.setProperty('LICENSE_EMAIL', email);
+    scriptProps.setProperty('LICENSE_TOKEN', token);
+    
+    Logger.log('INFO: License credentials seeded from Параметры sheet');
+    Logger.log('  - LICENSE_EMAIL: ' + email);
+    Logger.log('  - LICENSE_TOKEN: ' + token.substring(0, 4) + '***');
+    
+    addLog('✅ Лицензия загружена из листа "Параметры"', 'INFO');
     return true;
   } catch (e) {
-    logEvent('WARN', 'seed_license_from_params_error', 'client', e.message);
+    Logger.log('WARN: seed_license_from_params_error: ' + e.message);
     return false;
   }
 }
+
 
 function serverStatus() {
   // 0) Если лицензии нет — один раз попробовать засидить из Параметры!G1/H1
@@ -1070,35 +1083,52 @@ function getSettingsData() {
 function saveSettingsData(data) {
   try {
     Logger.log('=== saveSettingsData START ===');
-    Logger.log('data.apiKey: ' + (data.apiKey ? 'SET (user provided)' : 'NOT SET (will use default)'));
+    Logger.log('data.apiKey: ' + (data.apiKey ? 'SET (length: ' + data.apiKey.length + ')' : 'NOT SET'));
     Logger.log('data.email: ' + (data.email ? 'SET' : 'NOT SET'));
-    Logger.log('data.token: ' + (data.token ? 'SET' : 'NOT SET'));
+    Logger.log('data.token: ' + (data.token ? 'SET (length: ' + data.token.length + ')' : 'NOT SET'));
 
     const props = PropertiesService.getScriptProperties();
     const updated = [];
 
+    // ===== API KEY =====
     if (data.apiKey !== undefined) {
-      if (data.apiKey) {
-        props.setProperty('GEMINI_API_KEY', data.apiKey);
+      if (data.apiKey && String(data.apiKey).trim()) {
+        // ✅ ПЕРЕЗАПИСЫВАЕМ существующий ключ
+        props.setProperty('GEMINI_API_KEY', String(data.apiKey).trim());
         updated.push('API ключ');
-        Logger.log('✅ User API key saved, length: ' + data.apiKey.length);
+        Logger.log('✅ GEMINI_API_KEY UPDATED, length: ' + data.apiKey.length);
       } else {
+        // ❌ Удаляем если пустой
         props.deleteProperty('GEMINI_API_KEY');
         updated.push('API ключ (удален)');
-        Logger.log('✅ User API key removed (will use default)');
+        Logger.log('🗑️ GEMINI_API_KEY DELETED');
       }
     }
 
-    if (data.email) {
-      props.setProperty('LICENSEEMAIL', data.email);
-      updated.push('Email');
-      Logger.log('✅ License email updated: ' + data.email);
+    // ===== LICENSE EMAIL =====
+    if (data.email !== undefined) {
+      if (data.email && String(data.email).trim()) {
+        // ✅ ПЕРЕЗАПИСЫВАЕМ существующий ключ
+        props.setProperty('LICENSE_EMAIL', String(data.email).trim());
+        updated.push('Email');
+        Logger.log('✅ LICENSE_EMAIL UPDATED: ' + data.email);
+      } else {
+        // Не удаляем если пустой - оставляем старое значение
+        Logger.log('⚠️ LICENSE_EMAIL not updated (empty value)');
+      }
     }
 
-    if (data.token) {
-      props.setProperty('LICENSETOKEN', data.token);
-      updated.push('Токен');
-      Logger.log('✅ License token updated, length: ' + data.token.length);
+    // ===== LICENSE TOKEN =====
+    if (data.token !== undefined) {
+      if (data.token && String(data.token).trim()) {
+        // ✅ ПЕРЕЗАПИСЫВАЕМ существующий ключ
+        props.setProperty('LICENSE_TOKEN', String(data.token).trim());
+        updated.push('Токен');
+        Logger.log('✅ LICENSE_TOKEN UPDATED, length: ' + data.token.length);
+      } else {
+        // Не удаляем если пустой - оставляем старое значение
+        Logger.log('⚠️ LICENSE_TOKEN not updated (empty value)');
+      }
     }
 
     if (updated.length === 0) {
@@ -1107,16 +1137,19 @@ function saveSettingsData(data) {
     }
 
     Logger.log('Settings saved successfully: ' + updated.join(', '));
+    addLog('✅ Настройки сохранены: ' + updated.join(', '), 'INFO');
+    
     return {
       success: true,
-      message: 'Сохранено: ' + updated.join(', '),
+      message: '✅ Сохранено: ' + updated.join(', '),
     };
   } catch (e) {
     Logger.log('saveSettingsData ERROR: ' + e.message);
     addLog('❌ Ошибка сохранения настроек: ' + e.message, 'ERROR');
-    return {success: false, message: 'Ошибка: ' + e.message};
+    return {success: false, message: '❌ Ошибка: ' + e.message};
   }
 }
+
 
 function serverGM(prompt, maxTokens, temperature) {
   Logger.log('=== serverGM START ===');
