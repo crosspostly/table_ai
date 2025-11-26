@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { PageState, AppState, Sheet, LogEntry } from './types';
+import { PageState, AppState, Sheet, LogEntry, ButtonInfo } from './types';
 import { Layout } from './components/Layout';
 import { MenuCard } from './components/MenuCard';
+import { DynamicMenu } from './components/DynamicMenu';
 import { extractSpreadsheetId, fetchSpreadsheetMetadata, readCell, readSheetValues, writeCell } from './services/googleSheets';
+import { getAppsScriptWebAppUrl, setAppsScriptWebAppUrl } from './services/appsScript';
 
 // --- CONFIGURATION ---
 const GOOGLE_CLIENT_ID = '1050019271136-0j14tcqn5k4flnlgj0lc6tig5kkd8vke.apps.googleusercontent.com';
@@ -84,11 +86,13 @@ const App = () => {
     email: localStorage.getItem('googleEmail'),
     spreadsheetId: localStorage.getItem('spreadsheetId'),
     sheets: [],
-    currentSheetName: null
+    currentSheetName: null,
+    webAppUrl: localStorage.getItem('webAppUrl') || undefined
   });
 
   const [page, setPage] = useState<PageState>(PageState.LOGIN);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // View/Edit State
   const [gridData, setGridData] = useState<string[][]>([]);
@@ -97,6 +101,7 @@ const App = () => {
 
   // Config State
   const [collectResult, setCollectResult] = useState<{prompt: string, data: string} | null>(null);
+  const [webAppUrlInput, setWebAppUrlInput] = useState('');
 
   // History State
   const [history, setHistory] = useState<LogEntry[]>([]);
@@ -205,21 +210,34 @@ const App = () => {
 
   const loadSpreadsheet = useCallback(async (id: string, token: string) => {
     setLoading(true);
+    setError(null);
     try {
       const sheets = await fetchSpreadsheetMetadata(id, token);
+      const webAppUrl = getAppsScriptWebAppUrl(id);
+      
       setAppState(prev => ({
         ...prev,
         sheets,
-        currentSheetName: sheets.length > 0 ? sheets[0].properties.title : null
+        currentSheetName: sheets.length > 0 ? sheets[0].properties.title : null,
+        webAppUrl
       }));
+      
+      // Save webAppUrl to localStorage
+      if (webAppUrl) {
+        localStorage.setItem('webAppUrl', webAppUrl);
+      }
+      
       setPage(PageState.MENU);
     } catch (error: any) {
       console.error(error);
-      if (error.message.includes('401') || error.message.includes('403')) {
+      const errorMessage = error.message || 'Unknown error';
+      setError(errorMessage);
+      
+      if (errorMessage.includes('401') || errorMessage.includes('403')) {
          alert('Сессия истекла или нет доступа. Пожалуйста, войдите снова.');
          handleLogout();
       } else {
-         alert('Ошибка загрузки таблицы: ' + error.message);
+         alert('Ошибка загрузки таблицы: ' + errorMessage);
          setPage(PageState.ENTER_URL); // Go back to url entry on bad ID
       }
     } finally {
@@ -328,6 +346,36 @@ const App = () => {
     }
   };
 
+  // --- DYNAMIC MENU HANDLERS ---
+  
+  const handleDynamicMenuAction = (button: ButtonInfo, result: any) => {
+    addLog('dynamic_action', `Executed ${button.function}`, button.sheet, button.cell, '', JSON.stringify(result));
+    alert(`✅ Выполнено: ${button.label}\n\nРезультат: ${typeof result === 'string' ? result : JSON.stringify(result, null, 2)}`);
+  };
+
+  const handleDynamicMenuError = (errorMessage: string) => {
+    setError(errorMessage);
+    alert(`❌ Ошибка: ${errorMessage}`);
+  };
+
+  const handleWebAppUrlSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const url = formData.get('webAppUrl') as string;
+    
+    if (!url) {
+      alert('Введите URL Web App');
+      return;
+    }
+    
+    if (appState.spreadsheetId) {
+      setAppsScriptWebAppUrl(appState.spreadsheetId, url);
+      setAppState(prev => ({ ...prev, webAppUrl: url }));
+      setWebAppUrlInput('');
+      alert('✅ URL Web App сохранен');
+    }
+  };
+
   // --- RENDERERS ---
 
   if (page === PageState.LOGIN) {
@@ -412,6 +460,7 @@ const App = () => {
     return (
       <Layout title="Главное меню" subtitle={appState.currentSheetName}>
         <div className="grid grid-cols-2 gap-4">
+          <MenuCard icon="🎯" title="Кнопки таблицы" onClick={() => setPage(PageState.DYNAMIC_MENU)} />
           <MenuCard icon="📄" title="Данные" onClick={() => {
             setPage(PageState.VIEW_DATA);
             if (appState.currentSheetName) fetchSheetData(appState.currentSheetName);
@@ -423,7 +472,7 @@ const App = () => {
         
         <div className="mt-8 p-4 bg-indigo-50 rounded-xl border border-indigo-100 text-indigo-800 text-sm">
             <p className="font-bold mb-1">💡 Подсказка</p>
-            В разделе "Данные" нажмите на любую ячейку, чтобы отредактировать её.
+            В разделе "Кнопки таблицы" доступны все функции из вашей Google Таблицы.
         </div>
       </Layout>
     );
@@ -567,6 +616,40 @@ const App = () => {
                       Сменить таблицу
                   </button>
               </div>
+
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                  <h3 className="font-bold text-slate-800 mb-2">Apps Script Web App</h3>
+                  <p className="text-xs text-slate-500 mb-4">
+                      URL для доступа к функциям таблицы. Разверните Apps Script как Web App и вставьте URL сюда.
+                  </p>
+                  
+                  {appState.webAppUrl && appState.webAppUrl !== 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID_HERE/exec' ? (
+                      <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-sm font-mono text-green-800 break-all">{appState.webAppUrl}</p>
+                      </div>
+                  ) : (
+                      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="text-sm text-yellow-800">URL не настроен</p>
+                      </div>
+                  )}
+                  
+                  <form onSubmit={handleWebAppUrlSubmit} className="space-y-3">
+                      <input 
+                          name="webAppUrl"
+                          type="text" 
+                          value={webAppUrlInput}
+                          onChange={(e) => setWebAppUrlInput(e.target.value)}
+                          placeholder="https://script.google.com/macros/s/..." 
+                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                      <button 
+                          type="submit"
+                          className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors"
+                      >
+                          Сохранить URL
+                      </button>
+                  </form>
+              </div>
           </div>
       )}
       
@@ -576,6 +659,14 @@ const App = () => {
              <h3 className="font-bold text-slate-800">AI Конструктор</h3>
              <p className="text-slate-500 text-sm mt-2">Функция в процессе обновления дизайна</p>
         </div>
+      )}
+      
+      {page === PageState.DYNAMIC_MENU && appState.webAppUrl && (
+        <DynamicMenu
+          webAppUrl={appState.webAppUrl}
+          onActionExecuted={handleDynamicMenuAction}
+          onError={handleDynamicMenuError}
+        />
       )}
     </Layout>
   );

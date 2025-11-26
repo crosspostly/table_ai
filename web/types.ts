@@ -3,6 +3,7 @@ export enum PageState {
   LOGIN = 'login',
   ENTER_URL = 'enter-url',
   MENU = 'menu',
+  DYNAMIC_MENU = 'dynamic-menu',
   COLLECT_CONFIG = 'collect-config',
   REFRESH_CELL = 'refresh-cell',
   BATCH = 'batch',
@@ -48,4 +49,17 @@ export interface AppState {
   spreadsheetId: string | null;
   sheets: Sheet[];
   currentSheetName: string | null;
+  webAppUrl?: string; // Apps Script Web App URL for button actions
+}
+
+export interface ButtonInfo {
+  sheet: string;
+  cell: string;
+  function: string;
+  icon: string;
+  label: string;
+  description: string;
+  imageUrl: string;
+  category: string;
+  order: number;
 }

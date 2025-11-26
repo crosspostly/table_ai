@@ -54,6 +54,175 @@ function shareAsTemplate() {
   const url = `https://docs.google.com/spreadsheets/d/${copy.getId()}/copy`;
   SpreadsheetApp.getUi().alert('Template URL готов:', url);
 }
+
+// ====== MENU ======
+function onOpen() {
+  try {
+    const ui = SpreadsheetApp.getUi();
+    const menu = ui.createMenu('🤖 Table AI');
+    
+    // Основные функции
+    menu.addItem('🎯 AI Конструктор', 'openCollectConfigUI');
+    menu.addItem('📊 Распаковка данных', 'runUnpacking');
+    menu.addItem('📦 VK Импорт', 'openVKImportUI');
+    menu.addItem('🔄 Обновить ячейку', 'refreshCell');
+    menu.addSeparator();
+    
+    // Мобильные функции
+    menu.addItem('📱 Мобильные кнопки', 'setupButtonMetadata');
+    menu.addItem('🔧 Применить метаданные', 'applyButtonMetadata');
+    menu.addItem('📋 Экспорт кнопок (JSON)', 'exportButtonsForMobile');
+    menu.addSeparator();
+    
+    // Системные функции
+    menu.addItem('📝 Показать логи', 'showLogsDialog');
+    menu.addItem('⚙️ Настройки API', 'openSettingsUI');
+    if (DEV_MODE) {
+      menu.addSeparator();
+      menu.addItem('🧪 DEV: Тест кнопок', 'testGetSheetButtons');
+      menu.addItem('🧪 DEV: Тест doPost', 'testDoPost');
+    }
+    
+    menu.addToUi();
+    
+    addLog('✅ Меню Table AI создано', 'INFO');
+  } catch (e) {
+    addLog('❌ Ошибка создания меню: ' + e.message, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка создания меню: ' + e.message);
+  }
+}
+
+// eslint-disable-next-line no-unused-vars
+function openSettingsUI() {
+  try {
+    const html = HtmlService.createHtmlOutput(`
+      <div style="padding: 20px; font-family: Arial, sans-serif;">
+        <h2>⚙️ Настройки Table AI</h2>
+        
+        <div style="margin: 20px 0;">
+          <h3>📱 Мобильный API</h3>
+          <p>Разверните Apps Script как Web App для доступа с мобильных устройств:</p>
+          <ol>
+            <li>Apps Script Editor → Deploy → New deployment</li>
+            <li>Type: Web app</li>
+            <li>Execute as: Me</li>
+            <li>Who has access: Anyone</li>
+            <li>Скопируйте URL</li>
+          </ol>
+          
+          <h3>🎯 Настройка кнопок</h3>
+          <p>Используйте "Мобильные кнопки" для создания конфигурации</p>
+          
+          <h3>📋 Метаданные кнопок</h3>
+          <p>Alt-текст изображений в формате JSON:</p>
+          <code style="background: #f0f0f0; padding: 10px; display: block;">
+{
+  "icon": "🤖",
+  "label": "AI Конструктор",
+  "description": "Создать AI промпты",
+  "category": "ai",
+  "order": 1
+}
+          </code>
+        </div>
+        
+        <button onclick="google.script.host.close()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px;">
+          Закрыть
+        </button>
+      </div>
+    `)
+    .setTitle('Table AI - Настройки')
+    .setWidth(600)
+    .setHeight(500);
+    
+    SpreadsheetApp.getUi().showModalDialog(html);
+  } catch (e) {
+    addLog('❌ Ошибка открытия настроек: ' + e.message, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
+  }
+}
+
+// eslint-disable-next-line no-unused-vars
+function exportButtonsForMobile() {
+  try {
+    const buttons = getSheetButtons();
+    const json = JSON.stringify(buttons, null, 2);
+    
+    const html = HtmlService.createHtmlOutput(`
+      <div style="padding: 20px; font-family: Arial, sans-serif;">
+        <h2>📋 Экспорт кнопок</h2>
+        <p>Найдено кнопок: ${buttons.length}</p>
+        
+        <div style="margin: 20px 0;">
+          <h3>JSON для мобильного клиента:</h3>
+          <textarea readonly style="width: 100%; height: 300px; font-family: monospace; font-size: 12px; background: #f5f5f5; padding: 10px; border: 1px solid #ddd;">${json}</textarea>
+        </div>
+        
+        <div style="margin: 20px 0;">
+          <h3>Инструкция по развертыванию:</h3>
+          <ol>
+            <li>Deploy → New deployment</li>
+            <li>Type: Web app</li>
+            <li>Execute as: Me</li>
+            <li>Who has access: Anyone</li>
+            <li>Скопируйте URL в мобильное приложение</li>
+          </ol>
+        </div>
+        
+        <button onclick="google.script.host.close()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px;">
+          Закрыть
+        </button>
+      </div>
+    `)
+    .setTitle('Экспорт кнопок')
+    .setWidth(700)
+    .setHeight(600);
+    
+    SpreadsheetApp.getUi().showModalDialog(html);
+    
+    addLog(`📋 Экспортировано кнопок: ${buttons.length}`, 'INFO');
+  } catch (e) {
+    addLog('❌ Ошибка экспорта кнопок: ' + e.message, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
+  }
+}
+
+// DEV функции для тестирования
+// eslint-disable-next-line no-unused-vars
+function testGetSheetButtons() {
+  try {
+    const buttons = getSheetButtons();
+    addLog(`🧪 Тест getSheetButtons: найдено ${buttons.length} кнопок`, 'INFO');
+    SpreadsheetApp.getUi().alert(`Тест getSheetButtons\n\nНайдено кнопок: ${buttons.length}\n\nПервая кнопка:\n${JSON.stringify(buttons[0] || {}, null, 2)}`);
+  } catch (e) {
+    addLog(`❌ Тест getSheetButtons ошибка: ${e.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
+  }
+}
+
+// eslint-disable-next-line no-unused-vars
+function testDoPost() {
+  try {
+    const testPayload = {
+      action: 'exportButtonsJSON'
+    };
+    
+    const testEvent = {
+      postData: {
+        contents: JSON.stringify(testPayload)
+      }
+    };
+    
+    const result = doPost(testEvent);
+    const resultText = result.getContentText();
+    
+    addLog(`🧪 Тест doPost: ${resultText}`, 'INFO');
+    SpreadsheetApp.getUi().alert(`Тест doPost\n\nРезультат:\n${resultText}`);
+  } catch (e) {
+    addLog(`❌ Тест doPost ошибка: ${e.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
+  }
+}
 // ====== ЛОГИРОВАНИЕ ======
 function addLog(msg, level = 'INFO') {
   try {
@@ -1378,4 +1547,374 @@ function GM(prompt, maxTokens, temperature) {
   gmCachePut_(errKey, msg, 60);
   addLog('❌ GM финальная ошибка: ' + msg, 'ERROR');
   return msg;
+}
+
+// ====== MOBILE API FUNCTIONS ======
+
+/**
+ * Получить список всех "кнопок" (изображения с назначенными скриптами и alt-текстом)
+ * @return {Array<Object>} Массив объектов { sheet, cell, function, icon, label, imageUrl, ... }
+ */
+function getSheetButtons() {
+  try {
+    addLog('🔍 Поиск кнопок в таблице...', 'INFO');
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheets = ss.getSheets();
+    const buttons = [];
+    
+    for (const sheet of sheets) {
+      try {
+        const drawings = sheet.getDrawings();
+        
+        for (const drawing of drawings) {
+          // Проверяем, что это изображение с назначенным скриптом
+          if (drawing.getContentType && drawing.getContentType().includes('image')) {
+            const range = drawing.getAnchor();
+            if (!range) continue;
+            
+            const cell = range.getSheet().getRange(range.getRow(), range.getColumn());
+            const cellA1 = cell.getA1Notation();
+            
+            // Получаем alt-текст (метаданные)
+            let altText = '';
+            try {
+              // Пытаемся получить alt-текст через различные методы
+              if (drawing.getAltText) {
+                altText = drawing.getAltText() || '';
+              } else if (drawing.getDescription) {
+                altText = drawing.getDescription() || '';
+              }
+            } catch (e) {
+              // Игнорируем ошибки получения alt-текста
+            }
+            
+            // Получаем назначенную функцию
+            let assignedFunction = '';
+            try {
+              if (drawing.getScript) {
+                assignedFunction = drawing.getScript() || '';
+              }
+            } catch (e) {
+              // Игнорируем ошибки получения функции
+            }
+            
+            // Пропускаем если нет ни функции ни метаданных
+            if (!assignedFunction && !altText) continue;
+            
+            // Парсим метаданные из alt-текста (JSON формат)
+            let metadata = {};
+            if (altText) {
+              try {
+                metadata = JSON.parse(altText);
+              } catch (e) {
+                // Если не JSON, используем как label
+                metadata = { label: altText };
+              }
+            }
+            
+            // Формируем объект кнопки
+            const button = {
+              sheet: sheet.getName(),
+              cell: cellA1,
+              function: assignedFunction || metadata.function || '',
+              icon: metadata.icon || '🔘',
+              label: metadata.label || assignedFunction || 'Кнопка',
+              description: metadata.description || '',
+              imageUrl: metadata.imageUrl || '',
+              category: metadata.category || 'general',
+              order: metadata.order || 999
+            };
+            
+            buttons.push(button);
+            addLog(`📌 Найдена кнопка: ${sheet.getName()}!${cellA1} → ${button.label}`, 'DEBUG');
+          }
+        }
+      } catch (e) {
+        addLog(`⚠️ Ошибка обработки листа "${sheet.getName()}": ${e.message}`, 'WARN');
+      }
+    }
+    
+    // Сортируем по порядку и листу
+    buttons.sort((a, b) => {
+      if (a.order !== b.order) return a.order - b.order;
+      if (a.sheet !== b.sheet) return a.sheet.localeCompare(b.sheet);
+      return a.cell.localeCompare(b.cell);
+    });
+    
+    addLog(`✅ Найдено кнопок: ${buttons.length}`, 'INFO');
+    return buttons;
+    
+  } catch (e) {
+    addLog(`❌ Ошибка в getSheetButtons: ${e.message}`, 'ERROR');
+    return [];
+  }
+}
+
+/**
+ * Экспортировать кнопки для внешнего клиента в формате JSON
+ * @return {string} JSON array
+ */
+function exportButtonsJSON() {
+  try {
+    const buttons = getSheetButtons();
+    return JSON.stringify(buttons);
+  } catch (e) {
+    addLog(`❌ Ошибка в exportButtonsJSON: ${e.message}`, 'ERROR');
+    return JSON.stringify([]);
+  }
+}
+
+/**
+ * Helper для быстрой массовой настройки alt-текстов у изображений
+ * Создает/обновляет лист с конфигурацией кнопок
+ */
+function setupButtonMetadata() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ButtonConfig') || ss.insertSheet('ButtonConfig');
+    
+    // Получаем все кнопки
+    const buttons = getSheetButtons();
+    
+    // Очищаем лист
+    configSheet.clear();
+    
+    // Заголовки
+    const headers = [
+      'Лист',
+      'Ячейка', 
+      'Функция',
+      'Иконка',
+      'Название',
+      'Описание',
+      'Категория',
+      'Порядок',
+      'Image URL',
+      'Метаданные (JSON)'
+    ];
+    configSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+      .setFontWeight('bold')
+      .setBackground('#E8F0FE');
+    
+    // Данные кнопок
+    const data = buttons.map(button => [
+      button.sheet,
+      button.cell,
+      button.function,
+      button.icon,
+      button.label,
+      button.description,
+      button.category,
+      button.order,
+      button.imageUrl,
+      JSON.stringify({
+        icon: button.icon,
+        label: button.label,
+        description: button.description,
+        category: button.category,
+        order: button.order,
+        imageUrl: button.imageUrl
+      })
+    ]);
+    
+    if (data.length > 0) {
+      configSheet.getRange(2, 1, data.length, headers.length).setValues(data);
+    }
+    
+    // Автоширина
+    configSheet.autoResizeColumns(1, headers.length);
+    
+    addLog(`✅ Создан лист ButtonConfig с ${buttons.length} кнопками`, 'INFO');
+    SpreadsheetApp.getUi().alert(`✅ Готово!\nСоздан лист "ButtonConfig" с ${buttons.length} кнопками.\nОтредактируйте метаданные и используйте "Применить метаданные".`);
+    
+  } catch (e) {
+    addLog(`❌ Ошибка в setupButtonMetadata: ${e.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
+  }
+}
+
+/**
+ * Применить метаданные из листа ButtonConfig к изображениям
+ */
+function applyButtonMetadata() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('ButtonConfig');
+    
+    if (!configSheet) {
+      SpreadsheetApp.getUi().alert('❌ Лист "ButtonConfig" не найден. Сначала создайте его через "Настройка метаданных кнопок".');
+      return;
+    }
+    
+    const data = configSheet.getRange(2, 1, configSheet.getLastRow() - 1, 10).getValues();
+    let updated = 0;
+    
+    for (const row of data) {
+      const [sheetName, cellA1, functionName, icon, label, description, category, order, imageUrl, metadataJson] = row;
+      
+      if (!sheetName || !cellA1) continue;
+      
+      try {
+        const sheet = ss.getSheetByName(sheetName);
+        if (!sheet) continue;
+        
+        const cell = sheet.getRange(cellA1);
+        const drawings = sheet.getDrawings();
+        
+        for (const drawing of drawings) {
+          const range = drawing.getAnchor();
+          if (range && range.getRow() === cell.getRow() && range.getColumn() === cell.getColumn()) {
+            // Обновляем метаданные
+            const metadata = {
+              icon: icon || '🔘',
+              label: label || functionName || 'Кнопка',
+              description: description || '',
+              category: category || 'general',
+              order: parseInt(order) || 999,
+              imageUrl: imageUrl || ''
+            };
+            
+            // Устанавливаем alt-текст
+            if (drawing.setAltText) {
+              drawing.setAltText(JSON.stringify(metadata));
+            } else if (drawing.setDescription) {
+              drawing.setDescription(JSON.stringify(metadata));
+            }
+            
+            // Устанавливаем функцию
+            if (drawing.setScript && functionName) {
+              drawing.setScript(functionName);
+            }
+            
+            updated++;
+            addLog(`📝 Обновлена кнопка: ${sheetName}!${cellA1}`, 'INFO');
+            break;
+          }
+        }
+      } catch (e) {
+        addLog(`⚠️ Ошибка обновления ${sheetName}!${cellA1}: ${e.message}`, 'WARN');
+      }
+    }
+    
+    addLog(`✅ Обновлено кнопок: ${updated}`, 'INFO');
+    SpreadsheetApp.getUi().alert(`✅ Готово!\nОбновлено кнопок: ${updated}`);
+    
+  } catch (e) {
+    addLog(`❌ Ошибка в applyButtonMetadata: ${e.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
+  }
+}
+
+/**
+ * Web App endpoint для мобильного клиента
+ */
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const action = data.action || '';
+    
+    addLog(`📡 doPost запрос: ${action}`, 'INFO');
+    
+    switch (action) {
+      case 'exportButtonsJSON':
+        return ContentService.createTextOutput(
+          JSON.stringify({
+            ok: true,
+            data: exportButtonsJSON()
+          })
+        ).setMimeType(ContentService.MimeType.JSON);
+        
+      case 'callFunction':
+        const functionName = data.functionName || '';
+        if (!functionName) {
+          return ContentService.createTextOutput(
+            JSON.stringify({ ok: false, error: 'Function name required' })
+          ).setMimeType(ContentService.MimeType.JSON);
+        }
+        
+        try {
+          // Проверяем существование функции
+          if (typeof this[functionName] !== 'function') {
+            return ContentService.createTextOutput(
+              JSON.stringify({ ok: false, error: `Function "${functionName}" not found` })
+            ).setMimeType(ContentService.MimeType.JSON);
+          }
+          
+          // Вызываем функцию
+          const result = this[functionName].apply(this, data.args || []);
+          
+          return ContentService.createTextOutput(
+            JSON.stringify({
+              ok: true,
+              result: result
+            })
+          ).setMimeType(ContentService.MimeType.JSON);
+          
+        } catch (funcError) {
+          addLog(`❌ Ошибка вызова функции ${functionName}: ${funcError.message}`, 'ERROR');
+          return ContentService.createTextOutput(
+            JSON.stringify({ 
+              ok: false, 
+              error: `Function execution error: ${funcError.message}` 
+            })
+          ).setMimeType(ContentService.MimeType.JSON);
+        }
+        
+      case 'getSheetData':
+        const sheetName = data.sheetName || '';
+        const rangeA1 = data.range || 'A1:Z100';
+        
+        if (!sheetName) {
+          return ContentService.createTextOutput(
+            JSON.stringify({ ok: false, error: 'Sheet name required' })
+          ).setMimeType(ContentService.MimeType.JSON);
+        }
+        
+        try {
+          const ss = SpreadsheetApp.getActiveSpreadsheet();
+          const sheet = ss.getSheetByName(sheetName);
+          if (!sheet) {
+            return ContentService.createTextOutput(
+              JSON.stringify({ ok: false, error: `Sheet "${sheetName}" not found` })
+            ).setMimeType(ContentService.MimeType.JSON);
+          }
+          
+          const range = sheet.getRange(rangeA1);
+          const values = range.getValues();
+          
+          return ContentService.createTextOutput(
+            JSON.stringify({
+              ok: true,
+              data: values
+            })
+          ).setMimeType(ContentService.MimeType.JSON);
+          
+        } catch (sheetError) {
+          addLog(`❌ Ошибка чтения листа ${sheetName}: ${sheetError.message}`, 'ERROR');
+          return ContentService.createTextOutput(
+            JSON.stringify({ 
+              ok: false, 
+              error: `Sheet read error: ${sheetError.message}` 
+            })
+          ).setMimeType(ContentService.MimeType.JSON);
+        }
+        
+      default:
+        return ContentService.createTextOutput(
+          JSON.stringify({ 
+            ok: false, 
+            error: `Unknown action: ${action}` 
+          })
+        ).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+  } catch (e) {
+    addLog(`❌ Ошибка в doPost: ${e.message}`, 'ERROR');
+    return ContentService.createTextOutput(
+      JSON.stringify({ 
+        ok: false, 
+        error: `Server error: ${e.message}` 
+      })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
 }
