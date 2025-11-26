@@ -4,7 +4,7 @@ import { AppState, DriveFile, Sheet } from './types';
 import { TableList } from './components/TableList';
 import { SheetViewer } from './components/SheetViewer';
 import { getUserSpreadsheets, getSpreadsheetMetadata } from './services/googleSheets';
-import { findScriptIdForSpreadsheet, getScriptFunctions, checkScriptAvailability } from './services/appsScriptService';
+import { findScriptIdForSpreadsheet, getScriptFunctions, checkScriptAvailability, executeScriptFunction, getScriptStatus } from './services/appsScriptService';
 
 // Временной интерфейс для ScriptStatus
 interface ScriptStatus {
@@ -13,6 +13,7 @@ interface ScriptStatus {
   lastChecked: string;
   searchLogs: any[];
   functions: any[];
+  executionLogs: any[];
   error?: string;
 }
 
@@ -39,7 +40,8 @@ const App = () => {
     available: false,
     lastChecked: '',
     searchLogs: [],
-    functions: []
+    functions: [],
+    executionLogs: []
   });
   const [searchingScript, setSearchingScript] = useState(false);
 
@@ -124,7 +126,8 @@ const App = () => {
         available: false,
         lastChecked: '',
         searchLogs: [],
-        functions: []
+        functions: [],
+        executionLogs: []
       });
       
       setSelectedFile(file);
@@ -198,6 +201,7 @@ const App = () => {
         lastChecked: new Date().toISOString(),
         searchLogs: searchResult.logs,
         functions,
+        executionLogs: scriptStatus.executionLogs || [], // Сохраняем существующие логи выполнения
         error
       };
 
@@ -228,7 +232,29 @@ const App = () => {
   };
 
   const handleClearLogs = () => {
-    setScriptStatus(prev => ({ ...prev, searchLogs: [] }));
+    setScriptStatus(prev => ({ 
+      ...prev, 
+      searchLogs: [],
+      executionLogs: [] 
+    }));
+  };
+
+  const addExecutionLog = (functionName: string, parameters: any, success: boolean, result?: any, error?: string, executionTime?: number) => {
+    const newLog = {
+      id: Date.now().toString(),
+      functionName,
+      parameters,
+      success,
+      result,
+      error,
+      executionTime,
+      timestamp: new Date().toISOString()
+    };
+
+    setScriptStatus(prev => ({
+      ...prev,
+      executionLogs: [newLog, ...(prev.executionLogs || [])].slice(0, 50) // Храним последние 50 логов
+    }));
   };
 
   // --- RENDER ---
@@ -265,6 +291,7 @@ const App = () => {
         onUpdateScriptId={handleUpdateScriptId}
         onRefreshScript={() => refreshScriptStatus(selectedFile.id)}
         onClearLogs={handleClearLogs}
+        onAddExecutionLog={addExecutionLog}
         onBack={() => setSelectedFile(null)}
       />
     );
