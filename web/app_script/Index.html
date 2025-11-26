@@ -1,0 +1,443 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f5f7fa; overscroll-behavior: none; }
+      .animate-fade-in { animation: fadeIn 0.2s ease-out; }
+      .animate-slide-up { animation: slideUp 0.3s ease-out; }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      /* Hide scrollbar for neatness */
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect, useCallback, useRef } = React;
+
+      // --- UTILS FOR GAS ---
+      const server = {
+        getMetadata: (id) => new Promise((resolve, reject) => 
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getSpreadsheetMetadata(id)),
+        
+        getValues: (id, sheet) => new Promise((resolve, reject) => 
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getSheetValues(id, sheet)),
+        
+        updateCell: (id, sheet, addr, val) => new Promise((resolve, reject) => 
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).updateCell(id, sheet, addr, val)),
+        
+        getIdFromUrl: (url) => new Promise((resolve, reject) =>
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).extractIdFromUrl(url))
+      };
+
+      // --- HELPERS ---
+      const getCellAddress = (rowIndex, colIndex) => {
+        let letter = '';
+        let temp = colIndex;
+        while (temp >= 0) {
+          letter = String.fromCharCode((temp % 26) + 65) + letter;
+          temp = Math.floor(temp / 26) - 1;
+        }
+        return `${letter}${rowIndex + 1}`;
+      };
+
+      // --- COMPONENTS ---
+
+      const Layout = ({ children, title, subtitle, onBack, showBack }) => (
+        <div className="min-h-screen bg-[#f5f7fa] pb-16 text-[#2d3748] flex flex-col">
+          <div className="max-w-[500px] w-full mx-auto p-4 flex-1 flex flex-col">
+            <div className="bg-gradient-to-br from-[#667eea] to-[#764ba2] text-white p-5 rounded-xl mb-6 shadow-md shrink-0">
+              <div className="flex flex-col">
+                <h1 className="text-2xl font-bold m-0 mb-2">{title}</h1>
+                {subtitle && <p className="text-sm opacity-90 m-0 truncate">{subtitle}</p>}
+              </div>
+            </div>
+            {showBack && onBack && (
+              <button onClick={onBack} className="text-[#667eea] font-semibold mb-4 flex items-center hover:opacity-80 transition-opacity shrink-0">
+                ← Назад
+              </button>
+            )}
+            <div className="flex-1 relative">
+              {children}
+            </div>
+          </div>
+        </div>
+      );
+
+      const MenuCard = ({ icon, title, onClick }) => (
+        <div onClick={onClick} className="bg-white p-6 rounded-xl text-center cursor-pointer shadow-sm active:scale-95 active:bg-gray-50 transition-all border border-transparent hover:border-gray-100 h-full flex flex-col justify-center items-center">
+          <div className="text-4xl mb-2">{icon}</div>
+          <p className="text-sm font-semibold text-gray-700">{title}</p>
+        </div>
+      );
+
+      const CellEditor = ({ isOpen, value, address, onClose, onSave, onChange }) => {
+        const inputRef = useRef(null);
+        useEffect(() => {
+          if (isOpen && inputRef.current) setTimeout(() => inputRef.current?.focus(), 100);
+        }, [isOpen]);
+        
+        if (!isOpen) return null;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+            <div className="bg-white w-full max-w-lg rounded-t-2xl p-4 shadow-2xl transform transition-transform animate-slide-up" onClick={(e) => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-4 border-b pb-2">
+                <span className="font-bold text-gray-500 text-sm">Редактирование: <span className="text-indigo-600">{address}</span></span>
+                <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-2">✕</button>
+              </div>
+              <textarea
+                ref={inputRef}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                className="w-full h-32 p-3 border border-gray-300 rounded-xl text-lg mb-4 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none bg-gray-50"
+                placeholder="Пустая ячейка"
+              />
+              <button onClick={onSave} className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-lg active:bg-indigo-700 active:scale-[0.99] transition-all text-lg">
+                Сохранить
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      // --- MAIN APP ---
+
+      const App = () => {
+        const PAGE = {
+          ENTER_URL: 'enter-url',
+          MENU: 'menu',
+          VIEW_DATA: 'view-data',
+          SETTINGS: 'settings',
+          LOGS: 'logs',
+          COLLECT: 'collect'
+        };
+
+        const [appState, setAppState] = useState({
+          spreadsheetId: localStorage.getItem('gas_spreadsheetId'),
+          sheets: [],
+          currentSheetName: null
+        });
+        const [page, setPage] = useState(PAGE.ENTER_URL);
+        const [loading, setLoading] = useState(false);
+        const [gridData, setGridData] = useState([]);
+        const [editingCell, setEditingCell] = useState(null);
+        const [editValue, setEditValue] = useState('');
+        const [history, setHistory] = useState([]);
+
+        // AI Collect State
+        const [aiPrompt, setAiPrompt] = useState('');
+        const [aiResult, setAiResult] = useState('');
+
+        useEffect(() => {
+          const savedHistory = localStorage.getItem('gas_history');
+          if (savedHistory) try { setHistory(JSON.parse(savedHistory)); } catch (e) {}
+
+          if (appState.spreadsheetId) {
+            loadSpreadsheet(appState.spreadsheetId);
+          } else {
+            setPage(PAGE.ENTER_URL);
+          }
+        }, []);
+
+        useEffect(() => {
+          localStorage.setItem('gas_history', JSON.stringify(history));
+        }, [history]);
+
+        const addLog = (action, details, oldValue, newValue) => {
+          const newEntry = {
+            id: Date.now().toString(),
+            timestamp: Date.now(),
+            action,
+            details,
+            oldValue, 
+            newValue
+          };
+          setHistory(prev => [newEntry, ...prev]);
+        };
+
+        const loadSpreadsheet = async (id) => {
+          setLoading(true);
+          try {
+            const sheets = await server.getMetadata(id);
+            setAppState(prev => ({
+              ...prev,
+              spreadsheetId: id,
+              sheets,
+              currentSheetName: sheets.length > 0 ? sheets[0].properties.title : null
+            }));
+            setPage(PAGE.MENU);
+          } catch (error) {
+            console.error(error);
+            // Don't alert immediately on init, just go to enter url if failed
+            setPage(PAGE.ENTER_URL);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        const fetchSheetData = async (sheetName) => {
+          if (!appState.spreadsheetId) return;
+          setLoading(true);
+          try {
+            const values = await server.getValues(appState.spreadsheetId, sheetName);
+            setGridData(values);
+          } catch (error) {
+            alert('Ошибка загрузки данных: ' + error.message);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        const handleUrlSubmit = async (e) => {
+          e.preventDefault();
+          const formData = new FormData(e.currentTarget);
+          const url = formData.get('url');
+          if (!url) return;
+
+          setLoading(true);
+          try {
+            const id = await server.getIdFromUrl(url);
+            if (!id) throw new Error('Некорректная ссылка');
+            
+            localStorage.setItem('gas_spreadsheetId', id);
+            await loadSpreadsheet(id);
+          } catch (e) {
+            alert('❌ Не удалось найти таблицу. ' + e.message);
+            setLoading(false);
+          }
+        };
+
+        const saveCell = async () => {
+          if (!editingCell || !appState.currentSheetName) return;
+          const { r, c } = editingCell;
+          const oldValue = gridData[r] ? gridData[r][c] : '';
+          const newValue = editValue;
+          const address = getCellAddress(r, c);
+
+          setEditingCell(null);
+          if (oldValue === newValue) return;
+
+          const newData = [...gridData];
+          if (!newData[r]) { for(let i=0; i<=r; i++) if(!newData[i]) newData[i] = []; }
+          newData[r][c] = newValue;
+          setGridData(newData);
+
+          try {
+            await server.updateCell(appState.spreadsheetId, appState.currentSheetName, address, newValue);
+            addLog('edit', `Edited ${address}`, oldValue, newValue);
+          } catch (e) {
+            alert('Ошибка сохранения! ' + e.message);
+            const rev = [...gridData];
+            if (rev[r]) rev[r][c] = oldValue;
+            setGridData(rev);
+          }
+        };
+
+        // Renderers
+        
+        if (page === PAGE.ENTER_URL) {
+          return (
+            <Layout title="Подключение" subtitle="Веб-приложение Apps Script">
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div className="mb-6 text-center">
+                  <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl">🔗</div>
+                  <h2 className="text-lg font-bold text-slate-800">Ссылка на таблицу</h2>
+                  <p className="text-sm text-slate-500">Доступ к таблицам вашего аккаунта</p>
+                </div>
+                <form onSubmit={handleUrlSubmit} className="flex flex-col gap-4">
+                  <input name="url" type="text" placeholder="https://docs.google.com/..." className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all" required />
+                  <button type="submit" disabled={loading} className="w-full p-4 bg-indigo-600 text-white rounded-xl font-bold shadow-lg active:scale-[0.98] transition-all disabled:opacity-50">
+                    {loading ? 'Подключение...' : 'Подключить'}
+                  </button>
+                </form>
+              </div>
+            </Layout>
+          );
+        }
+
+        if (page === PAGE.MENU) {
+          return (
+            <Layout title="Главное меню" subtitle={appState.currentSheetName || 'Таблица выбрана'}>
+              <div className="grid grid-cols-2 gap-4 h-full content-start">
+                <MenuCard icon="📄" title="Данные" onClick={() => { setPage(PAGE.VIEW_DATA); fetchSheetData(appState.currentSheetName); }} />
+                <MenuCard icon="🤖" title="AI Сборщик" onClick={() => setPage(PAGE.COLLECT)} />
+                <MenuCard icon="📋" title="История" onClick={() => setPage(PAGE.LOGS)} />
+                <MenuCard icon="⚙️" title="Настройки" onClick={() => setPage(PAGE.SETTINGS)} />
+              </div>
+            </Layout>
+          );
+        }
+
+        if (page === PAGE.VIEW_DATA) {
+          return (
+            <div className="flex flex-col h-screen bg-slate-50">
+              <div className="bg-white shadow-sm z-40 px-4 py-3 flex justify-between items-center border-b border-slate-200 shrink-0">
+                <button onClick={() => setPage(PAGE.MENU)} className="text-slate-500 font-medium px-2 py-1 -ml-2">← Меню</button>
+                <div className="flex-1 mx-4">
+                  <select 
+                    value={appState.currentSheetName || ''} 
+                    onChange={(e) => {
+                      const newSheet = e.target.value;
+                      setAppState(prev => ({ ...prev, currentSheetName: newSheet }));
+                      fetchSheetData(newSheet);
+                    }}
+                    className="w-full py-1.5 px-3 bg-slate-100 border-none rounded-lg text-sm font-bold text-center text-slate-700 outline-none"
+                  >
+                    {appState.sheets.map(s => <option key={s.properties.sheetId} value={s.properties.title}>{s.properties.title}</option>)}
+                  </select>
+                </div>
+                <button onClick={() => fetchSheetData(appState.currentSheetName)} className="text-indigo-600 font-bold p-2">{loading ? '...' : '↻'}</button>
+              </div>
+
+              <div className="flex-1 overflow-auto relative bg-white">
+                {loading && gridData.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-slate-400">Загрузка данных...</div>
+                ) : (
+                  <div className="inline-block min-w-full align-middle">
+                    <table className="min-w-full border-collapse table-fixed">
+                      <thead className="bg-slate-100 text-xs font-bold text-slate-500 uppercase">
+                        <tr>
+                          <th className="w-12 py-3 px-2 border-b border-r border-slate-200 sticky left-0 top-0 z-30 bg-slate-100 text-center shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">#</th>
+                          {gridData[0] && gridData[0].map((_, idx) => (
+                            <th key={idx} className="w-32 py-3 px-2 border-b border-r border-slate-200 sticky top-0 z-20 bg-slate-100 whitespace-nowrap overflow-hidden text-ellipsis text-center">
+                              {getCellAddress(-1, idx).replace('0', '')}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-slate-100 text-sm text-slate-700">
+                        {gridData.map((row, r) => (
+                          <tr key={r} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-2 border-r border-slate-200 bg-slate-50 text-center font-mono text-xs text-slate-400 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">{r + 1}</td>
+                            {row.map((cell, c) => (
+                              <td key={c} onClick={() => { setEditingCell({r, c}); setEditValue(cell); }} className="h-12 px-3 py-2 border-r border-slate-100 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px] active:bg-indigo-50">
+                                {cell}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="h-32"></div>
+                  </div>
+                )}
+              </div>
+
+              <CellEditor 
+                isOpen={!!editingCell} 
+                value={editValue} 
+                address={editingCell ? getCellAddress(editingCell.r, editingCell.c) : ''}
+                onClose={() => setEditingCell(null)} 
+                onChange={setEditValue} 
+                onSave={saveCell} 
+              />
+            </div>
+          );
+        }
+
+        if (page === PAGE.SETTINGS) {
+          return (
+            <Layout title="Настройки" showBack onBack={() => setPage(PAGE.MENU)}>
+               <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                  <h3 className="font-bold text-slate-800 mb-2">Текущая таблица</h3>
+                  <p className="text-xs font-mono bg-slate-50 p-2 rounded text-slate-500 break-all mb-4">{appState.spreadsheetId}</p>
+                  <button onClick={() => { localStorage.removeItem('gas_spreadsheetId'); setAppState(p => ({...p, spreadsheetId: null})); setPage(PAGE.ENTER_URL); }} className="w-full py-3 bg-red-50 text-red-600 font-semibold rounded-xl">Сменить таблицу</button>
+              </div>
+            </Layout>
+          );
+        }
+
+        if (page === PAGE.LOGS) {
+           return (
+             <Layout title="История" showBack onBack={() => setPage(PAGE.MENU)}>
+               <div className="space-y-4">
+                  {history.length === 0 ? <p className="text-center text-gray-400 mt-10">Пусто</p> : 
+                   history.map(entry => (
+                     <div key={entry.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                         <div className="flex justify-between items-center mb-2">
+                             <span className="px-2 py-1 rounded text-xs font-bold bg-indigo-100 text-indigo-700">{entry.action.toUpperCase()}</span>
+                             <span className="text-xs text-gray-400">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                         </div>
+                         <p className="text-sm text-gray-800 font-medium mb-1">{entry.details}</p>
+                         {entry.oldValue && (
+                             <div className="text-xs text-gray-500 bg-slate-50 p-2 rounded mt-2 flex gap-2">
+                                 <span className="line-through opacity-50">{entry.oldValue}</span>
+                                 <span>→</span>
+                                 <span className="font-bold text-green-600">{entry.newValue}</span>
+                             </div>
+                         )}
+                     </div>
+                   ))
+                  }
+               </div>
+             </Layout>
+           )
+        }
+
+        if (page === PAGE.COLLECT) {
+          return (
+            <Layout title="AI Сборщик" showBack onBack={() => setPage(PAGE.MENU)}>
+               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                 <div className="mb-4 text-center">
+                   <span className="text-4xl">🤖</span>
+                   <h3 className="font-bold text-slate-800 mt-2">Генерация формул</h3>
+                   <p className="text-sm text-slate-500">Опишите, что нужно сделать с данными</p>
+                 </div>
+                 
+                 <div className="space-y-4">
+                   <textarea
+                     value={aiPrompt}
+                     onChange={(e) => setAiPrompt(e.target.value)}
+                     className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none h-32 resize-none"
+                     placeholder="Например: Посчитай сумму в колонке B, если в колонке A написано 'Оплачено'..."
+                   />
+                   
+                   <button 
+                     onClick={() => {
+                        setLoading(true);
+                        // Mock AI delay
+                        setTimeout(() => {
+                           setAiResult("Функция в разработке для версии GAS. Используйте полную версию для AI интеграции.");
+                           setLoading(false);
+                        }, 1000);
+                     }}
+                     disabled={!aiPrompt || loading}
+                     className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg disabled:opacity-50"
+                   >
+                     {loading ? 'Думаю...' : 'Сгенерировать'}
+                   </button>
+                   
+                   {aiResult && (
+                     <div className="p-4 bg-indigo-50 text-indigo-800 rounded-xl text-sm border border-indigo-100">
+                       {aiResult}
+                     </div>
+                   )}
+                 </div>
+               </div>
+            </Layout>
+          );
+        }
+        
+        return null;
+      };
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
