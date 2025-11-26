@@ -15,75 +15,206 @@ function doGet(_e) {
 
 function doPost(_e) {
   try {
+    Logger.log('=== doPost START ===');
+
     const data = parseBody_(_e);
     const action = (data.action || '').toString();
     const token = (data.token || '').toString();
     const email = (data.email || '').toString();
-    const sheetId = (data.sheetId || '').toString(); // ← ДОБАВЛЕНО
+    const sheetId = (data.sheetId || '').toString();
+    const apiKey = (data.apiKey || '').toString();
+
+    Logger.log('action: ' + action);
+    Logger.log('email: ' + (email ? 'SET' : 'NOT SET'));
+    Logger.log('token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
+    Logger.log('sheetId: ' + sheetId);
+    Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
 
     // License gate for all actions except 'status'
     if (action !== 'status') {
-      const lic = checkLicense_(token, email, sheetId); // ← ДОБАВЛЕН sheetId
-      if (!lic.ok) return json_({ok: false, error: lic.error || 'UNAUTHORIZED'}, 403);
+      Logger.log('Checking license...');
+      const lic = checkLicense_(token, email, sheetId);
+      Logger.log('License check result: ' + JSON.stringify(lic));
+
+      if (!lic.ok) {
+        Logger.log('License check FAILED: ' + lic.error);
+        return json_({ok: false, error: lic.error || 'UNAUTHORIZED'}, 403);
+      }
+      Logger.log('License check PASSED');
     }
 
     switch (action) {
     case 'gm': {
+      Logger.log('Processing gm action');
       const prompt = (data.prompt || '').toString();
       const maxTokens = data.maxTokens == null ? 12500 : +data.maxTokens;
       const temperature = data.temperature == null ? 0.7 : +data.temperature;
-      const apiKey = (data.apiKey || '').toString();
-      if (!apiKey) return json_({ok: false, error: 'NO_CLIENT_KEY'}, 400);
-      // rate limit
-      if (!rateLimitOk_(token)) return json_({ok: false, error: 'RATE_LIMIT'}, 429);
+      const userApiKey = (data.apiKey || '').toString();
 
+      Logger.log('prompt length: ' + prompt.length);
+      Logger.log('maxTokens: ' + maxTokens);
+      Logger.log('temperature: ' + temperature);
+      Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
+
+      // API key priority: use user key first, otherwise fallback to default
+      let finalApiKey = userApiKey;
+      let keySource = 'USER';
+
+      if (!userApiKey) {
+        // Try to get default API key from script properties
+        const defaultApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+        if (defaultApiKey) {
+          finalApiKey = defaultApiKey;
+          keySource = 'DEFAULT';
+          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
+        } else {
+          Logger.log('ERROR: No API key available (neither user nor default)');
+          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
+        }
+      } else {
+        Logger.log('Using USER API key, length: ' + userApiKey.length);
+      }
+
+      // rate limit
+      if (!rateLimitOk_(token)) {
+        Logger.log('Rate limit exceeded for token');
+        return json_({ok: false, error: 'RATE_LIMIT'}, 429);
+      }
+
+      Logger.log('Calling serverGM_ with ' + keySource + ' API key');
       const t0 = Date.now();
       let ok = true; let err = null; let text = '';
       try {
-        text = serverGM_(prompt, maxTokens, temperature, apiKey);
+        text = serverGM_(prompt, maxTokens, temperature, finalApiKey);
+        Logger.log('serverGM_ completed successfully, response length: ' + text.length);
       } catch (ex) {
-        ok = false; err = String(ex && ex.message || ex);
+        ok = false;
+        err = String(ex && ex.message || ex);
+        Logger.log('serverGM_ failed: ' + err);
       }
+
       try {
-        serverLog_({action: 'gm', ok: ok, error: err, email: email, token: token, promptLen: prompt.length, ms: Date.now() - t0});
+        serverLog_({
+          action: 'gm',
+          ok: ok,
+          error: err,
+          email: email,
+          token: token,
+          promptLen: prompt.length,
+          ms: Date.now() - t0,
+          keySource: keySource,
+        });
       } catch (_) {}
-      if (!ok) return json_({ok: false, error: err}, 500);
+
+      if (!ok) {
+        Logger.log('Returning error response: ' + err);
+        return json_({ok: false, error: err}, 500);
+      }
+
+      Logger.log('Returning successful response');
       return json_({ok: true, data: text});
     }
     case 'gm_image': {
+      Logger.log('Processing gm_image action');
       const images = data.images || [];
       const lang = (data.lang || 'ru').toString();
-      const apiKey2 = (data.apiKey || '').toString();
+      const userApiKey = (data.apiKey || '').toString();
       const delimiter = (data.delimiter && String(data.delimiter).trim()) ? String(data.delimiter).trim() : null;
-      if (!apiKey2) return json_({ok: false, error: 'NO_CLIENT_KEY'}, 400);
-      if (!Array.isArray(images) || images.length === 0) return json_({ok: false, error: 'NO_IMAGES'}, 400);
-      if (!rateLimitOk_(token)) return json_({ok: false, error: 'RATE_LIMIT'}, 429);
 
-      const t1 = Date.now();
-      let ok2 = true; let err2 = null; let text2 = '';
-      try {
-        text2 = serverGMImage_(images, lang, apiKey2, delimiter);
-      } catch (ex2) {
-        ok2 = false; err2 = String(ex2 && ex2.message || ex2);
+      Logger.log('images count: ' + images.length);
+      Logger.log('lang: ' + lang);
+      Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
+      Logger.log('delimiter: ' + (delimiter || 'NONE'));
+
+      // API key priority: use user key first, otherwise fallback to default
+      const finalApiKey = userApiKey;
+      let keySource = 'USER';
+
+      if (!userApiKey) {
+        // Try to get default API key from script properties
+        const defaultApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+        if (defaultApiKey) {
+          keySource = 'DEFAULT';
+          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
+        } else {
+          Logger.log('ERROR: No API key available (neither user nor default)');
+          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
+        }
+      } else {
+        Logger.log('Using USER API key, length: ' + userApiKey.length);
       }
+
+      if (!Array.isArray(images) || images.length === 0) {
+        Logger.log('ERROR: No images provided');
+        return json_({ok: false, error: 'NO_IMAGES'}, 400);
+      }
+
+      if (!rateLimitOk_(token)) {
+        Logger.log('Rate limit exceeded for token');
+        return json_({ok: false, error: 'RATE_LIMIT'}, 429);
+      }
+
+      Logger.log('Calling serverGMImage_ with ' + keySource + ' API key');
+      const t1 = Date.now();
+      let ok2 = true;
+      let err2 = null;
+      let text2 = '';
       try {
-        serverLog_({action: 'gm_image', ok: ok2, error: err2, email: email, token: token, promptLen: images.length, ms: Date.now() - t1});
+        text2 = serverGMImage_(images, lang, finalApiKey, delimiter);
+        Logger.log('serverGMImage_ completed successfully, response length: ' + text2.length);
+      } catch (ex2) {
+        ok2 = false;
+        err2 = String(ex2 && ex2.message || ex2);
+        Logger.log('serverGMImage_ failed: ' + err2);
+      }
+
+      try {
+        serverLog_({
+          action: 'gm_image',
+          ok: ok2,
+          error: err2,
+          email: email,
+          token: token,
+          promptLen: images.length,
+          ms: Date.now() - t1,
+          keySource: keySource,
+        });
       } catch (_) {}
-      if (!ok2) return json_({ok: false, error: err2}, 500);
+
+      if (!ok2) {
+        Logger.log('Returning error response: ' + err2);
+        return json_({ok: false, error: err2}, 500);
+      }
+
+      Logger.log('Returning successful response');
       return json_({ok: true, data: text2});
     }
     case 'status': {
-      const status = checkLicense_(token, email, sheetId); // ← ДОБАВЛЕН sheetId
+      Logger.log('Processing status action');
+      const status = checkLicense_(token, email, sheetId);
+      Logger.log('License check result: ' + JSON.stringify(status));
+
       try {
-        serverLog_({action: 'status', ok: status.ok, error: status.error || null, email: email, token: token, promptLen: 0, ms: 0});
+        serverLog_({
+          action: 'status',
+          ok: status.ok,
+          error: status.error || null,
+          email: email,
+          token: token,
+          promptLen: 0,
+          ms: 0,
+          keySource: 'NONE',
+        });
       } catch (_) {}
+
+      Logger.log('Returning status response');
       return json_({
         ok: status.ok,
         error: status.error || null,
         until: status.until || null,
         row: status.row || null,
-        quota: status.quota || null, // ← ДОБАВЛЕНО
-        message: status.message || null, // ← ДОБАВЛЕНО
+        quota: status.quota || null,
+        message: status.message || null,
       });
     }
     case 'collect_config_preview': {
@@ -140,32 +271,64 @@ function doPost(_e) {
       return json_({ok: true, data: preview, logs: logs});
     }
     case 'collect_config_execute': {
+      Logger.log('Processing collect_config_execute action');
       const config = data.config || {};
       const spreadsheetId = (data.spreadsheetId || '').toString();
       const sheetName = (data.sheetName || '').toString();
       const cellAddress = (data.cellAddress || '').toString();
-      const apiKey = (data.apiKey || '').toString();
+      const userApiKey = (data.apiKey || '').toString();
       const logs = [];
+
+      Logger.log('config: ' + (config ? 'SET' : 'NOT SET'));
+      Logger.log('spreadsheetId: ' + spreadsheetId);
+      Logger.log('sheetName: ' + sheetName);
+      Logger.log('cellAddress: ' + cellAddress);
+      Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
+
+      // API key priority: use user key first, otherwise fallback to default
+      const finalApiKey = userApiKey;
+      let keySource = 'USER';
+
+      if (!userApiKey) {
+        // Try to get default API key from script properties
+        const defaultApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+        if (defaultApiKey) {
+          finalApiKey = defaultApiKey;
+          keySource = 'DEFAULT';
+          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
+        } else {
+          Logger.log('ERROR: No API key available (neither user nor default)');
+          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE', logs: logs}, 400);
+        }
+      } else {
+        Logger.log('Using USER API key, length: ' + userApiKey.length);
+      }
 
       // Validate required fields
       if (!config) return json_({ok: false, error: 'NO_CONFIG', logs: logs}, 400);
       if (!spreadsheetId) return json_({ok: false, error: 'NO_SPREADSHEET_ID', logs: logs}, 400);
       if (!sheetName) return json_({ok: false, error: 'NO_SHEET_NAME', logs: logs}, 400);
       if (!cellAddress) return json_({ok: false, error: 'NO_CELL_ADDRESS', logs: logs}, 400);
-      if (!apiKey) return json_({ok: false, error: 'NO_API_KEY', logs: logs}, 400);
+      if (!finalApiKey) return json_({ok: false, error: 'NO_API_KEY', logs: logs}, 400);
 
       // Rate limit for execute calls
-      if (!rateLimitOk_(token)) return json_({ok: false, error: 'RATE_LIMIT', logs: logs}, 429);
+      if (!rateLimitOk_(token)) {
+        Logger.log('Rate limit exceeded for token');
+        return json_({ok: false, error: 'RATE_LIMIT', logs: logs}, 429);
+      }
 
+      Logger.log('Calling serverCollectConfigExecute_ with ' + keySource + ' API key');
       const t0 = Date.now();
       let ok = true;
       let err = null;
       let result = '';
       try {
-        result = serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, apiKey, logs);
+        result = serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, finalApiKey, logs);
+        Logger.log('serverCollectConfigExecute_ completed successfully, result length: ' + result.length);
       } catch (ex) {
         ok = false;
         err = String(ex && ex.message || ex);
+        Logger.log('serverCollectConfigExecute_ failed: ' + err);
       }
       try {
         serverLog_({
@@ -176,15 +339,23 @@ function doPost(_e) {
           token: token,
           promptLen: result.length,
           ms: Date.now() - t0,
+          keySource: keySource,
         });
       } catch (_) {}
-      if (!ok) return json_({ok: false, error: err, logs: logs}, 500);
+      if (!ok) {
+        Logger.log('Returning error response: ' + err);
+        return json_({ok: false, error: err, logs: logs}, 500);
+      }
+
+      Logger.log('Returning successful response');
       return json_({ok: true, data: result, logs: logs});
     }
     default:
+      Logger.log('ERROR: Unknown action - ' + action);
       return json_({ok: false, error: 'UNKNOWN_ACTION'}, 400);
     }
   } catch (err) {
+    Logger.log('doPost ERROR: ' + String(err.message || err));
     return json_({ok: false, error: String(err && err.message || err)}, 500);
   }
 }
@@ -348,9 +519,22 @@ function checkLicense_(token, email, sheetId) {
 
 // ===== Gemini (server-side) =====
 function serverGM_(prompt, maxTokens, temperature, apiKey) {
-  if (!prompt || typeof prompt !== 'string') throw new Error('EMPTY_PROMPT');
-  if (!apiKey) throw new Error('NO_CLIENT_KEY');
+  Logger.log('=== serverGM_ START ===');
+  Logger.log('prompt length: ' + (prompt ? prompt.length : 0));
+  Logger.log('maxTokens: ' + maxTokens);
+  Logger.log('temperature: ' + temperature);
+  Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
 
+  if (!prompt || typeof prompt !== 'string') {
+    Logger.log('ERROR: Empty or invalid prompt');
+    throw new Error('EMPTY_PROMPT');
+  }
+  if (!apiKey) {
+    Logger.log('ERROR: No API key provided');
+    throw new Error('NO_CLIENT_KEY');
+  }
+
+  Logger.log('Building request to Gemini API...');
   const requestBody = {
     contents: [{parts: [{text: prompt}]}],
     generationConfig: {
@@ -358,35 +542,63 @@ function serverGM_(prompt, maxTokens, temperature, apiKey) {
       temperature: temperature,
     },
   };
+
   const options = {
     method: 'POST',
     contentType: 'application/json',
     payload: JSON.stringify(requestBody),
     muteHttpExceptions: true,
   };
+
+  Logger.log('Sending request to Gemini API...');
   const resp = UrlFetchApp.fetch(S_GEMINI_API_URL + '?key=' + apiKey, options);
   const code = resp.getResponseCode();
-  const data = JSON.parse(resp.getContentText());
+  const responseText = resp.getContentText();
+
+  Logger.log('Gemini API response code: ' + code);
+  Logger.log('Gemini API response length: ' + responseText.length);
+
+  const data = JSON.parse(responseText);
   if (code !== 200) {
     const msg = data && data.error && data.error.message || ('HTTP_' + code);
+    Logger.log('Gemini API error: ' + msg);
     throw new Error(msg);
   }
+
   const candidate = data.candidates && data.candidates[0];
   const content = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
   const text = content && content.text ? content.text : '';
+
+  Logger.log('Gemini API success, response length: ' + text.length);
   return serverProcessMarkdown_(text);
 }
 
 function serverGMImage_(images, lang, apiKey, delimiter) {
+  Logger.log('=== serverGMImage_ START ===');
+  Logger.log('images count: ' + images.length);
+  Logger.log('lang: ' + lang);
+  Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
+  Logger.log('delimiter: ' + (delimiter || 'NONE'));
+
   // images: [{ mimeType, data(base64) }, ...]
-  if (!Array.isArray(images) || images.length === 0) throw new Error('NO_IMAGES');
-  if (!apiKey) throw new Error('NO_CLIENT_KEY');
+  if (!Array.isArray(images) || images.length === 0) {
+    Logger.log('ERROR: No images provided');
+    throw new Error('NO_IMAGES');
+  }
+  if (!apiKey) {
+    Logger.log('ERROR: No API key provided');
+    throw new Error('NO_CLIENT_KEY');
+  }
+
   let instruction;
   if (delimiter && delimiter.length) {
     instruction = 'Задача: транскрибируй текст на каждом изображении БЕЗ добавления от себя. Верни только чистый текст. Если изображений несколько — разделяй отзывы строкой с точным разделителем: ' + delimiter + ' (четыре подчёркивания), лучше на отдельной строке.' + (lang ? (' Язык исходного текста: ' + lang + '.') : '');
   } else {
     instruction = 'Задача: транскрибируй текст на каждом изображении БЕЗ добавления от себя. Верни только чистый текст. Если изображений несколько — разделяй отзывы нумерацией (1., 2., 3.).' + (lang ? (' Язык исходного текста: ' + lang + '.') : '');
   }
+
+  Logger.log('Instruction: ' + instruction.substring(0, 100) + '...');
+
   const parts = [{text: instruction}];
   for (let i = 0; i < images.length; i++) {
     const it = images[i] || {};
@@ -395,20 +607,38 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
     if (!dt) continue;
     parts.push({inlineData: {mimeType: mt, data: dt}});
   }
-  if (parts.length <= 1) throw new Error('NO_VALID_IMAGES');
+
+  if (parts.length <= 1) {
+    Logger.log('ERROR: No valid images found');
+    throw new Error('NO_VALID_IMAGES');
+  }
+
+  Logger.log('Processing ' + (parts.length - 1) + ' valid images');
   const body = {contents: [{parts: parts}], generationConfig: {maxOutputTokens: 4096, temperature: 0}};
+
+  Logger.log('Sending request to Gemini Vision API...');
   const resp = UrlFetchApp.fetch(S_GEMINI_API_URL + '?key=' + apiKey, {
     method: 'post', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true,
   });
+
   const code = resp.getResponseCode();
-  const data = JSON.parse(resp.getContentText());
+  const responseText = resp.getContentText();
+
+  Logger.log('Gemini Vision API response code: ' + code);
+  Logger.log('Gemini Vision API response length: ' + responseText.length);
+
+  const data = JSON.parse(responseText);
   if (code !== 200) {
     const msg = data && data.error && data.error.message || ('HTTP_' + code);
+    Logger.log('Gemini Vision API error: ' + msg);
     throw new Error(msg);
   }
+
   const candidate = data.candidates && data.candidates[0];
   const content = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
   const text = content && content.text ? content.text : '';
+
+  Logger.log('Gemini Vision API success, response length: ' + text.length);
   return serverProcessMarkdown_(text);
 }
 
@@ -475,16 +705,37 @@ function rateLimitOk_(token) {
 // Server logs to the admin spreadsheet
 function serverLog_(info) {
   try {
+    Logger.log('=== serverLog_ START ===');
+    Logger.log('action: ' + (info.action || ''));
+    Logger.log('ok: ' + (info.ok ? 'true' : 'false'));
+    Logger.log('error: ' + (info.error || 'NONE'));
+    Logger.log('email: ' + (info.email || 'NONE'));
+    Logger.log('promptLen: ' + (info.promptLen || 0));
+    Logger.log('ms: ' + (info.ms || 0));
+    Logger.log('keySource: ' + (info.keySource || 'NONE'));
+
     const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
     const sh = ss.getSheetByName(LOG_SHEET_NAME) || ss.insertSheet(LOG_SHEET_NAME);
     const headerNeeded = sh.getLastRow() === 0;
     if (headerNeeded) {
-      sh.appendRow(['timestamp', 'action', 'ok', 'error', 'email', 'token', 'promptLen', 'ms']);
+      sh.appendRow(['timestamp', 'action', 'ok', 'error', 'email', 'token', 'promptLen', 'ms', 'keySource']);
     }
     const ts = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
     const tokenMasked = maskToken_(info.token);
-    sh.appendRow([ts, info.action || '', info.ok ? '1' : '0', info.error || '', info.email || '', tokenMasked, info.promptLen || 0, info.ms || 0]);
+    sh.appendRow([
+      ts,
+      info.action || '',
+      info.ok ? '1' : '0',
+      info.error || '',
+      info.email || '',
+      tokenMasked,
+      info.promptLen || 0,
+      info.ms || 0,
+      info.keySource || 'NONE',
+    ]);
+    Logger.log('serverLog_ completed successfully');
   } catch (e) {
+    Logger.log('serverLog_ ERROR: ' + e.message);
     // Игнорируем ошибки логирования чтобы не ломать основной функционал
     console.error('serverLog_ ERROR:', e);
   }

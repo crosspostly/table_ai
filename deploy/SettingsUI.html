@@ -296,7 +296,8 @@
     google.script.run
       .withSuccessHandler(function(data) {
         if (data.apiKey) {
-          document.getElementById('currentApiKey').textContent = '✅ Установлен: ' + data.apiKey.substring(0, 8) + '****';
+          const sourceText = data.keySource === 'USER' ? ' (пользовательский)' : ' (по умолчанию)';
+          document.getElementById('currentApiKey').textContent = '✅ Установлен' + sourceText + ': ' + data.apiKey.substring(0, 8) + '****';
         } else {
           document.getElementById('currentApiKey').textContent = '⚠️ Не установлен';
         }
