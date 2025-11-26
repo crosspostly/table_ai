@@ -1,0 +1,20 @@
+{
+  "chapters": [
+    {
+      "chapterNum": 1,
+      "chapterDir": "chapters/chapter_01",
+      "audioFile": "audio.wav",
+      "imagesDir": "images",
+      "metadataFile": "metadata.json"
+    },
+    {
+      "chapterNum": 2,
+      "chapterDir": "chapters/chapter_02",
+      "audioFile": "audio.wav",
+      "imagesDir": "images",
+      "metadataFile": "metadata.json"
+    }
+  ],
+  "outputDir": "./output",
+  "tempDir": "./temp"
+}
