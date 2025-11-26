@@ -1,20 +1,233 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# 📱 Table AI Mobile
 
-# Run and deploy your AI Studio app
+**Умное управление Google Tables с AI в вашем телефоне**
 
-This contains everything you need to run your app locally.
+## 🎯 Обзор
 
-View your app in AI Studio: https://ai.studio/apps/drive/1DenU43vJf4GllhKJJwqSeL68DwBugXcR
+Table AI Mobile — это современное React/TypeScript приложение, которое обеспечивает удобный доступ ко всем функциям Table AI прямо с мобильного устройства. Приложение автоматически находит скрипты Table AI в ваших таблицах и предоставляет прозрачный интерфейс для работы с ними.
 
-## Run Locally
+### ✨ Ключевые особенности
 
-**Prerequisites:**  Node.js
+- 🔍 **Автоматический поиск скриптов** — больше не нужно вручную копировать Script ID
+- 📋 **Все функции Table AI** — автоматическое обнаружение всех доступных действий
+- 🏥 **Прозрачная диагностика** — подробные логи и статус подключения
+- 📱 **Мобильный UX** — оптимизированный интерфейс для сенсорных экранов
+- 🎨 **Современный дизайн** — интуитивная навигация и визуальные индикаторы
 
+## 🚀 Быстрый старт
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### Установка
+```bash
+# Клонировать репозиторий
+git clone <repository-url>
+cd table-ai/web
+
+# Установить зависимости
+npm install
+
+# Запустить разработку
+npm run dev
+```
+
+### Использование
+1. Откройте http://localhost:3000
+2. Войдите через Google Account
+3. Выберите таблицу — скрипт найдется автоматически
+4. Используйте вкладки: 📊 ДАННЫЕ | ⚡ ДЕЙСТВИЯ | ⚙️ НАСТРОЙКИ
+
+---
+
+## 📱 Основные функции
+
+### 🔍 Автоматический поиск Script ID
+- Поиск через Apps Script API v1
+- Индикация процесса поиска
+- Подробные логи каждого шага
+- Кэширование результатов
+
+### ⚡ Умные действия
+- Все функции из меню Table AI
+- Группировка по категориям
+- Фильтрация и поиск
+- Понятные описания
+
+### 🏥 Диагностика
+- Статус подключения скрипта
+- История поиска Script ID
+- Логи ошибок с объяснениями
+- Инструкции по решению проблем
+
+### 📊 Работа с данными
+- Просмотр содержимого таблиц
+- Редактирование ячеек
+- Поиск по данным
+- Пагинация больших объемов
+
+---
+
+## 🏗️ Архитектура
+
+### Технологический стек
+- **Frontend**: React 19 + TypeScript
+- **Build**: Vite 6
+- **Styling**: Tailwind CSS (инлайн)
+- **API**: Google Sheets API + Apps Script API
+
+### Структура проекта
+```
+web/
+├── components/          # React компоненты
+│   ├── SheetViewer.tsx        # Главный экран
+│   ├── EnhancedActionPanel.tsx # Панель действий
+│   ├── DiagnosticsPanel.tsx   # Диагностика
+│   └── ResultModal.tsx        # Модальные окна
+├── services/           # API сервисы
+│   ├── googleSheets.ts         # Sheets API
+│   └── appsScriptService.ts    # Apps Script API
+├── types.ts            # TypeScript типы
+└── App.tsx             # Главный компонент
+```
+
+---
+
+## 🔧 Конфигурация
+
+### Переменные окружения
+```bash
+# .env.local
+VITE_GOOGLE_CLIENT_ID=your_google_client_id
+```
+
+### OAuth Scopes
+Приложение запрашивает следующие права:
+- `spreadsheets` — доступ к таблицам
+- `script.projects` — поиск скриптов
+- `drive.readonly` — список файлов
+- `userinfo.email` — email пользователя
+
+---
+
+## 📱 Навигация и UX
+
+### Три основные вкладки
+1. **📊 ДАННЫЕ** — просмотр и редактирование таблиц
+2. **⚡ ДЕЙСТВИЯ** — все функции Table AI
+3. **⚙️ НАСТРОЙКИ** — диагностика и статус
+
+### Мобильные жесты
+- **Swipe** — переключение вкладок
+- **Pull-to-refresh** — обновление данных
+- **Long press** — контекстное меню
+- **Back button** — навигация назад
+
+### Визуальная обратная связь
+- **Спиннеры** — индикация загрузки
+- **Progress bars** — выполнение операций
+- **Status colors** — зеленый/желтый/красный
+- **Toast messages** — быстрые уведомления
+
+---
+
+## 🔍 Поиск и диагностика
+
+### Автоматический поиск скрипта
+```typescript
+// При выборе таблицы автоматически запускается поиск
+const searchResult = await findScriptIdForSpreadsheet(spreadsheetId, token);
+
+// Результат включает детальные логи
+console.log('Search logs:', searchResult.logs);
+```
+
+### Диагностика проблем
+- **Скрипт не найден** → инструкции по установке
+- **Нет доступа** → проверка прав
+- **Ошибка API** → детальное описание
+- **Сетевые проблемы** → retry механизмы
+
+---
+
+## 🛠️ Разработка
+
+### Добавление новых функций
+1. Обновите `appsScriptService.ts`
+2. Добавьте функцию в `getScriptFunctions()`
+3. Укажите категорию и порядок
+4. Функция появится в мобильном UI автоматически
+
+### Тестирование
+```bash
+# Проверка типов
+npx tsc --noEmit
+
+# Запуск тестов
+npm test
+
+# Сборка
+npm run build
+```
+
+### Отладка
+- Консоль браузера для логов
+- React DevTools для компонентов
+- Network tab для API запросов
+- Mobile DevTools для responsive
+
+---
+
+## 📚 Документация
+
+- [📱 Руководство пользователя](./MOBILE_USER_GUIDE.md)
+- [🛠️ Руководство разработчика](./MOBILE_DEV_GUIDE.md)
+- [🔧 API документация](./API_DOCS.md)
+
+---
+
+## 🚀 Деплой
+
+### Production сборка
+```bash
+npm run build
+# Результат в dist/
+```
+
+### Хостинг
+- **Vercel** — рекомендовано для React
+- **Netlify** — альтернатива
+- **GitHub Pages** — для demo
+- **Custom hosting** — любой статический хостинг
+
+---
+
+## 🤝 Участие в разработке
+
+1. Fork репозитория
+2. Создайте feature branch
+3. Внесите изменения
+4. Добавьте тесты
+5. Отправьте Pull Request
+
+### Стандарты кода
+- **ESLint** для линтинга
+- **Prettier** для форматирования
+- **TypeScript** для типизации
+- **Conventional Commits** для сообщений
+
+---
+
+## 📄 Лицензия
+
+MIT License — см. файл LICENSE
+
+---
+
+## 🆘 Поддержка
+
+- **Issues** — для баг-репортов
+- **Discussions** — для вопросов
+- **Email** — support@table-ai.com
+- **Documentation** — см. руководства выше
+
+---
+
+**Сделано с ❤️ для удобного управления Table AI** 🎉
