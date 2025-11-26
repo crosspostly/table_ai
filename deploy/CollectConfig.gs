@@ -570,6 +570,9 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
   };
 
   addCollectLog(`📤 Отправка запроса на сервер: ${serverUrl}`, 'INFO');
+  addCollectLog(`📋 Payload config.systemPrompt: ${JSON.stringify(config.systemPrompt)}`, 'DEBUG');
+  addCollectLog(`📋 Payload config.userData: ${config.userData ? config.userData.length + ' источников' : 'нет'}`, 'DEBUG');
+  addCollectLog(`📋 SpreadsheetId: ${spreadsheetId}`, 'DEBUG');
 
   const response = UrlFetchApp.fetch(serverUrl, options);
   const responseCode = response.getResponseCode();

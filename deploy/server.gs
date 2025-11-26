@@ -280,6 +280,8 @@ function doPost(_e) {
       const logs = [];
 
       Logger.log('config: ' + (config ? 'SET' : 'NOT SET'));
+      Logger.log('config.systemPrompt: ' + JSON.stringify(config.systemPrompt || null));
+      Logger.log('config.userData: ' + (config.userData ? config.userData.length + ' sources' : 'NONE'));
       Logger.log('spreadsheetId: ' + spreadsheetId);
       Logger.log('sheetName: ' + sheetName);
       Logger.log('cellAddress: ' + cellAddress);
@@ -762,6 +764,11 @@ function maskToken_(t) {
  */
 function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, apiKey, logs) {
   logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🚀 Начало выполнения CollectConfig на сервере'});
+  logs.push({timestamp: new Date().toISOString(), level: 'DEBUG', message: '🔧 Config: ' + JSON.stringify({
+    systemPrompt: config.systemPrompt,
+    userDataCount: config.userData ? config.userData.length : 0,
+    spreadsheetId: spreadsheetId,
+  })});
 
   try {
     // Get system prompt
@@ -782,6 +789,7 @@ function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddre
       config.userData.forEach(function(source, index) {
         if (source.sheet && source.cell) {
           logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  📍 Источник ${index + 1}: ${source.sheet}!${source.cell}`});
+          logs.push({timestamp: new Date().toISOString(), level: 'DEBUG', message: `  🔍 Источник ${index + 1} полный: ${JSON.stringify(source)}`});
           try {
             const data = serverReadData_(spreadsheetId, source.sheet, source.cell, logs);
             logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `  ✅ Прочитано: ${data.length} символов`});
@@ -864,17 +872,29 @@ function serverGetSystemPrompt_(config, defaultSpreadsheetId, logs) {
 
   const promptSource = config.systemPrompt.sheet;
 
+  logs.push({timestamp: new Date().toISOString(), level: 'DEBUG', message: '🔍 SystemPrompt source: ' + promptSource});
+
   try {
-    if (isTableId(promptSource)) {
+    // Проверяем кодовое слово "prompt_table" или "promt_table"
+    const promptSourceLower = (promptSource || '').toString().toLowerCase().trim();
+    if (promptSourceLower === 'prompt_table' || promptSourceLower === 'promt_table') {
+      // Используем таблицу с лицензиями и промптами по умолчанию
+      spreadsheetId = LICENSE_SHEET_ID;
+      sheetName = 'Промты'; // Лист с промптами в лицензионной таблице
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Использование DEFAULT таблицы с промптами: ' + LICENSE_SHEET_ID});
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 Лист: Промты'});
+    } else if (isTableId(promptSource)) {
       // ID защищённой таблицы
       spreadsheetId = promptSource;
       sheetName = 'Промты'; // ВСЕГДА Промты!
-      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Защищённая таблица: ' + spreadsheetId});
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Защищённая таблица (ID): ' + spreadsheetId});
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 Лист: Промты'});
     } else {
-      // Название листа в текущей таблице
+      // Название листа в текущей таблице клиента
       spreadsheetId = defaultSpreadsheetId;
       sheetName = promptSource;
-      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Текущая таблица, лист: ' + sheetName});
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Таблица клиента: ' + spreadsheetId});
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 Лист клиента: ' + sheetName});
     }
 
     logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📍 Ячейка: ' + config.systemPrompt.cell});
@@ -933,7 +953,11 @@ function serverReadData_(spreadsheetId, sheetName, cellAddress, logs) {
 
     logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  → После фильтрации: ${result.length} значений`});
 
-    return result.join('\n');
+    const dataPreview = result.join('\n');
+    const previewLength = Math.min(100, dataPreview.length);
+    logs.push({timestamp: new Date().toISOString(), level: 'DEBUG', message: `  → Превью данных (${previewLength} символов): ${dataPreview.substring(0, previewLength)}${dataPreview.length > previewLength ? '...' : ''}`});
+
+    return dataPreview;
   } catch (error) {
     logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `  ❌ Ошибка чтения: ${error.message}`});
     throw new Error(`Не удалось прочитать ${sheetName}!${cellAddress}: ${error.message}`);

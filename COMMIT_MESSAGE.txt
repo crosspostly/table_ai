@@ -1,0 +1,33 @@
+feat: Add prompt_table keyword and enhanced logging for CollectConfig
+
+Добавлена поддержка кодового слова "prompt_table" для использования 
+централизованной таблицы с промптами (LICENSE_SHEET_ID), а также 
+существенно расширено логирование для отладки CollectConfig.
+
+Changes:
+- CollectConfig.gs: Added detailed payload logging before server request
+  * Log config.systemPrompt structure
+  * Log userData sources count
+  * Log spreadsheetId being used
+
+- server.gs: Implemented prompt_table keyword logic and comprehensive logging
+  * serverGetSystemPrompt_(): Check for "prompt_table"/"promt_table" keywords
+  * If prompt_table detected → use LICENSE_SHEET_ID + "Промты" sheet
+  * Added DEBUG logs for SystemPrompt source detection
+  * Added INFO logs for table/sheet selection (DEFAULT/Protected/Client)
+  * serverCollectConfigExecute_(): Added config structure logging
+  * Added detailed logging for each userData source
+  * serverReadData_(): Added data preview logging (first 100 chars)
+
+Keywords:
+- "prompt_table" or "promt_table" (case-insensitive) → LICENSE_SHEET_ID table
+- 44-char spreadsheet ID → specified protected table
+- Any other string → sheet name in client's spreadsheet
+
+Benefits:
+- No need to hardcode LICENSE_SHEET_ID in client configurations
+- Full visibility of what data is being read and from where
+- Easier debugging of CollectConfig issues
+- Backwards compatible with existing configurations
+
+See: CONFIGCOLLECT_IMPROVEMENTS.md for detailed documentation
