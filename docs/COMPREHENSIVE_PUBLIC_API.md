@@ -1,94 +1,94 @@
-# Table AI — Comprehensive Public API Reference
+# Table AI — Комплексный справочник публичного API
 
-Version: 3.0 (generated)
-Date: 2025-10-23
+Версия: 3.0.0 (обновлено)
+Дата: 2025-06-18
 
-This document consolidates all public APIs, functions, and components exposed by the project. It focuses on callable Apps Script functions, web endpoints, and UI-facing methods, with examples and usage guidance.
+Этот документ объединяет все публичные API, функции и компоненты проекта. Он включает вызываемые функции Apps Script, веб-эндпоинты и методы пользовательского интерфейса с примерами использования.
 
-Notes
-- Public APIs exclude internal helpers. As a convention here, function names ending with an underscore (e.g., `checkLicense_`) or starting with an underscore (e.g., `_getTemplateStorageWithLock`) are considered internal and omitted unless relevant for context.
-- Paths in backticks refer to files in this repository.
+## Примечания
+- Публичные API исключают внутренние вспомогательные функции. По соглашению, имена функций, заканчивающиеся на подчеркивание (например, `checkLicense_`) или начинающиеся с подчеркивания (например, `_getTemplateStorageWithLock`), считаются внутренними и опущены, если они не релевантны для контекста.
+- Пути в обратных кавычках относятся к файлам в этом репозитории.
 
 ---
 
-## Contents
-- Client (Google Sheets)
-  - Gemini functions
-  - Smart chains & helpers
-  - VK import & utilities
-  - UI, settings, logging, triggers
-- Collect Config System (UI + endpoints)
-- TemplateService (business logic)
-- Server (Apps Script Web App)
+## Содержание
+- Клиент (Google Sheets)
+  - Функции Gemini
+  - Умные цепочки и вспомогательные функции
+  - Импорт VK и утилиты
+  - UI, настройки, логирование, триггеры
+- Система Collect Config (UI + эндпоинты)
+- TemplateService (бизнес-логика)
+- Сервер (Apps Script Web App)
 - OCR
-- Shared Utilities
+- Общие утилиты
   - Utils
   - LoggingService
   - DetailedLogger
   - EmojiRemover
   - VersionInfo
   - SecurityValidator
-- Client ↔ Server (google.script.run) examples
-- cURL examples for server endpoints
+- Клиент ↔ Сервер (google.script.run) примеры
+- Примеры cURL для серверных эндпоинтов
 
 ---
 
-## Client (Google Sheets)
-File: `deploy/Main.gs`
+## Клиент (Google Sheets)
+Файл: `deploy/Main.gs`
 
-### Gemini functions
+### Функции Gemini
 - `GM(prompt, maxTokens = 25000, temperature = 0.7): string`
-  - Call Gemini via licensed server proxy with caching and Markdown post-processing.
-  - Throws for invalid prompt (empty or > 50,000 chars). Returns `"Error: ..."` on failures.
-  - Example (Spreadsheet formula):
+  - Вызов Gemini через лицензированный серверный прокси с кэшированием и пост-обработкой Markdown.
+  - Генерирует ошибку для невалидного промпта (пустой или > 50,000 символов). Возвращает `"Error: ..."` при ошибках.
+  - Пример (формула в таблице):
     ```
     =GM("Проанализируй данные: " & A2, 2000, 0.7)
     ```
 
 - `GM_IF(condition, prompt, maxTokens, temperature): string`
-  - Conditional Gemini call. Evaluates `condition` to boolean (supports ranges/arrays, numbers, strings). If false → returns empty string. If true → calls `GM`.
-  - Example:
+  - Условный вызов Gemini. Вычисляет `condition` в boolean (поддерживает диапазоны/массивы, числа, строки). Если false → возвращает пустую строку. Если true → вызывает `GM`.
+  - Пример:
     ```
     =GM_IF($A3<>"", Prompt_box!$F$2, 25000, 0.7)
     ```
 
-### Smart chains & helpers
+### Умные цепочки и вспомогательные функции
 - `prepareChainSmart(): void`
-  - Uses `Prompt_box!B` targets if present; otherwise falls back to fixed A3→B3..G3 chain.
+  - Использует цели `Prompt_box!B` если присутствуют; иначе возвращается к фиксированной цепочке A3→B3..G3.
 
 - `prepareChainFromPromptBox(): void`
-  - Places `GM_IF` formulas in target cells specified by `Prompt_box!B2:B`, chaining steps using the completion phrase.
+  - Размещает формулы `GM_IF` в целевых ячейках, указанных в `Prompt_box!B2:B`, связывая шаги используя фразу завершения.
 
 - `prepareChainForA3(): void`
-  - Places `GM_IF` formulas in `Распаковка!B3..G3` chained off `A3` and the completion phrase.
+  - Размещает формулы `GM_IF` в `Распаковка!B3..G3` связанные с `A3` и фразой завершения.
 
 - `clearChainForA3(): void`
-  - Clears `Распаковка!B3..G3` values.
+  - Очищает значения `Распаковка!B3..G3`.
 
 - `refreshCurrentGMCell(): void`
-  - Re-applies the formula in the active cell to force recalculation.
+  - Повторно применяет формулу в активной ячейке для принудительного пересчета.
 
 - `getCompletionPhrase(): string`
-  - Reads completion phrase from `Параметры!B10` → Script Properties → default constant.
+  - Читает фразу завершения из `Параметры!B10` → Script Properties → константа по умолчанию.
 
 - `isCompletionReady(text: string): boolean`
-  - Checks if `text` starts with completion phrase.
+  - Проверяет, начинается ли `text` с фразы завершения.
 
 - `parseTargetA1(a1: string): {sheetName,row,col,a1}`
-  - Parses A1 notation, defaulting sheet to `Распаковка` when omitted.
+  - Парсит нотацию A1, по умолчанию используя лист `Распаковка` когда опущен.
 
 - `columnToLetter(column: number): string`
 - `letterToColumn(letters: string): number`
 
-### VK import & utilities
+### Импорт VK и утилиты
 - `importVkPosts(): void`
-  - Imports posts via `VK_PARSER_URL` using owner and count from `Параметры!B1:B2`, writes to `посты` sheet, and prepares filtering formulas.
+  - Импортирует посты через `VK_PARSER_URL` используя owner и count из `Параметры!B1:B2`, записывает в лист `посты` и подготавливает фильтрующие формулы.
 
 - `createStopWordsFormulas(sheet, totalRows): void`
-  - Populates E–J columns with filtering and numbering formulas (stop/promo words logic).
+  - Заполняет колонки E-J фильтрующими и нумерующими формулами (логика стоп/промо слов).
 
 - `applyUniformFormatting(sheet): void`
-  - Uniform formatting for a sheet.
+  - Применяет единое форматирование для листа.
 
 ### UI, settings, logging, triggers
 - `openSettingsUI(): void`
