@@ -630,6 +630,309 @@ function onOpen() {
   }
 }
 
+// ====== MOBILE APP API ======
+
+/**
+ * Возвращает полный список доступных функций Table AI для мобильного приложения
+ * Включает все функции из меню, их метаданные и параметры
+ */
+function listExposedFunctions() {
+  try {
+    addLog('📱 Запрос списка функций от мобильного приложения', 'INFO');
+    
+    const functions = [];
+    
+    // AI Constructor меню
+    functions.push(
+      {
+        name: 'openCollectConfigUI',
+        label: '🎯 Настроить запрос',
+        description: 'Создание и настройка AI-запросов',
+        category: 'ai',
+        menuPath: '🎯 AI Конструктор',
+        order: 1,
+        returnsHtml: false,
+        parameters: []
+      },
+      {
+        name: 'refreshCellWithConfig',
+        label: '🔄 Обновить ячейку',
+        description: 'Обновить выбранную ячейку с конфигурацией',
+        category: 'ai',
+        menuPath: '🎯 AI Конструктор',
+        order: 2,
+        returnsHtml: false,
+        parameters: [
+          {
+            name: 'targetCell',
+            type: 'string',
+            description: 'Адрес ячейки для обновления (опционально)',
+            required: false
+          }
+        ]
+      }
+    );
+    
+    // Batch операции из BATCH_OPERATIONS
+    if (typeof BATCH_OPERATIONS !== 'undefined') {
+      let batchOrder = 10;
+      for (const [key, config] of Object.entries(BATCH_OPERATIONS)) {
+        const funcName = key.charAt(0).toUpperCase() + key.slice(1);
+        functions.push({
+          name: funcName,
+          label: config.name || `Batch: ${key}`,
+          description: `Batch операция: ${config.name || key}`,
+          category: 'data',
+          menuPath: '🎯 AI Конструктор',
+          order: batchOrder++,
+          returnsHtml: false,
+          parameters: [
+            {
+              name: 'sheetName',
+              type: 'string',
+              description: 'Имя листа для обработки',
+              required: false
+            }
+          ]
+        });
+      }
+    }
+    
+    // Основное меню Table AI
+    functions.push(
+      {
+        name: 'openUnpackingViewer',
+        label: '📦 Просмотр Распаковки',
+        description: 'Просмотр результатов обработки данных',
+        category: 'data',
+        menuPath: '🤖 Table AI',
+        order: 100,
+        returnsHtml: true,
+        parameters: []
+      },
+      {
+        name: 'importVkPosts',
+        label: '📥 Импорт VK постов',
+        description: 'Загрузка постов из ВКонтакте',
+        category: 'data',
+        menuPath: '🤖 Table AI',
+        order: 101,
+        returnsHtml: false,
+        parameters: [
+          {
+            name: 'sourceUrl',
+            type: 'string',
+            description: 'URL источника VK постов',
+            required: false
+          }
+        ]
+      },
+      {
+        name: 'ocrRun',
+        label: '🖼️ Транскрибация отзывов',
+        description: 'Распознавание текста с изображений',
+        category: 'ai',
+        menuPath: '🤖 Table AI',
+        order: 102,
+        returnsHtml: false,
+        parameters: [
+          {
+            name: 'range',
+            type: 'string',
+            description: 'Диапазон ячеек с изображениями',
+            required: false
+          }
+        ]
+      },
+      {
+        name: 'openSettingsUI',
+        label: '⚙️ Настройки',
+        description: 'Конфигурация Table AI',
+        category: 'settings',
+        menuPath: '🤖 Table AI',
+        order: 103,
+        returnsHtml: true,
+        parameters: []
+      },
+      {
+        name: 'checkLicenseStatusUI',
+        label: '🔒 Проверить лицензию',
+        description: 'Проверка статуса лицензии',
+        category: 'settings',
+        menuPath: '🤖 Table AI',
+        order: 104,
+        returnsHtml: false,
+        parameters: []
+      }
+    );
+    
+    // Dev функции (если в DEV_MODE)
+    if (DEV_MODE) {
+      functions.push(
+        {
+          name: 'showLogsDialog',
+          label: '📝 Показать логи',
+          description: 'Показать системные логи',
+          category: 'dev',
+          menuPath: '🧰 DEV',
+          order: 200,
+          returnsHtml: false,
+          parameters: []
+        },
+        {
+          name: 'exportLogsToSheet',
+          label: '⬇️ Экспорт логов',
+          description: 'Экспортировать логи в лист',
+          category: 'dev',
+          menuPath: '🧰 DEV',
+          order: 201,
+          returnsHtml: false,
+          parameters: []
+        },
+        {
+          name: 'clearLogs',
+          label: '🗑 Очистить логи',
+          description: 'Очистить системные логи',
+          category: 'dev',
+          menuPath: '🧰 DEV',
+          order: 202,
+          returnsHtml: false,
+          parameters: []
+        },
+        {
+          name: 'testServerConnection',
+          label: '🔍 Тест сервера',
+          description: 'Проверить соединение с сервером',
+          category: 'dev',
+          menuPath: '🧰 DEV',
+          order: 203,
+          returnsHtml: false,
+          parameters: []
+        },
+        {
+          name: 'runDevSelfTest',
+          label: '🧪 Dev Self Test',
+          description: 'Запустить самотестирование',
+          category: 'dev',
+          menuPath: '🧰 DEV',
+          order: 204,
+          returnsHtml: false,
+          parameters: []
+        }
+      );
+    }
+    
+    const result = {
+      success: true,
+      functions: functions.sort((a, b) => a.order - b.order),
+      metadata: {
+        version: '3.0.0',
+        devMode: DEV_MODE,
+        totalFunctions: functions.length,
+        timestamp: new Date().toISOString()
+      }
+    };
+    
+    addLog(`✅ Список функций сформирован: ${functions.length} функций`, 'INFO');
+    return result;
+    
+  } catch (e) {
+    const errorMsg = `Ошибка формирования списка функций: ${e.message}`;
+    addLog(`❌ ${errorMsg}`, 'ERROR');
+    return {
+      success: false,
+      error: errorMsg,
+      functions: []
+    };
+  }
+}
+
+/**
+ * Выполняет функцию с логированием для мобильного приложения
+ * @param {string} functionName - Имя функции для выполнения
+ * @param {Object} parameters - Параметры функции
+ * @return {Object} - Результат выполнения
+ */
+function executeFunction(functionName, parameters = {}) {
+  try {
+    addLog(`📱 Запуск функции "${functionName}" из мобильного приложения`, 'INFO');
+    
+    // Проверяем существование функции
+    if (typeof this[functionName] !== 'function') {
+      throw new Error(`Функция "${functionName}" не найдена`);
+    }
+    
+    // Выполняем функцию с параметрами
+    const startTime = Date.now();
+    let result;
+    
+    try {
+      if (Object.keys(parameters).length > 0) {
+        result = this[functionName](parameters);
+      } else {
+        result = this[functionName]();
+      }
+    } catch (funcError) {
+      throw funcError;
+    }
+    
+    const executionTime = Date.now() - startTime;
+    
+    const response = {
+      success: true,
+      functionName: functionName,
+      result: result,
+      executionTime: executionTime,
+      timestamp: new Date().toISOString()
+    };
+    
+    addLog(`✅ Функция "${functionName}" выполнена за ${executionTime}мс`, 'INFO');
+    return response;
+    
+  } catch (e) {
+    const errorMsg = `Ошибка выполнения функции "${functionName}": ${e.message}`;
+    addLog(`❌ ${errorMsg}`, 'ERROR');
+    
+    return {
+      success: false,
+      functionName: functionName,
+      error: errorMsg,
+      timestamp: new Date().toISOString()
+    };
+  }
+}
+
+/**
+ * Получает статус скрипта для мобильного приложения
+ */
+function getScriptStatus() {
+  try {
+    const ss = SpreadsheetApp.getActive();
+    const status = {
+      success: true,
+      scriptId: ScriptApp.getScriptId(),
+      spreadsheetId: ss.getId(),
+      spreadsheetName: ss.getName(),
+      devMode: DEV_MODE,
+      version: '3.0.0',
+      lastUpdated: new Date().toISOString(),
+      user: Session.getEffectiveUser().getEmail(),
+      functions: listExposedFunctions()
+    };
+    
+    addLog('📱 Запрос статуса скрипта от мобильного приложения', 'INFO');
+    return status;
+    
+  } catch (e) {
+    const errorMsg = `Ошибка получения статуса скрипта: ${e.message}`;
+    addLog(`❌ ${errorMsg}`, 'ERROR');
+    
+    return {
+      success: false,
+      error: errorMsg
+    };
+  }
+}
 
 // Быстрое обновление активной GM-ячейки: пересоздаём формулу, чтобы заново вызвать Gemini
 // eslint-disable-next-line no-unused-vars

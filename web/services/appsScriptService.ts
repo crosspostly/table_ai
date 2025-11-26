@@ -137,29 +137,63 @@ export const findScriptIdForSpreadsheet = async (
 };
 
 /**
- * Получение списка функций из Apps Script проекта
+ * Получение списка функций из Apps Script проекта через динамический API
  */
 export const getScriptFunctions = async (
   scriptId: string,
   token: string
 ): Promise<{ functions: ScriptFunction[], error?: string }> => {
   try {
-    // Пытаемся получить метаданные проекта
-    const response = await fetch(`${PROJECTS_BASE_URL}/${scriptId}`, {
+    // Вызываем новую динамическую функцию listExposedFunctions
+    const response = await fetch(`${SCRIPTS_BASE_URL}/${scriptId}:run`, {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify({
+        function: 'listExposedFunctions',
+        parameters: []
+      })
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to get project metadata: ${response.status}`);
+      throw new Error(`Failed to call listExposedFunctions: ${response.status}`);
     }
 
-    const project = await response.json();
+    const result = await response.json();
     
-    // Базовые функции из onOpen (известные из кода)
-    const knownFunctions: ScriptFunction[] = [
+    if (result.error) {
+      throw new Error(`Script error: ${result.error.message}`);
+    }
+
+    const scriptResponse = result.response?.result;
+    
+    if (!scriptResponse || !scriptResponse.success) {
+      throw new Error(scriptResponse?.error || 'Failed to get functions list');
+    }
+
+    // Преобразуем функции из скрипта в наш формат
+    const functions: ScriptFunction[] = scriptResponse.functions.map((func: any) => ({
+      name: func.name,
+      label: func.label,
+      description: func.description,
+      category: func.category,
+      menuPath: func.menuPath,
+      order: func.order,
+      returnsHtml: func.returnsHtml || false,
+      parameters: func.parameters || []
+    }));
+
+    return {
+      functions: functions.sort((a, b) => a.order - b.order)
+    };
+
+  } catch (error: any) {
+    console.error('Error getting script functions:', error);
+    
+    // Fallback к hardcoded списку в случае ошибки
+    const fallbackFunctions: ScriptFunction[] = [
       {
         name: 'openCollectConfigUI',
         label: '🎯 AI Конструктор',
@@ -218,66 +252,111 @@ export const getScriptFunctions = async (
       }
     ];
 
-    // Добавляем batch операции (если есть)
-    const batchOperations = [
-      { key: 'etap1', name: '📋 обновить Презентация' },
-      { key: 'etap2_1', name: '📦 обновить Рефлексия (часть 1)' },
-      { key: 'etap2_2', name: '🎯 обновить Рефлексия (часть 2)' },
-      { key: 'faza1', name: '🎯 обновить Фаза 1' },
-      { key: 'archetype', name: '🎯 обновить Архетип' },
-      { key: 'common_ca', name: '🎯 обновить ЦА (общая)' },
-      { key: 'faza2', name: '🎯 обновить Фаза 2' },
-      { key: 'faza3', name: '🎯 обновить фаза 3' }
-    ];
+    return {
+      functions: fallbackFunctions,
+      error: `Используется fallback список. Ошибка динамического получения: ${error.message}`
+    };
+  }
+};
 
-    batchOperations.forEach((op, index) => {
-      const funcName = op.key.charAt(0).toUpperCase() + op.key.slice(1);
-      knownFunctions.push({
-        name: funcName,
-        label: op.name,
-        description: `Batch операция: ${op.name}`,
-        category: 'data',
-        menuPath: '🎯 AI Конструктор',
-        order: 10 + index
-      });
+/**
+ * Выполнение функции с расширенным логированием
+ */
+export const executeScriptFunction = async (
+  scriptId: string,
+  functionName: string,
+  parameters: any = {},
+  token: string
+): Promise<{ success: boolean, result?: any, error?: string, executionTime?: number }> => {
+  try {
+    const response = await fetch(`${SCRIPTS_BASE_URL}/${scriptId}:run`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        function: 'executeFunction',
+        parameters: [functionName, parameters]
+      })
     });
 
-    // Dev функции (если в DEV_MODE)
-    const devFunctions: ScriptFunction[] = [
-      {
-        name: 'showLogsDialog',
-        label: '📝 Показать логи',
-        description: 'Показать системные логи',
-        category: 'dev',
-        menuPath: '🧰 DEV',
-        order: 100
-      },
-      {
-        name: 'exportLogsToSheet',
-        label: '⬇️ Экспорт логов',
-        description: 'Экспортировать логи в лист',
-        category: 'dev',
-        menuPath: '🧰 DEV',
-        order: 101
-      },
-      {
-        name: 'clearLogs',
-        label: '🗑 Очистить логи',
-        description: 'Очистить системные логи',
-        category: 'dev',
-        menuPath: '🧰 DEV',
-        order: 102
-      }
-    ];
+    if (!response.ok) {
+      throw new Error(`Failed to execute function: ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    if (result.error) {
+      throw new Error(`Script execution error: ${result.error.message}`);
+    }
+
+    const scriptResponse = result.response?.result;
+    
+    if (!scriptResponse) {
+      throw new Error('No response from script');
+    }
 
     return {
-      functions: [...knownFunctions, ...devFunctions].sort((a, b) => a.order - b.order)
+      success: scriptResponse.success,
+      result: scriptResponse.result,
+      error: scriptResponse.error,
+      executionTime: scriptResponse.executionTime
     };
 
   } catch (error: any) {
     return {
-      functions: [],
-      error: `Ошибка получения функций: ${error.message}`
+      success: false,
+      error: `Ошибка выполнения функции: ${error.message}`
+    };
+  }
+};
+
+/**
+ * Получение статуса скрипта
+ */
+export const getScriptStatus = async (
+  scriptId: string,
+  token: string
+): Promise<{ success: boolean, status?: any, error?: string }> => {
+  try {
+    const response = await fetch(`${SCRIPTS_BASE_URL}/${scriptId}:run`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        function: 'getScriptStatus',
+        parameters: []
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get script status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    if (result.error) {
+      throw new Error(`Script error: ${result.error.message}`);
+    }
+
+    const scriptResponse = result.response?.result;
+    
+    if (!scriptResponse || !scriptResponse.success) {
+      throw new Error(scriptResponse?.error || 'Failed to get script status');
+    }
+
+    return {
+      success: true,
+      status: scriptResponse
+    };
+
+  } catch (error: any) {
+    return {
+      success: false,
+      error: `Ошибка получения статуса: ${error.message}`
     };
   }
 };

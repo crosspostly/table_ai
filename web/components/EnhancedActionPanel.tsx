@@ -1,31 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { ScriptStatus } from '../types';
+import { ScriptStatus, ScriptFunction } from '../types';
 import { executeGoogleScript } from '../services/googleSheets';
+import { executeScriptFunction } from '../services/appsScriptService';
 import { ResultModal } from './ResultModal';
-
-// Временной интерфейс для ScriptFunction
-interface ScriptFunction {
-  name: string;
-  label: string;
-  description: string;
-  category: 'ai' | 'data' | 'settings' | 'dev';
-  menuPath: string;
-  order: number;
-  returnsHtml?: boolean;
-}
 
 interface EnhancedActionPanelProps {
   spreadsheetId: string;
   token: string;
   scriptStatus: ScriptStatus;
   onRefreshScript: () => Promise<void>;
+  onAddExecutionLog: (functionName: string, parameters: any, success: boolean, result?: any, error?: string, executionTime?: number) => void;
 }
 
 export const EnhancedActionPanel: React.FC<EnhancedActionPanelProps> = ({
   spreadsheetId,
   token,
   scriptStatus,
-  onRefreshScript
+  onRefreshScript,
+  onAddExecutionLog
 }) => {
   const [executing, setExecuting] = useState<string | null>(null);
   const [modalState, setModalState] = useState<{isOpen: boolean, title: string, content: string | null, isHtml: boolean}>({
@@ -64,25 +56,51 @@ export const EnhancedActionPanel: React.FC<EnhancedActionPanelProps> = ({
     }
 
     setExecuting(func.name);
+    const startTime = Date.now();
+    
     try {
-      const result = await executeGoogleScript(scriptStatus.scriptId, func.name, [], token);
-      const output = result.response?.result;
-
-      if (func.returnsHtml || output && typeof output === 'object') {
-        const content = output ? (typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output)) : 'Функция выполнена (нет возвращаемого значения).';
-        setModalState({
-          isOpen: true,
-          title: func.label,
-          content: content,
-          isHtml: func.returnsHtml
-        });
+      // Собираем параметры (пока пустые, в будущем можно добавить форму)
+      const parameters = {};
+      
+      const result = await executeScriptFunction(scriptStatus.scriptId, func.name, parameters, token);
+      
+      if (result.success) {
+        // Логируем успешное выполнение
+        onAddExecutionLog(func.name, parameters, true, result.result, undefined, result.executionTime);
+        
+        if (func.returnsHtml || result.result && typeof result.result === 'object') {
+          const content = result.result ? (typeof result.result === 'object' ? JSON.stringify(result.result, null, 2) : String(result.result)) : 'Функция выполнена (нет возвращаемого значения).';
+          setModalState({
+            isOpen: true,
+            title: func.label,
+            content: content,
+            isHtml: func.returnsHtml
+          });
+        } else {
+          alert(`✅ ${func.label}: Успешно выполнено (${result.executionTime || 'N/A'}мс)`);
+        }
       } else {
-        alert(`✅ ${func.label}: Успешно выполнено`);
+        // Логируем ошибку
+        onAddExecutionLog(func.name, parameters, false, undefined, result.error, result.executionTime);
+        
+        // Даем понятное объяснение ошибки
+        let userFriendlyMessage = result.error || 'Unknown error';
+        if (result.error?.includes('Requested entity was not found')) {
+          userFriendlyMessage = 'Скрипт не найден или не имеет необходимого доступа. Проверьте Script ID в настройках.';
+        } else if (result.error?.includes('403')) {
+          userFriendlyMessage = 'Доступ запрещен. Убедитесь что у вас есть права на выполнение этого скрипта.';
+        } else if (result.error?.includes('Script execution failed')) {
+          userFriendlyMessage = 'Ошибка выполнения скрипта. Проверьте логи в разделе Диагностика.';
+        }
+
+        alert(`❌ Ошибка выполнения "${func.label}":\n${userFriendlyMessage}`);
       }
     } catch (e: any) {
-      const errorMessage = e.message || 'Unknown error';
+      // Логируем исключение
+      const executionTime = Date.now() - startTime;
+      onAddExecutionLog(func.name, {}, false, undefined, e.message, executionTime);
       
-      // Даем понятное объяснение ошибки
+      const errorMessage = e.message || 'Unknown error';
       let userFriendlyMessage = errorMessage;
       if (errorMessage.includes('Requested entity was not found')) {
         userFriendlyMessage = 'Скрипт не найден или не имеет необходимого доступа. Проверьте Script ID в настройках.';
@@ -127,12 +145,28 @@ export const EnhancedActionPanel: React.FC<EnhancedActionPanelProps> = ({
           <p className="text-sm text-yellow-700 mb-4">
             Для доступа к функциям Table AI необходимо найти и подключить скрипт.
           </p>
+          
+          <div className="bg-yellow-100 p-4 rounded-lg text-left text-xs text-yellow-600 mb-4">
+            <div className="font-bold mb-2">🔧 Как добавить Table AI в таблицу:</div>
+            <ol className="list-decimal list-inside space-y-2">
+              <li>Откройте таблицу на компьютере</li>
+              <li>Меню → Extensions → Apps Script</li>
+              <li>Создайте новый проект или вставьте код Table AI</li>
+              <li>Сохраните проект (Ctrl+S)</li>
+              <li>Вернитесь в мобильное приложение и нажмите "Найти скрипт"</li>
+            </ol>
+          </div>
+          
           <button
             onClick={() => onRefreshScript()}
-            className="bg-yellow-600 text-white px-6 py-3 rounded-lg font-bold"
+            className="bg-yellow-600 text-white px-6 py-3 rounded-lg font-bold w-full"
           >
             🔍 Найти скрипт автоматически
           </button>
+          
+          <div className="text-xs text-yellow-500 mt-3">
+            Table AI автоматически найдет скрипт и загрузит все доступные функции
+          </div>
         </div>
       </div>
     );
@@ -147,12 +181,27 @@ export const EnhancedActionPanel: React.FC<EnhancedActionPanelProps> = ({
           <p className="text-sm text-red-700 mb-4">
             {scriptStatus.error || 'Скрипт найден, но недоступен для выполнения.'}
           </p>
+          
+          <div className="bg-red-100 p-4 rounded-lg text-left text-xs text-red-600 mb-4">
+            <div className="font-bold mb-2">🔍 Возможные причины:</div>
+            <ul className="space-y-1">
+              <li>🔑 Недостаточно прав доступа к скрипту</li>
+              <li>🚫 Скрипт не опубликован для выполнения</li>
+              <li>⏰ Временная ошибка Google Apps Script</li>
+              <li>🌐 Проблемы с сетевым подключением</li>
+            </ul>
+          </div>
+          
           <button
             onClick={() => onRefreshScript()}
-            className="bg-red-600 text-white px-6 py-3 rounded-lg font-bold"
+            className="bg-red-600 text-white px-6 py-3 rounded-lg font-bold w-full"
           >
             🔄 Проверить снова
           </button>
+          
+          <div className="text-xs text-red-500 mt-3">
+            Попробуйте повторить через несколько минут или проверьте права доступа
+          </div>
         </div>
       </div>
     );
