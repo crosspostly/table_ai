@@ -408,9 +408,24 @@ function clearChainForA3() {
 }
 
 function getGeminiApiKey() {
-  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-  if (!key) throw new Error('API-ключ Gemini не установлен. Меню: 🤖 Table AI → Установить API ключ Gemini');
-  return key;
+  Logger.log('=== getGeminiApiKey START ===');
+
+  // Priority 1: Check for user-provided API key first
+  const userApiKey = PropertiesService.getUserProperties().getProperty('GEMINI_API_KEY');
+  if (userApiKey) {
+    Logger.log('Using USER API key, length: ' + userApiKey.length);
+    return userApiKey;
+  }
+
+  // Priority 2: Check for script-level API key (default)
+  const scriptApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (scriptApiKey) {
+    Logger.log('Using DEFAULT API key, length: ' + scriptApiKey.length);
+    return scriptApiKey;
+  }
+
+  Logger.log('ERROR: No API key available (neither user nor default)');
+  throw new Error('API-ключ Gemini не установлен. Меню: 🤖 Table AI → Установить API ключ Gemini');
 }
 // ====== КЭШ ДЛЯ GM ======
 function gmCacheKey_(prompt, maxTokens, temperature) {
@@ -1020,61 +1035,104 @@ function openSettingsUI() {
 // eslint-disable-next-line no-unused-vars
 function getSettingsData() {
   try {
-    const props = PropertiesService.getScriptProperties();
+    Logger.log('=== getSettingsData START ===');
+
+    const userProps = PropertiesService.getUserProperties();
+    const scriptProps = PropertiesService.getScriptProperties();
+
+    // Priority: user key first, then script key
+    const userApiKey = userProps.getProperty('GEMINI_API_KEY');
+    const scriptApiKey = scriptProps.getProperty('GEMINI_API_KEY');
+    const currentApiKey = userApiKey || scriptApiKey || '';
+    const keySource = userApiKey ? 'USER' : (scriptApiKey ? 'DEFAULT' : 'NONE');
+
+    const email = scriptProps.getProperty('LICENSEEMAIL') || '';
+    const token = scriptProps.getProperty('LICENSETOKEN') || '';
+
+    Logger.log('currentApiKey: ' + (currentApiKey ? 'SET (' + keySource + ', length: ' + currentApiKey.length + ')' : 'NOT SET'));
+    Logger.log('email: ' + (email ? 'SET' : 'NOT SET'));
+    Logger.log('token: ' + (token ? 'SET' : 'NOT SET'));
+
     return {
-      apiKey: props.getProperty('GEMINI_API_KEY') || '',
-      email: props.getProperty('LICENSEEMAIL') || '',
-      token: props.getProperty('LICENSETOKEN') || '',
+      apiKey: currentApiKey,
+      email: email,
+      token: token,
+      keySource: keySource,
     };
   } catch (e) {
+    Logger.log('getSettingsData ERROR: ' + e.message);
     addLog('❌ Ошибка чтения настроек: ' + e.message, 'ERROR');
-    return {apiKey: '', email: '', token: ''};
+    return {apiKey: '', email: '', token: '', keySource: 'NONE'};
   }
 }
 
 // eslint-disable-next-line no-unused-vars
 function saveSettingsData(data) {
   try {
+    Logger.log('=== saveSettingsData START ===');
+    Logger.log('data.apiKey: ' + (data.apiKey ? 'SET (user provided)' : 'NOT SET (will use default)'));
+    Logger.log('data.email: ' + (data.email ? 'SET' : 'NOT SET'));
+    Logger.log('data.token: ' + (data.token ? 'SET' : 'NOT SET'));
+
     const props = PropertiesService.getScriptProperties();
     const updated = [];
 
-    if (data.apiKey) {
-      props.setProperty('GEMINI_API_KEY', data.apiKey);
-      updated.push('API ключ');
-      addLog('✅ API ключ Gemini обновлён', 'INFO');
+    if (data.apiKey !== undefined) {
+      if (data.apiKey) {
+        props.setProperty('GEMINI_API_KEY', data.apiKey);
+        updated.push('API ключ');
+        Logger.log('✅ User API key saved, length: ' + data.apiKey.length);
+      } else {
+        props.deleteProperty('GEMINI_API_KEY');
+        updated.push('API ключ (удален)');
+        Logger.log('✅ User API key removed (will use default)');
+      }
     }
 
     if (data.email) {
-      props.setProperty('LICENSE_EMAIL', data.email);
+      props.setProperty('LICENSEEMAIL', data.email);
       updated.push('Email');
-      addLog('✅ Email лицензии обновлён: ' + data.email, 'INFO');
+      Logger.log('✅ License email updated: ' + data.email);
     }
 
     if (data.token) {
-      props.setProperty('LICENSE_TOKEN', data.token);
+      props.setProperty('LICENSETOKEN', data.token);
       updated.push('Токен');
-      addLog('✅ Токен лицензии обновлён', 'INFO');
+      Logger.log('✅ License token updated, length: ' + data.token.length);
     }
 
     if (updated.length === 0) {
+      Logger.log('saveSettingsData: No data to save');
       return {success: false, message: 'Нет данных для сохранения'};
     }
 
+    Logger.log('Settings saved successfully: ' + updated.join(', '));
     return {
       success: true,
       message: 'Сохранено: ' + updated.join(', '),
     };
   } catch (e) {
+    Logger.log('saveSettingsData ERROR: ' + e.message);
     addLog('❌ Ошибка сохранения настроек: ' + e.message, 'ERROR');
     return {success: false, message: 'Ошибка: ' + e.message};
   }
 }
 
 function serverGM(prompt, maxTokens, temperature) {
+  Logger.log('=== serverGM START ===');
+  Logger.log('prompt length: ' + (prompt ? prompt.length : 0));
+  Logger.log('maxTokens: ' + maxTokens);
+  Logger.log('temperature: ' + temperature);
+
   const email = getLicenseEmail();
   const token = getLicenseToken();
   const apiKey = getGeminiApiKey();
   const sheetId = SpreadsheetApp.getActive().getId();
+
+  Logger.log('email: ' + (email ? 'SET' : 'NOT SET'));
+  Logger.log('token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
+  Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
+  Logger.log('sheetId: ' + sheetId);
 
   // DEV логирование
   if (DEV_MODE) {
@@ -1097,6 +1155,13 @@ function serverGM(prompt, maxTokens, temperature) {
     sheetId: sheetId,
   };
 
+  Logger.log('Request payload: ' + JSON.stringify({
+    ...payload,
+    prompt: prompt ? '[PROMPT_' + prompt.length + '_CHARS]' : null,
+    token: token ? '[TOKEN_' + token.length + '_CHARS]' : null,
+    apiKey: apiKey ? '[APIKEY_' + apiKey.length + '_CHARS]' : null,
+  }));
+
   const options = {
     method: 'post',
     contentType: 'application/json',
@@ -1105,10 +1170,14 @@ function serverGM(prompt, maxTokens, temperature) {
   };
 
   try {
+    Logger.log('Sending POST request to: ' + SERVER_URL);
     addLog(`📡 POST запрос на: ${SERVER_URL}`, 'DEBUG');
     const resp = UrlFetchApp.fetch(SERVER_URL, options);
     const code = resp.getResponseCode();
     const responseText = resp.getContentText();
+
+    Logger.log('Response code: ' + code);
+    Logger.log('Response length: ' + responseText.length);
 
     // DEV логирование
     if (DEV_MODE) {
@@ -1117,6 +1186,7 @@ function serverGM(prompt, maxTokens, temperature) {
     }
 
     const data = JSON.parse(responseText);
+    Logger.log('Response parsed successfully, ok=' + (data && data.ok ? 'true' : 'false'));
 
     // DEV логирование
     if (DEV_MODE) {
@@ -1124,27 +1194,34 @@ function serverGM(prompt, maxTokens, temperature) {
     }
 
     if (!data.ok && data.error) {
+      Logger.log('Server returned error: ' + data.error);
       addLog(`SERVER ERROR: ${data.error}`, 'ERROR');
     }
 
     if (data.ok && data.data) {
+      Logger.log('Gemini result received, length: ' + data.data.length);
       addLog(`GEMINI RESULT: length=${data.data.length}, start=${data.data.substring(0, 100)}...`, 'DEBUG');
     }
 
     if (data.quota) {
+      Logger.log('Quota info: ' + JSON.stringify(data.quota));
       addLog(`QUOTA INFO: ${JSON.stringify(data.quota)}`, 'DEBUG');
     }
 
     if (data.message) {
+      Logger.log('License message: ' + data.message);
       addLog(`LICENSE MESSAGE: ${data.message}`, 'DEBUG');
     }
 
     if (code !== 200) {
+      Logger.log('Non-200 response code: ' + code);
       return {ok: false, error: (data && data.error) || `HTTP_${code}`};
     }
 
+    Logger.log('serverGM completed successfully');
     return data;
   } catch (e) {
+    Logger.log('serverGM ERROR: ' + e.message);
     addLog(`SERVER REQUEST FAILED: ${e.message}`, 'ERROR');
     return {ok: false, error: `REQUEST_FAILED: ${e.message}`};
   }
