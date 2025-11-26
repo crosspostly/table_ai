@@ -4,14 +4,30 @@ import { Sheet, Tab } from '../types';
 import { TableCard } from './TableCard';
 import { BottomNav } from './BottomNav';
 import { ActionPanel } from './ActionPanel';
+import { EnhancedActionPanel } from './EnhancedActionPanel';
+import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { readSheetValues, writeCell } from '../services/googleSheets';
+
+// Временной интерфейс для ScriptStatus
+interface ScriptStatus {
+  scriptId: string | null;
+  available: boolean;
+  lastChecked: string;
+  searchLogs: any[];
+  functions: any[];
+  error?: string;
+}
 
 interface SheetViewerProps {
   spreadsheetId: string;
   sheets: Sheet[];
   token: string;
   scriptId?: string | null;
+  scriptStatus: ScriptStatus;
+  searchingScript: boolean;
   onUpdateScriptId: (id: string) => void;
+  onRefreshScript: () => Promise<void>;
+  onClearLogs: () => void;
   onBack: () => void;
 }
 
@@ -20,7 +36,11 @@ export const SheetViewer: React.FC<SheetViewerProps> = ({
   sheets,
   token,
   scriptId,
+  scriptStatus,
+  searchingScript,
   onUpdateScriptId,
+  onRefreshScript,
+  onClearLogs,
   onBack
 }) => {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DATA);
@@ -125,40 +145,38 @@ export const SheetViewer: React.FC<SheetViewerProps> = ({
 
   const renderContent = () => {
     if (activeTab === Tab.ACTIONS) {
+      // Показываем индикатор загрузки во время поиска скрипта
+      if (searchingScript) {
+        return (
+          <div className="p-4 pb-24">
+            <div className="bg-blue-50 p-6 rounded-xl border border-blue-200 text-center">
+              <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+              <h3 className="font-bold text-blue-800 mb-2">Поиск скрипта Table AI</h3>
+              <p className="text-sm text-blue-700">
+                Автоматически ищем скрипт в выбранной таблице...
+              </p>
+            </div>
+          </div>
+        );
+      }
+
       return (
-        <ActionPanel 
+        <EnhancedActionPanel 
           spreadsheetId={spreadsheetId} 
           token={token} 
-          scriptId={scriptId}
-          onUpdateScriptId={onUpdateScriptId}
+          scriptStatus={scriptStatus}
+          onRefreshScript={onRefreshScript}
         />
       );
     }
     
     if (activeTab === Tab.SETTINGS) {
        return (
-         <div className="p-4 space-y-4">
-            <h2 className="font-bold text-xl text-slate-800">Настройки</h2>
-            <div className="bg-white p-4 rounded-xl border border-slate-200">
-               <label className="text-xs text-slate-500 uppercase font-bold">Script ID</label>
-               <input 
-                 value={scriptId || ''} 
-                 onChange={(e) => onUpdateScriptId(e.target.value)}
-                 className="w-full mt-2 p-3 bg-slate-50 rounded-lg text-sm font-mono border border-slate-200"
-                 placeholder="ID скрипта для кнопок"
-               />
-               <p className="text-[10px] text-slate-400 mt-2">
-                 Требуется для работы кнопок на вкладке Действия.
-               </p>
-            </div>
-            
-            <button 
-              onClick={onBack}
-              className="w-full py-3 bg-red-50 text-red-600 font-bold rounded-xl"
-            >
-              Закрыть таблицу
-            </button>
-         </div>
+         <DiagnosticsPanel
+           scriptStatus={scriptStatus}
+           onRefreshScript={onRefreshScript}
+           onClearLogs={onClearLogs}
+         />
        );
     }
 
