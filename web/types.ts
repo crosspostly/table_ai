@@ -55,6 +55,7 @@ export interface Sheet {
 export enum Tab {
   DATA = 'DATA',
   ACTIONS = 'ACTIONS',
+  AI_CONSTRUCTOR = 'AI_CONSTRUCTOR',
   SETTINGS = 'SETTINGS'
 }
 
@@ -74,6 +75,13 @@ export interface ScriptProject {
   parentId: string;
 }
 
+export interface FunctionParameter {
+  name: string;
+  type: string;
+  description: string;
+  required: boolean;
+}
+
 export interface ScriptFunction {
   name: string;
   label: string;
@@ -82,6 +90,7 @@ export interface ScriptFunction {
   menuPath: string;
   order: number;
   returnsHtml?: boolean;
+  parameters?: FunctionParameter[];
 }
 
 export interface SearchScriptLog {
@@ -92,11 +101,23 @@ export interface SearchScriptLog {
   error?: string;
 }
 
+export interface ExecutionLog {
+  id: string;
+  functionName: string;
+  parameters: any;
+  success: boolean;
+  result?: any;
+  error?: string;
+  executionTime?: number;
+  timestamp: string;
+}
+
 export interface ScriptStatus {
   scriptId: string | null;
   available: boolean;
   lastChecked: string;
   searchLogs: SearchScriptLog[];
   functions: ScriptFunction[];
+  executionLogs: ExecutionLog[];
   error?: string;
 }

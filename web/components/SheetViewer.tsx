@@ -6,6 +6,7 @@ import { BottomNav } from './BottomNav';
 import { ActionPanel } from './ActionPanel';
 import { EnhancedActionPanel } from './EnhancedActionPanel';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
+import { AIConstructor } from './AIConstructor';
 import { readSheetValues, writeCell } from '../services/googleSheets';
 
 // Временной интерфейс для ScriptStatus
@@ -28,6 +29,7 @@ interface SheetViewerProps {
   onUpdateScriptId: (id: string) => void;
   onRefreshScript: () => Promise<void>;
   onClearLogs: () => void;
+  onAddExecutionLog: (functionName: string, parameters: any, success: boolean, result?: any, error?: string, executionTime?: number) => void;
   onBack: () => void;
 }
 
@@ -41,6 +43,7 @@ export const SheetViewer: React.FC<SheetViewerProps> = ({
   onUpdateScriptId,
   onRefreshScript,
   onClearLogs,
+  onAddExecutionLog,
   onBack
 }) => {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DATA);
@@ -144,6 +147,18 @@ export const SheetViewer: React.FC<SheetViewerProps> = ({
   );
 
   const renderContent = () => {
+    if (activeTab === Tab.AI_CONSTRUCTOR) {
+      return (
+        <AIConstructor 
+          spreadsheetId={spreadsheetId} 
+          token={token} 
+          scriptId={scriptStatus.scriptId}
+          functions={scriptStatus.functions}
+          onAddExecutionLog={onAddExecutionLog}
+        />
+      );
+    }
+
     if (activeTab === Tab.ACTIONS) {
       // Показываем индикатор загрузки во время поиска скрипта
       if (searchingScript) {
@@ -151,10 +166,24 @@ export const SheetViewer: React.FC<SheetViewerProps> = ({
           <div className="p-4 pb-24">
             <div className="bg-blue-50 p-6 rounded-xl border border-blue-200 text-center">
               <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
-              <h3 className="font-bold text-blue-800 mb-2">Поиск скрипта Table AI</h3>
-              <p className="text-sm text-blue-700">
-                Автоматически ищем скрипт в выбранной таблице...
+              <h3 className="font-bold text-blue-800 mb-2">🔍 Поиск скрипта Table AI</h3>
+              <p className="text-sm text-blue-700 mb-4">
+                Автоматически ищем связанный Apps Script для вашей таблицы...
               </p>
+              
+              <div className="bg-blue-100 p-3 rounded-lg text-left text-xs text-blue-600">
+                <div className="font-bold mb-2">Что происходит:</div>
+                <ul className="space-y-1">
+                  <li>📋 Получаем список всех ваших Apps Script проектов</li>
+                  <li>🔎 Ищем проект связанный с этой таблицей</li>
+                  <li>⚡ Проверяем доступность и права доступа</li>
+                  <li>📦 Загружаем список доступных функций</li>
+                </ul>
+              </div>
+              
+              <div className="text-xs text-blue-500 mt-3">
+                Это может занять несколько секунд...
+              </div>
             </div>
           </div>
         );
@@ -166,6 +195,7 @@ export const SheetViewer: React.FC<SheetViewerProps> = ({
           token={token} 
           scriptStatus={scriptStatus}
           onRefreshScript={onRefreshScript}
+          onAddExecutionLog={onAddExecutionLog}
         />
       );
     }
