@@ -26,6 +26,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) 
       </button>
 
       <button 
+        onClick={() => onTabChange(Tab.AI_CONSTRUCTOR)}
+        className={`flex-1 flex flex-col items-center py-3 ${activeTab === Tab.AI_CONSTRUCTOR ? 'text-indigo-600' : 'text-slate-400'}`}
+      >
+        <span className="text-xl mb-1">🎯</span>
+        <span className="text-[10px] font-bold uppercase">AI Constructor</span>
+      </button>
+
+      <button 
         onClick={() => onTabChange(Tab.SETTINGS)}
         className={`flex-1 flex flex-col items-center py-3 ${activeTab === Tab.SETTINGS ? 'text-indigo-600' : 'text-slate-400'}`}
       >
