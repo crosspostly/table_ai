@@ -102,6 +102,12 @@ npm run setup
 5. **Сохраните шаблон** для будущего использования
 6. **Выполните запрос** - результат появится в целевой ячейке
 
+**Система шаблонов v3.0:**
+- 💾 **Сохранение шаблонов** - библиотека ваших промптов
+- 🔄 **Быстрое применение** - один клик для любой ячейки
+- ⚡ **Высокая скорость** - PropertiesService (в 10x быстрее листов)
+- 🔒 **Безопасность** - LockService защита
+
 **Пример конфигурации:**
 ```json
 {
@@ -136,10 +142,14 @@ npm run setup
 Загружает посты из ВКонтакте с автоматической фильтрацией:
 
 1. **Создайте лист "Посты"** с заголовками
-2. **Введите параметры** в ячейки C1 (owner) и E1 (count)
+2. **Введите параметры** в ячейки C1 (owner) и E1 (count) на листе "Параметры"
 3. **Запустите импорт** через меню
 4. **Данные загружаются** с 3-й строки (первые строки защищены)
 5. **Формулы фильтрации** создаются автоматически
+
+**Параметры:**
+- `owner` - ID пользователя или сообщества (`durov`, `-123456`)
+- `count` - количество постов (`10`, `20`, `50`)
 
 ### 🔍 OCR Распознавание
 
@@ -217,10 +227,11 @@ npm run test:coverage
 ## 📊 Мониторинг и логирование
 
 ### Логи
-Все логи централизованы в `LoggingService.gs`:
+Все логи централизованы и доступны через меню `🤖 Table AI → 🛠️ DEV → 📝 Показать логи`:
 - **Уровни:** ERROR, WARN, INFO, DEBUG
-- **Хранение:** CacheService (24 часа)
-- **Экспорт:** в лист "Логи"
+- **Хранение:** CacheService (300 последних записей, 24 часа)
+- **Экспорт:** в лист "Логи" через `⬇️ Экспорт логов`
+- **Формат:** `{timestamp, level, message}`
 
 ### Метрики
 - **Производительность:** время выполнения операций
@@ -280,28 +291,17 @@ npm run open
 ## 📚 Документация
 
 ### Основная документация
-- [README.md](README.md) - основная информация о проекте
+- **README.md** - текущий файл, основная информация
 - [AGENT_READ_FIRST.md](AGENT_READ_FIRST.md) - информация для AI агентов
 
 ### Для разработчиков
-- [Developer Guide](docs/DEVELOPER_GUIDE.md) - руководство разработчика
-- [Functions Reference](docs/FUNCTIONS_REFERENCE.md) - справочник функций
-- [Comprehensive Public API](docs/COMPREHENSIVE_PUBLIC_API.md) - API документация
-- [CLASP Setup](docs/CLASP_SETUP.md) - настройка окружения разработки
-
-### Для пользователей
-- [VK Import Documentation](docs/VK_IMPORT_DOCUMENTATION.md) - импорт постов из VK
-- [Template System](docs/TEMPLATE_SYSTEM.md) - система шаблонов
-- [UnpackingViewer](docs/UnpackingViewer.md) - просмотр данных
-- [Social Import Examples](docs/SocialImportExamples.md) - примеры импорта
+- [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) - руководство разработчика
+- [FUNCTIONS_REFERENCE.md](docs/FUNCTIONS_REFERENCE.md) - полный справочник функций
+- [COMPREHENSIVE_PUBLIC_API.md](docs/COMPREHENSIVE_PUBLIC_API.md) - API документация
+- [CLASP_SETUP.md](docs/CLASP_SETUP.md) - настройка окружения разработки
 
 ### Техническая документация
-- [Logging](docs/Logging.md) - система логирования
-- [Testing Guide](docs/TESTING_GUIDE.md) - руководство по тестированию
-- [Deployment Instructions](docs/DEPLOYMENT_INSTRUCTIONS.md) - инструкции по развертыванию
-
-### Архивная документация
-- [archive/](docs/archive/) - внутренние аудиты, тестовые заметки и устаревшая документация
+- [TESTING_GUIDE.md](docs/TESTING_GUIDE.md) - руководство по тестированию
 
 ---
 
