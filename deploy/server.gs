@@ -1,5 +1,6 @@
 // Table AI Server (Apps Script Web App)
-// Backend: лицензии, прокси к Gemini с КЛЮЧОМ КЛИЕНТА, серверные логи
+// Backend: диспетчер + лицензирование + OTA обновления
+// v3.0.0 - Thick Server + Thin Client Architecture
 
 // ===== Constants =====
 const S_GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
@@ -7,6 +8,7 @@ const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
 const LICENSE_SHEET_NAME = 'Tokens';
 const LOG_SHEET_NAME = 'Логи';
 const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
+const SERVER_VERSION = '3.0.0'; // Версия сервера для OTA
 
 // ===== Entry points =====
 function doGet(_e) {
@@ -19,25 +21,29 @@ function doPost(_e) {
 
     const data = parseBody_(_e);
     const action = (data.action || '').toString();
+    const subaction = (data.subaction || '').toString();
     const token = (data.token || '').toString();
     const email = (data.email || '').toString();
-    
+
     // ⭐ ОБА ID для разных целей
-    const scriptId = (data.scriptId || '').toString();      // ⭐ Для привязки
+    const scriptId = (data.scriptId || '').toString(); // ⭐ Для привязки
     const spreadsheetId = (data.spreadsheetId || '').toString(); // ⭐ Для работы
     const apiKey = (data.apiKey || '').toString();
+    const clientVersion = (data.clientVersion || '').toString(); // Для OTA
 
     Logger.log('action: ' + action);
+    Logger.log('subaction: ' + subaction);
     Logger.log('email: ' + (email ? 'SET' : 'NOT SET'));
     Logger.log('token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
-    Logger.log('scriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET'));  // ⭐
-    Logger.log('spreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET'));  // ⭐
+    Logger.log('scriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET')); // ⭐
+    Logger.log('spreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET')); // ⭐
     Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
+    Logger.log('clientVersion: ' + clientVersion);
 
-    // License gate for all actions except 'status' and 'validate'
-    if (action !== 'status' && action !== 'validate') {
+    // License gate for all actions except 'status', 'validate', and OTA
+    if (action !== 'status' && action !== 'validate' && action !== 'ota') {
       Logger.log('Checking license...');
-      const lic = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅ Оба ID
+      const lic = checkLicense_(token, email, scriptId, spreadsheetId); // ✅ Оба ID
       Logger.log('License check result: ' + JSON.stringify(lic));
 
       if (!lic.ok) {
@@ -47,343 +53,36 @@ function doPost(_e) {
       Logger.log('License check PASSED');
     }
 
+    // ===== ДИСПЕТЧЕР АКЦИЙ =====
     switch (action) {
-    case 'gm': {
-      Logger.log('Processing gm action');
-      const prompt = (data.prompt || '').toString();
-      const maxTokens = data.maxTokens == null ? 12500 : +data.maxTokens;
-      const temperature = data.temperature == null ? 0.7 : +data.temperature;
-      const userApiKey = (data.apiKey || '').toString();
+    case 'ota':
+      return handleOTA(subaction, data, clientVersion);
 
-      Logger.log('prompt length: ' + prompt.length);
-      Logger.log('maxTokens: ' + maxTokens);
-      Logger.log('temperature: ' + temperature);
-      Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
+    case 'gm':
+      return handleGemini(data, token, email);
 
-      // API key priority: use user key first, otherwise fallback to default
-      let finalApiKey = userApiKey;
-      let keySource = 'USER';
+    case 'gm_image':
+      return handleGeminiImage(data, token, email);
 
-      if (!userApiKey) {
-        // Try to get default API key from script properties
-        const defaultApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-        if (defaultApiKey) {
-          finalApiKey = defaultApiKey;
-          keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
-        } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
-          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
-        }
-      } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
-      }
+    case 'status':
+    case 'validate':
+      return handleStatus(data, token, email, scriptId, spreadsheetId);
 
-      // rate limit
-      if (!rateLimitOk_(token)) {
-        Logger.log('Rate limit exceeded for token');
-        return json_({ok: false, error: 'RATE_LIMIT'}, 429);
-      }
+    case 'collectConfig':
+      return handleCollectConfig(subaction, data, spreadsheetId);
 
-      Logger.log('Calling serverGM_ with ' + keySource + ' API key');
-      const t0 = Date.now();
-      let ok = true; let err = null; let text = '';
-      try {
-        text = serverGM_(prompt, maxTokens, temperature, finalApiKey);
-        Logger.log('serverGM_ completed successfully, response length: ' + text.length);
-      } catch (ex) {
-        ok = false;
-        err = String(ex && ex.message || ex);
-        Logger.log('serverGM_ failed: ' + err);
-      }
+    case 'ocr':
+      return handleOCR(subaction, data, spreadsheetId);
 
-      try {
-        serverLog_({
-          action: 'gm',
-          ok: ok,
-          error: err,
-          email: email,
-          token: token,
-          promptLen: prompt.length,
-          ms: Date.now() - t0,
-          keySource: keySource,
-        });
-      } catch (_) {}
+    case 'vk':
+      return handleVK(subaction, data, spreadsheetId);
 
-      if (!ok) {
-        Logger.log('Returning error response: ' + err);
-        return json_({ok: false, error: err}, 500);
-      }
+    case 'unpacking':
+      return handleUnpacking(subaction, data, spreadsheetId);
 
-      Logger.log('Returning successful response');
-      return json_({ok: true, data: text});
-    }
-    case 'gm_image': {
-      Logger.log('Processing gm_image action');
-      const images = data.images || [];
-      const lang = (data.lang || 'ru').toString();
-      const userApiKey = (data.apiKey || '').toString();
-      const delimiter = (data.delimiter && String(data.delimiter).trim()) ? String(data.delimiter).trim() : null;
+    case 'batchUpdate':
+      return handleBatchUpdate(subaction, data, spreadsheetId);
 
-      Logger.log('images count: ' + images.length);
-      Logger.log('lang: ' + lang);
-      Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
-      Logger.log('delimiter: ' + (delimiter || 'NONE'));
-
-      // API key priority: use user key first, otherwise fallback to default
-      const finalApiKey = userApiKey;
-      let keySource = 'USER';
-
-      if (!userApiKey) {
-        // Try to get default API key from script properties
-        const defaultApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-        if (defaultApiKey) {
-          keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
-        } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
-          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
-        }
-      } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
-      }
-
-      if (!Array.isArray(images) || images.length === 0) {
-        Logger.log('ERROR: No images provided');
-        return json_({ok: false, error: 'NO_IMAGES'}, 400);
-      }
-
-      if (!rateLimitOk_(token)) {
-        Logger.log('Rate limit exceeded for token');
-        return json_({ok: false, error: 'RATE_LIMIT'}, 429);
-      }
-
-      Logger.log('Calling serverGMImage_ with ' + keySource + ' API key');
-      const t1 = Date.now();
-      let ok2 = true;
-      let err2 = null;
-      let text2 = '';
-      try {
-        text2 = serverGMImage_(images, lang, finalApiKey, delimiter);
-        Logger.log('serverGMImage_ completed successfully, response length: ' + text2.length);
-      } catch (ex2) {
-        ok2 = false;
-        err2 = String(ex2 && ex2.message || ex2);
-        Logger.log('serverGMImage_ failed: ' + err2);
-      }
-
-      try {
-        serverLog_({
-          action: 'gm_image',
-          ok: ok2,
-          error: err2,
-          email: email,
-          token: token,
-          promptLen: images.length,
-          ms: Date.now() - t1,
-          keySource: keySource,
-        });
-      } catch (_) {}
-
-      if (!ok2) {
-        Logger.log('Returning error response: ' + err2);
-        return json_({ok: false, error: err2}, 500);
-      }
-
-      Logger.log('Returning successful response');
-      return json_({ok: true, data: text2});
-    }
-    case 'status': {
-      Logger.log('Processing status action');
-      const status = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅
-      Logger.log('License check result: ' + JSON.stringify(status));
-
-      try {
-        serverLog_({
-          action: 'status',
-          ok: status.ok,
-          error: status.error || null,
-          email: email,
-          token: token,
-          promptLen: 0,
-          ms: 0,
-          keySource: 'NONE',
-        });
-      } catch (_) {}
-
-      Logger.log('Returning status response');
-      return json_({
-        ok: status.ok,
-        error: status.error || null,
-        until: status.until || null,
-        row: status.row || null,
-        quota: status.quota || null,
-        message: status.message || null,
-      });
-    }
-    case 'validate': {
-      Logger.log('Processing validate action');
-      const status = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅
-      Logger.log('License check result: ' + JSON.stringify(status));
-
-      try {
-        serverLog_({
-          action: 'validate',
-          ok: status.ok,
-          error: status.error || null,
-          email: email,
-          token: token,
-          promptLen: 0,
-          ms: 0,
-          keySource: 'NONE',
-        });
-      } catch (_) {}
-
-      Logger.log('Returning validate response');
-      return json_({
-        ok: status.ok,
-        error: status.error || null,
-        until: status.until || null,
-        row: status.row || null,
-        quota: status.quota || null,
-        message: status.message || null,
-      });
-    }
-    case 'collect_config_preview': {
-      const config = data.config || {};
-      const spreadsheetId = (data.spreadsheetId || '').toString();
-      const tableId = (data.tableId || '').toString();
-      const logs = [];
-
-      const t0 = Date.now();
-      let ok = true;
-      let err = null;
-      let preview = '';
-      try {
-        if (!config) throw new Error('NO_CONFIG');
-        if (!spreadsheetId && !tableId) throw new Error('NO_SPREADSHEET_ID');
-
-        // Read data for preview
-        if (config.userData && config.userData.length > 0) {
-          const previews = [];
-          config.userData.forEach(function(source, index) {
-            if (source.sheet && source.cell) {
-              try {
-                const dataText = tableId ?
-                  serverReadData_(tableId, source.sheet, source.cell, logs) :
-                  serverReadData_(spreadsheetId, source.sheet, source.cell, logs);
-                const trimmed = dataText.length > 100 ? dataText.substring(0, 100) + '...' : dataText;
-                previews.push(`Источник ${index + 1} (${source.sheet}!${source.cell}): ${trimmed}`);
-              } catch (e) {
-                previews.push(`Источник ${index + 1}: Ошибка - ${e.message}`);
-              }
-            }
-          });
-          preview = previews.join('\n\n');
-        } else {
-          preview = '(нет данных для предпросмотра)';
-        }
-      } catch (ex) {
-        ok = false;
-        err = String(ex && ex.message || ex);
-      }
-
-      try {
-        serverLog_({
-          action: 'collect_config_preview',
-          ok: ok,
-          error: err,
-          email: email,
-          token: token,
-          promptLen: preview.length,
-          ms: Date.now() - t0,
-        });
-      } catch (_) {}
-      if (!ok) return json_({ok: false, error: err, logs: logs}, 400);
-      return json_({ok: true, data: preview, logs: logs});
-    }
-    case 'collect_config_execute': {
-      Logger.log('Processing collect_config_execute action');
-      const config = data.config || {};
-      const spreadsheetId = (data.spreadsheetId || '').toString();
-      const sheetName = (data.sheetName || '').toString();
-      const cellAddress = (data.cellAddress || '').toString();
-      const userApiKey = (data.apiKey || '').toString();
-      const logs = [];
-
-      Logger.log('config: ' + (config ? 'SET' : 'NOT SET'));
-      Logger.log('config.systemPrompt: ' + JSON.stringify(config.systemPrompt || null));
-      Logger.log('config.userData: ' + (config.userData ? config.userData.length + ' sources' : 'NONE'));
-      Logger.log('spreadsheetId: ' + spreadsheetId);
-      Logger.log('sheetName: ' + sheetName);
-      Logger.log('cellAddress: ' + cellAddress);
-      Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
-
-      // API key priority: use user key first, otherwise fallback to default
-      const finalApiKey = userApiKey;
-      let keySource = 'USER';
-
-      if (!userApiKey) {
-        // Try to get default API key from script properties
-        const defaultApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-        if (defaultApiKey) {
-          finalApiKey = defaultApiKey;
-          keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
-        } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
-          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE', logs: logs}, 400);
-        }
-      } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
-      }
-
-      // Validate required fields
-      if (!config) return json_({ok: false, error: 'NO_CONFIG', logs: logs}, 400);
-      if (!spreadsheetId) return json_({ok: false, error: 'NO_SPREADSHEET_ID', logs: logs}, 400);
-      if (!sheetName) return json_({ok: false, error: 'NO_SHEET_NAME', logs: logs}, 400);
-      if (!cellAddress) return json_({ok: false, error: 'NO_CELL_ADDRESS', logs: logs}, 400);
-      if (!finalApiKey) return json_({ok: false, error: 'NO_API_KEY', logs: logs}, 400);
-
-      // Rate limit for execute calls
-      if (!rateLimitOk_(token)) {
-        Logger.log('Rate limit exceeded for token');
-        return json_({ok: false, error: 'RATE_LIMIT', logs: logs}, 429);
-      }
-
-      Logger.log('Calling serverCollectConfigExecute_ with ' + keySource + ' API key');
-      const t0 = Date.now();
-      let ok = true;
-      let err = null;
-      let result = '';
-      try {
-        result = serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, finalApiKey, logs);
-        Logger.log('serverCollectConfigExecute_ completed successfully, result length: ' + result.length);
-      } catch (ex) {
-        ok = false;
-        err = String(ex && ex.message || ex);
-        Logger.log('serverCollectConfigExecute_ failed: ' + err);
-      }
-      try {
-        serverLog_({
-          action: 'collect_config_execute',
-          ok: ok,
-          error: err,
-          email: email,
-          token: token,
-          promptLen: result.length,
-          ms: Date.now() - t0,
-          keySource: keySource,
-        });
-      } catch (_) {}
-      if (!ok) {
-        Logger.log('Returning error response: ' + err);
-        return json_({ok: false, error: err, logs: logs}, 500);
-      }
-
-      Logger.log('Returning successful response');
-      return json_({ok: true, data: result, logs: logs});
-    }
     default:
       Logger.log('ERROR: Unknown action - ' + action);
       return json_({ok: false, error: 'UNKNOWN_ACTION'}, 400);
@@ -391,6 +90,428 @@ function doPost(_e) {
   } catch (err) {
     Logger.log('doPost ERROR: ' + String(err.message || err));
     return json_({ok: false, error: String(err && err.message || err)}, 500);
+  }
+}
+
+
+// ===== ОБРАБОТЧИКИ АКЦИЙ =====
+
+/**
+ * Обработчик OTA запросов
+ */
+function handleOTA(subaction, data, clientVersion) {
+  Logger.log('Processing OTA subaction: ' + subaction);
+
+  try {
+    switch (subaction) {
+    case 'checkUpdates':
+      return {
+        ok: true,
+        serverVersion: SERVER_VERSION,
+        clientVersion: clientVersion,
+        updateAvailable: clientVersion < SERVER_VERSION,
+        availableFiles: [
+          {name: 'Main.gs', size: '8 KB', checksum: 'main_v3_checksum'},
+          {name: 'CollectConfigUi.html', size: '12 KB', checksum: 'ui_v3_checksum'},
+          {name: 'UnpackingViewerUI.html', size: '10 KB', checksum: 'unpacking_v3_checksum'},
+          {name: 'SettingsUI.html', size: '8 KB', checksum: 'settings_v3_checksum'},
+          {name: 'logging_system.html', size: '5 KB', checksum: 'logs_v3_checksum'},
+        ],
+      };
+
+    case 'getFileContent':
+      const fileName = data.fileName;
+      if (!fileName) {
+        return {ok: false, error: 'NO_FILE_NAME'};
+      }
+
+      const content = fetchFileContent_(fileName);
+      if (!content) {
+        return {ok: false, error: 'FILE_NOT_FOUND'};
+      }
+
+      return {
+        ok: true,
+        fileName: fileName,
+        content: content,
+        fileType: 'text/plain',
+        version: SERVER_VERSION,
+      };
+
+    default:
+      return {ok: false, error: 'UNKNOWN_OTA_SUBACTION'};
+    }
+  } catch (e) {
+    Logger.log('OTA handler error: ' + e.message);
+    return {ok: false, error: e.message};
+  }
+}
+
+/**
+ * Обработчик Gemini запросов
+ */
+function handleGemini(data, token, email) {
+  Logger.log('Processing gm action');
+  const prompt = (data.prompt || '').toString();
+  const maxTokens = data.maxTokens == null ? 12500 : +data.maxTokens;
+  const temperature = data.temperature == null ? 0.7 : +data.temperature;
+  const userApiKey = (data.apiKey || '').toString();
+
+  Logger.log('prompt length: ' + prompt.length);
+  Logger.log('maxTokens: ' + maxTokens);
+  Logger.log('temperature: ' + temperature);
+  Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
+
+  // API key priority: use user key first, otherwise fallback to default
+  let finalApiKey = userApiKey;
+  let keySource = 'USER';
+
+  if (!userApiKey) {
+    const defaultApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+    if (defaultApiKey) {
+      finalApiKey = defaultApiKey;
+      keySource = 'DEFAULT';
+      Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
+    } else {
+      Logger.log('ERROR: No API key available (neither user nor default)');
+      return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
+    }
+  } else {
+    Logger.log('Using USER API key, length: ' + userApiKey.length);
+  }
+
+  // rate limit
+  if (!rateLimitOk_(token)) {
+    Logger.log('Rate limit exceeded for token');
+    return json_({ok: false, error: 'RATE_LIMIT'}, 429);
+  }
+
+  Logger.log('Calling serverGM_ with ' + keySource + ' API key');
+  const t0 = Date.now();
+  let ok = true; let err = null; let text = '';
+  try {
+    text = serverGM_(prompt, maxTokens, temperature, finalApiKey);
+    Logger.log('serverGM_ completed successfully, response length: ' + text.length);
+  } catch (ex) {
+    ok = false;
+    err = String(ex && ex.message || ex);
+    Logger.log('serverGM_ failed: ' + err);
+  }
+
+  try {
+    serverLog_({
+      action: 'gm',
+      ok: ok,
+      error: err,
+      email: email,
+      token: token,
+      promptLen: prompt.length,
+      ms: Date.now() - t0,
+      keySource: keySource,
+    });
+  } catch (_) {}
+
+  if (!ok) {
+    Logger.log('Returning error response: ' + err);
+    return json_({ok: false, error: err}, 500);
+  }
+
+  Logger.log('Returning successful response');
+  return json_({ok: true, data: text});
+}
+
+/**
+ * Обработчик Gemini Image запросов
+ */
+function handleGeminiImage(data, token, email) {
+  Logger.log('Processing gm_image action');
+  const images = data.images || [];
+  const lang = (data.lang || 'ru').toString();
+  const userApiKey = (data.apiKey || '').toString();
+  const delimiter = (data.delimiter && String(data.delimiter).trim()) ? String(data.delimiter).trim() : null;
+
+  Logger.log('images count: ' + images.length);
+  Logger.log('lang: ' + lang);
+  Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
+  Logger.log('delimiter: ' + (delimiter || 'NONE'));
+
+  // API key priority: use user key first, otherwise fallback to default
+  const finalApiKey = userApiKey;
+  let keySource = 'USER';
+
+  if (!userApiKey) {
+    const defaultApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+    if (defaultApiKey) {
+      keySource = 'DEFAULT';
+      Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
+    } else {
+      Logger.log('ERROR: No API key available (neither user nor default)');
+      return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
+    }
+  } else {
+    Logger.log('Using USER API key, length: ' + userApiKey.length);
+  }
+
+  if (!Array.isArray(images) || images.length === 0) {
+    Logger.log('ERROR: No images provided');
+    return json_({ok: false, error: 'NO_IMAGES'}, 400);
+  }
+
+  if (!rateLimitOk_(token)) {
+    Logger.log('Rate limit exceeded for token');
+    return json_({ok: false, error: 'RATE_LIMIT'}, 429);
+  }
+
+  Logger.log('Calling serverGMImage_ with ' + keySource + ' API key');
+  const t1 = Date.now();
+  let ok2 = true;
+  let err2 = null;
+  let text2 = '';
+  try {
+    text2 = serverGMImage_(images, lang, finalApiKey, delimiter);
+    Logger.log('serverGMImage_ completed successfully, response length: ' + text2.length);
+  } catch (ex2) {
+    ok2 = false;
+    err2 = String(ex2 && ex2.message || ex2);
+    Logger.log('serverGMImage_ failed: ' + err2);
+  }
+
+  try {
+    serverLog_({
+      action: 'gm_image',
+      ok: ok2,
+      error: err2,
+      email: email,
+      token: token,
+      promptLen: images.length,
+      ms: Date.now() - t1,
+      keySource: keySource,
+    });
+  } catch (_) {}
+
+  if (!ok2) {
+    Logger.log('Returning error response: ' + err2);
+    return json_({ok: false, error: err2}, 500);
+  }
+
+  Logger.log('Returning successful response');
+  return json_({ok: true, data: text2});
+}
+
+/**
+ * Обработчик статуса лицензии
+ */
+function handleStatus(data, token, email, scriptId, spreadsheetId) {
+  Logger.log('Processing status action');
+  const status = checkLicense_(token, email, scriptId, spreadsheetId); // ✅
+  Logger.log('License check result: ' + JSON.stringify(status));
+
+  try {
+    serverLog_({
+      action: 'status',
+      ok: status.ok,
+      error: status.error || null,
+      email: email,
+      token: token,
+      promptLen: 0,
+      ms: 0,
+      keySource: 'NONE',
+    });
+  } catch (_) {}
+
+  Logger.log('Returning status response');
+  return json_({
+    ok: status.ok,
+    error: status.error || null,
+    until: status.until || null,
+    row: status.row || null,
+    quota: status.quota || null,
+    message: status.message || null,
+  });
+}
+
+/**
+ * Обработчик CollectConfig запросов
+ */
+function handleCollectConfig(subaction, data, spreadsheetId) {
+  Logger.log('Processing CollectConfig subaction: ' + subaction);
+
+  try {
+    switch (subaction) {
+    case 'init':
+      return collectConfigInit(spreadsheetId, data);
+
+    case 'preview':
+      return collectConfigPreview(spreadsheetId, data.config || {});
+
+    case 'execute':
+      return collectConfigExecute(spreadsheetId, data.config || {}, data);
+
+    case 'save':
+      return collectConfigSave(spreadsheetId, data.config || {}, data);
+
+    case 'delete':
+      return collectConfigDelete(spreadsheetId, data);
+
+    case 'getTemplates':
+      return collectConfigGetTemplates(spreadsheetId, data);
+
+    default:
+      return {ok: false, error: 'UNKNOWN_COLLECTCONFIG_SUBACTION'};
+    }
+  } catch (e) {
+    Logger.log('CollectConfig handler error: ' + e.message);
+    return {ok: false, error: e.message};
+  }
+}
+
+/**
+ * Обработчик OCR запросов
+ */
+function handleOCR(subaction, data, spreadsheetId) {
+  Logger.log('Processing OCR subaction: ' + subaction);
+
+  try {
+    switch (subaction) {
+    case 'queue':
+      return ocrQueue(spreadsheetId, data);
+
+    case 'getStatus':
+      return ocrGetStatus(spreadsheetId, data);
+
+    case 'processBatch':
+      return ocrProcessBatch(spreadsheetId, data);
+
+    default:
+      return {ok: false, error: 'UNKNOWN_OCR_SUBACTION'};
+    }
+  } catch (e) {
+    Logger.log('OCR handler error: ' + e.message);
+    return {ok: false, error: e.message};
+  }
+}
+
+/**
+ * Обработчик VK запросов
+ */
+function handleVK(subaction, data, spreadsheetId) {
+  Logger.log('Processing VK subaction: ' + subaction);
+
+  try {
+    switch (subaction) {
+    case 'importPosts':
+      return vkImportPosts(spreadsheetId, data);
+
+    case 'parsePost':
+      return vkParsePost(spreadsheetId, data);
+
+    case 'getStatus':
+      return vkGetStatus(spreadsheetId, data);
+
+    default:
+      return {ok: false, error: 'UNKNOWN_VK_SUBACTION'};
+    }
+  } catch (e) {
+    Logger.log('VK handler error: ' + e.message);
+    return {ok: false, error: e.message};
+  }
+}
+
+/**
+ * Обработчик Unpacking запросов
+ */
+function handleUnpacking(subaction, data, spreadsheetId) {
+  Logger.log('Processing Unpacking subaction: ' + subaction);
+
+  try {
+    switch (subaction) {
+    case 'fetch':
+      return unpackingFetch(spreadsheetId, data);
+
+    case 'exportToDoc':
+      return unpackingExportToDoc(spreadsheetId, data);
+
+    case 'listExports':
+      return unpackingListExports(spreadsheetId, data);
+
+    case 'clear':
+      return unpackingClear(spreadsheetId, data);
+
+    default:
+      return {ok: false, error: 'UNKNOWN_UNPACKING_SUBACTION'};
+    }
+  } catch (e) {
+    Logger.log('Unpacking handler error: ' + e.message);
+    return {ok: false, error: e.message};
+  }
+}
+
+/**
+ * Обработчик BatchUpdate запросов
+ */
+function handleBatchUpdate(subaction, data, spreadsheetId) {
+  Logger.log('Processing BatchUpdate subaction: ' + subaction);
+
+  try {
+    switch (subaction) {
+    case 'runSegment':
+      return batchUpdateRunSegment(spreadsheetId, data);
+
+    case 'runBatch':
+      return batchUpdateRunBatch(spreadsheetId, data);
+
+    case 'runImport':
+      return batchUpdateRunImport(spreadsheetId, data);
+
+    case 'getStatus':
+      return batchUpdateGetStatus(spreadsheetId, data);
+
+    case 'clearResults':
+      return batchUpdateClearResults(spreadsheetId, data);
+
+    case 'getOperations':
+      return batchUpdateGetOperations();
+
+    default:
+      return {ok: false, error: 'UNKNOWN_BATCHUPDATE_SUBACTION'};
+    }
+  } catch (e) {
+    Logger.log('BatchUpdate handler error: ' + e.message);
+    return {ok: false, error: e.message};
+  }
+}
+
+// ===== ВСПомогательные функции OTA =====
+
+/**
+ * Получение содержимого файла для OTA
+ */
+function fetchFileContent_(fileName) {
+  try {
+    // Здесь должна быть логика получения файлов из хранилища
+    // Пока возвращаем заглушки
+    switch (fileName) {
+    case 'Main.gs':
+      return '// Main.gs v3.0.0 - Thin Client\n// Содержимое будет добавлено позже';
+
+    case 'CollectConfigUi.html':
+      return '<!-- CollectConfigUi.html v3.0.0 -->\n<html>...</html>';
+
+    case 'UnpackingViewerUI.html':
+      return '<!-- UnpackingViewerUI.html v3.0.0 -->\n<html>...</html>';
+
+    case 'SettingsUI.html':
+      return '<!-- SettingsUI.html v3.0.0 -->\n<html>...</html>';
+
+    case 'logging_system.html':
+      return '<!-- logging_system.html v3.0.0 -->\n<html>...</html>';
+
+    default:
+      return null;
+    }
+  } catch (e) {
+    Logger.log('Error fetching file content: ' + e.message);
+    return null;
   }
 }
 
