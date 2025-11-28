@@ -21,37 +21,43 @@ function testLicenseModule() {
   Logger.log('  Script ID: ' + testScriptId);
   Logger.log('  Spreadsheet ID: ' + testSpreadsheetId);
   
-  // ТЕСТ 1: Проверка лицензии
-  Logger.log('');
-  Logger.log('=== ТЕСТ 1: Проверка лицензии ===');
-  const result1 = checkLicense_(testToken, testEmail, testScriptId, testSpreadsheetId);
-  Logger.log('Результат: ' + JSON.stringify(result1));
-  
-  // ТЕСТ 2: Повторная проверка (уже привязанный скрипт)
-  if (result1.ok) {
+  try {
+    // ТЕСТ 1: Проверка лицензии
     Logger.log('');
-    Logger.log('=== ТЕСТ 2: Повторная проверка ===');
-    const result2 = checkLicense_(testToken, testEmail, testScriptId, testSpreadsheetId);
-    Logger.log('Результат: ' + JSON.stringify(result2));
-  }
-  
-  // ТЕСТ 3: Новый скрипт (если есть квота)
-  if (result1.ok && result1.quota && result1.quota.remaining > 0) {
+    Logger.log('=== ТЕСТ 1: Проверка лицензии ===');
+    const result1 = checkLicense_(testToken, testEmail, testScriptId, testSpreadsheetId);
+    Logger.log('Результат: ' + JSON.stringify(result1));
+    
+    // ТЕСТ 2: Повторная проверка (уже привязанный скрипт)
+    if (result1.ok) {
+      Logger.log('');
+      Logger.log('=== ТЕСТ 2: Повторная проверка ===');
+      const result2 = checkLicense_(testToken, testEmail, testScriptId, testSpreadsheetId);
+      Logger.log('Результат: ' + JSON.stringify(result2));
+    }
+    
+    // ТЕСТ 3: Новый скрипт (если есть квота)
+    if (result1.ok && result1.quota && result1.quota.remaining > 0) {
+      Logger.log('');
+      Logger.log('=== ТЕСТ 3: Новый скрипт ===');
+      const result3 = checkLicense_(testToken, testEmail, 'AKfycbyNEW_SCRIPT_ID', '1newSpreadsheetIdForTesting');
+      Logger.log('Результат: ' + JSON.stringify(result3));
+    }
+    
     Logger.log('');
-    Logger.log('=== ТЕСТ 3: Новый скрипт ===');
-    const result3 = checkLicense_(testToken, testEmail, 'AKfycbyNEW_SCRIPT_ID', '1newSpreadsheetIdForTesting');
-    Logger.log('Результат: ' + JSON.stringify(result3));
+    Logger.log('=== ТЕСТИРОВАНИЕ ЗАВЕРШЕНО ===');
+    
+  } catch (e) {
+    Logger.log('❌ КРИТИЧЕСКАЯ ОШИБКА: ' + e.message);
+    Logger.log('Stack trace: ' + e.stack);
   }
-  
-  Logger.log('');
-  Logger.log('=== ТЕСТИРОВАНИЕ ЗАВЕРШЕНО ===');
 }
 
 /**
  * Тестирование серверных endpoint'ов
  */
 function testServerEndpoints() {
-  Logger.log('=== ТЕСТИРОВАНИЕ СЕРВЕРНЫХ ENDPOINT''ОВ ===');
+  Logger.log('=== ТЕСТИРОВАНИЕ СЕРВЕРНЫХ ENDPOINT\'ОВ ===');
   
   const testData = {
     email: 'sheepoff@gmail.com',
@@ -81,7 +87,8 @@ function testServerEndpoints() {
     Logger.log('Ответ: ' + responseText.substring(0, 500) + '...');
     
   } catch (e) {
-    Logger.log('ОШИБКА: ' + e.message);
+    Logger.log('❌ ОШИБКА: ' + e.message);
+    Logger.log('Stack trace: ' + e.stack);
   }
   
   // ТЕСТ 2: validate endpoint
@@ -105,11 +112,12 @@ function testServerEndpoints() {
     Logger.log('Ответ: ' + responseText.substring(0, 500) + '...');
     
   } catch (e) {
-    Logger.log('ОШИБКА: ' + e.message);
+    Logger.log('❌ ОШИБКА: ' + e.message);
+    Logger.log('Stack trace: ' + e.stack);
   }
   
   Logger.log('');
-  Logger.log('=== ТЕСТИРОВАНИЕ ENDPOINT''ОВ ЗАВЕРШЕНО ===');
+  Logger.log('=== ТЕСТИРОВАНИЕ ENDPOINT\'ОВ ЗАВЕРШЕНО ===');
 }
 
 /**
@@ -119,18 +127,24 @@ function testServerEndpoints() {
 function testClientFunctions() {
   Logger.log('=== ТЕСТИРОВАНИЕ КЛИЕНТСКИХ ФУНКЦИЙ ===');
   
-  // ТЕСТ 1: validateLicense
-  Logger.log('');
-  Logger.log('=== ТЕСТ 1: validateLicense ===');
-  const result1 = validateLicense('sheepoff@gmail.com', 'test');
-  Logger.log('Результат: ' + JSON.stringify(result1));
-  
-  // ТЕСТ 2: serverStatus
-  Logger.log('');
-  Logger.log('=== ТЕСТ 2: serverStatus ===');
-  const result2 = serverStatus();
-  Logger.log('Результат: ' + JSON.stringify(result2));
-  
-  Logger.log('');
-  Logger.log('=== ТЕСТИРОВАНИЕ КЛИЕНТСКИХ ФУНКЦИЙ ЗАВЕРШЕНО ===');
+  try {
+    // ТЕСТ 1: validateLicense
+    Logger.log('');
+    Logger.log('=== ТЕСТ 1: validateLicense ===');
+    const result1 = validateLicense('sheepoff@gmail.com', 'test');
+    Logger.log('Результат: ' + JSON.stringify(result1));
+    
+    // ТЕСТ 2: serverStatus
+    Logger.log('');
+    Logger.log('=== ТЕСТ 2: serverStatus ===');
+    const result2 = serverStatus();
+    Logger.log('Результат: ' + JSON.stringify(result2));
+    
+    Logger.log('');
+    Logger.log('=== ТЕСТИРОВАНИЕ КЛИЕНТСКИХ ФУНКЦИЙ ЗАВЕРШЕНО ===');
+    
+  } catch (e) {
+    Logger.log('❌ КРИТИЧЕСКАЯ ОШИБКА: ' + e.message);
+    Logger.log('Stack trace: ' + e.stack);
+  }
 }
