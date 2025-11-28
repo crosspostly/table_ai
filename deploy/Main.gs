@@ -1379,6 +1379,67 @@ function serverStatus() {
   }
 }
 
+/**
+ * ✅ ВАЛИДАЦИЯ ЛИЦЕНЗИИ (без привязки)
+ * Используется в saveSettingsData для проверки перед сохранением
+ * 
+ * @param {string} email - Email пользователя
+ * @param {string} token - Токен лицензии
+ * @return {Object} Результат проверки лицензии
+ */
+function validateLicense(email, token) {
+  try {
+    Logger.log('=== validateLicense START ===');
+    Logger.log('email: ' + (email ? 'SET' : 'NOT SET'));
+    Logger.log('token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
+
+    // ⭐ ОБА ID
+    const scriptId = ScriptApp.getScriptId();             // ⭐ Для привязки
+    const spreadsheetId = SpreadsheetApp.getActive().getId(); // ⭐ Для работы и названия
+
+    const payload = {
+      action: 'validate',  // ⭐ ВАЛИДАЦИЯ БЕЗ ПРИВЯЗКИ
+      email: email,
+      token: token,
+      scriptId: scriptId,        // ⭐ Для привязки
+      spreadsheetId: spreadsheetId, // ⭐ Для названия
+    };
+
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+    };
+
+    const resp = UrlFetchApp.fetch(SERVER_URL, options);
+    const code = resp.getResponseCode();
+    const responseText = resp.getContentText();
+
+    if (DEV_MODE) {
+      addLog(`VALIDATE RAW: HTTP ${code}`, 'DEBUG');
+      addLog(`VALIDATE CONTENT: ${responseText.substring(0, 200)}...`, 'DEBUG');
+    }
+
+    const data = JSON.parse(responseText);
+
+    if (DEV_MODE) {
+      addLog(`VALIDATE RESULT ok=${data.ok ? true : false}`, 'DEBUG');
+      if (data && data.message) addLog(`VALIDATE MESSAGE: ${data.message}`, 'DEBUG');
+      if (data && data.quota) addLog(`VALIDATE QUOTA: ${JSON.stringify(data.quota)}`, 'DEBUG');
+      if (data && data.error) addLog(`VALIDATE ERROR: ${data.error}`, 'ERROR');
+    }
+
+    if (code !== 200) {
+      return {ok: false, error: data ? data.error : `HTTP ${code}`};
+    }
+    return data;
+  } catch (e) {
+    addLog(`VALIDATE REQUEST FAILED: ${e.message}`, 'ERROR');
+    return {ok: false, error: `REQUEST_FAILED: ${e.message}`};
+  }
+}
+
 // eslint-disable-next-line no-unused-vars
 function checkLicenseStatusUI() {
   try {
@@ -1482,8 +1543,8 @@ function saveSettingsData(data) {
         };
       }
 
-      // ⭐ ПРОВЕРЯЕМ ЛИЦЕНЗИЮ НА СЕРВЕРЕ
-      const licenseStatus = serverStatus();
+      // ⭐ ПРОВЕРЯЕМ ЛИЦЕНЗИЮ НА СЕРВЕРЕ (ВАЛИДАЦИЯ БЕЗ ПРИВЯЗКИ)
+      const licenseStatus = validateLicense(emailForCheck, tokenForCheck);
       Logger.log('📥 License check result: ' + JSON.stringify(licenseStatus));
 
       if (!licenseStatus || !licenseStatus.ok) {
