@@ -531,8 +531,8 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
   // Get credentials from ScriptProperties
   const props = PropertiesService.getScriptProperties();
   const serverUrl = props.getProperty('SERVER_URL') || (typeof SERVER_URL !== 'undefined' ? SERVER_URL : '');
-  const licenseEmail = props.getProperty('LICENSEEMAIL') || '';
-  const licenseToken = props.getProperty('LICENSETOKEN') || '';
+  const licenseEmail = props.getProperty('LICENSE_EMAIL') || '';
+  const licenseToken = props.getProperty('LICENSE_TOKEN') || '';
   const geminiApiKey = props.getProperty('GEMINI_API_KEY') || '';
 
   if (!serverUrl) {
@@ -540,7 +540,7 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
   }
 
   if (!licenseEmail || !licenseToken) {
-    throw new Error('Лицензионные данные не настроены. Откройте Settings и укажите LICENSEEMAIL и LICENSETOKEN.');
+    throw new Error('Лицензионные данные не настроены. Откройте Settings и укажите LICENSE_EMAIL и LICENSE_TOKEN.');
   }
 
   if (!geminiApiKey) {
@@ -605,8 +605,8 @@ function callCollectConfigPreview_(sheetName, cellAddress, tableId) {
   // Get credentials from ScriptProperties
   const props = PropertiesService.getScriptProperties();
   const serverUrl = props.getProperty('SERVER_URL') || (typeof SERVER_URL !== 'undefined' ? SERVER_URL : '');
-  const licenseEmail = props.getProperty('LICENSEEMAIL') || '';
-  const licenseToken = props.getProperty('LICENSETOKEN') || '';
+  const licenseEmail = props.getProperty('LICENSE_EMAIL') || '';
+  const licenseToken = props.getProperty('LICENSE_TOKEN') || '';
 
   if (!serverUrl || !licenseEmail || !licenseToken) {
     throw new Error('Сервер не настроен');
