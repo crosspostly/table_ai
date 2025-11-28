@@ -100,22 +100,37 @@ function getCollectConfigInitData() {
 
     const sheetName = sheet.getName();
     const cellAddress = range.getA1Notation();
-    const sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets().map(function(s) {
-      return s.getName();
-    });
 
     addCollectLog(`📍 Целевая ячейка: ${sheetName}!${cellAddress}`, 'INFO');
-    addCollectLog(`📋 Найдено листов: ${sheets.length}`, 'INFO');
 
-    // Создаём базовый шаблон
+    // Call server for initialization
+    const serverResult = callServerAction_('collect_config_init', {
+      sheetName: sheetName,
+      cellAddress: cellAddress,
+    });
+
+    if (!serverResult || !serverResult.ok) {
+      const errorMsg = serverResult && serverResult.error ? serverResult.error : 'Сервер вернул ошибку';
+      throw new Error(errorMsg);
+    }
+
+    // Merge server logs
+    if (serverResult.logs && Array.isArray(serverResult.logs)) {
+      mergeServerLogs_(serverResult.logs);
+    }
+
+    const serverData = serverResult.data;
+
+    // Create default template if needed (server-side)
     createDefaultTemplate();
 
     return {
       sheetName: sheetName,
       cellAddress: cellAddress,
-      sheets: sheets,
-      version: COLLECT_CONFIG_VERSION,
-      lastUpdate: COLLECT_CONFIG_LAST_UPDATE,
+      sheets: serverData.sheets || [],
+      version: serverData.version || COLLECT_CONFIG_VERSION,
+      lastUpdate: serverData.lastUpdate || COLLECT_CONFIG_LAST_UPDATE,
+      existingConfig: serverData.existingConfig,
       logs: getCollectLog(),
     };
   } catch (error) {
@@ -181,38 +196,53 @@ function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
 
     addCollectLog(`📍 Целевая ячейка: ${sheetName}!${cellAddress}`, 'INFO');
 
-    // Сохраняем конфигурацию локально (для повторного использования)
+    // Сохраняем конфигурацию через сервер
     addCollectLog('💾 Сохранение конфигурации...', 'INFO');
-    const saved = saveCollectConfig(sheetName, cellAddress, config);
-    if (saved) {
-      addCollectLog('✅ Конфигурация сохранена', 'SUCCESS');
+    const saveResult = callServerAction_('collect_config_save', {
+      sheetName: sheetName,
+      cellAddress: cellAddress,
+      config: config,
+    });
+
+    if (!saveResult || !saveResult.ok) {
+      const errorMsg = saveResult && saveResult.error ? saveResult.error : 'Сервер вернул ошибку при сохранении';
+      throw new Error(errorMsg);
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // ТОЛЬКО СЕРВЕРНОЕ ВЫПОЛНЕНИЕ (БЕЗ FALLBACK)
-    // ═══════════════════════════════════════════════════════════════
-    addCollectLog('📡 Отправка запроса на сервер...', 'INFO');
+    // Merge save logs
+    if (saveResult.logs && Array.isArray(saveResult.logs)) {
+      mergeServerLogs_(saveResult.logs);
+    }
 
-    const serverResult = callCollectConfigServer_(config, sheetName, cellAddress);
+    addCollectLog('✅ Конфигурация сохранена', 'SUCCESS');
 
-    if (!serverResult || !serverResult.ok) {
-      const errorMsg = serverResult && serverResult.error ? serverResult.error : 'Сервер вернул ошибку';
+    // Выполняем через сервер
+    addCollectLog('📡 Выполнение через сервер...', 'INFO');
+
+    const executeResult = callServerAction_('collect_config_execute', {
+      sheetName: sheetName,
+      cellAddress: cellAddress,
+      config: config,
+    });
+
+    if (!executeResult || !executeResult.ok) {
+      const errorMsg = executeResult && executeResult.error ? executeResult.error : 'Сервер вернул ошибку при выполнении';
       throw new Error(errorMsg);
     }
 
     // Объединяем логи сервера с UI логами
-    if (serverResult.logs && Array.isArray(serverResult.logs)) {
-      mergeServerLogs_(serverResult.logs);
+    if (executeResult.logs && Array.isArray(executeResult.logs)) {
+      mergeServerLogs_(executeResult.logs);
     }
 
     addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
     addCollectLog('✅ УСПЕХ!', 'SUCCESS');
-    addCollectLog(`📝 Результат: ${serverResult.data.length} символов`, 'INFO');
+    addCollectLog(`📝 Результат: ${executeResult.data ? executeResult.data.length : 0} символов`, 'INFO');
     addCollectLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
 
     return {
       success: true,
-      result: serverResult.data,
+      result: executeResult.data,
       logs: getCollectLog(),
     };
   } catch (error) {
@@ -238,147 +268,6 @@ function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
 }
 
 // ============================================================================
-// СОХРАНЕНИЕ/ЗАГРУЗКА КОНФИГУРАЦИИ
-// ============================================================================
-function saveCollectConfig(sheetName, cellAddress, config) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let configSheet = ss.getSheetByName('ConfigData');
-
-    if (!configSheet) {
-      configSheet = ss.insertSheet('ConfigData');
-      configSheet.hideSheet();
-
-      // Заголовки
-      const headers = ['Sheet', 'Cell', 'SystemPromptSheet', 'SystemPromptCell', 'UserDataJSON', 'CreatedAt', 'LastRun'];
-      configSheet.getRange(1, 1, 1, headers.length).setValues([headers])
-        .setFontWeight('bold')
-        .setBackground('#4285f4')
-        .setFontColor('white');
-    }
-
-    // Ищем существующую строку
-    const data = configSheet.getDataRange().getValues();
-    let rowIndex = -1;
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
-        rowIndex = i + 1;
-        break;
-      }
-    }
-
-    const rowData = [
-      sheetName,
-      cellAddress,
-      config.systemPrompt ? config.systemPrompt.sheet : '',
-      config.systemPrompt ? config.systemPrompt.cell : '',
-      JSON.stringify(config.userData || []),
-      rowIndex === -1 ? new Date().toISOString() : data[rowIndex - 1][5],
-      '',
-    ];
-
-    if (rowIndex > 0) {
-      // Обновляем существующую
-      configSheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
-    } else {
-      // Добавляем новую
-      configSheet.appendRow(rowData);
-    }
-
-    return true;
-  } catch (error) {
-    addCollectLog(`Ошибка сохранения: ${error.message}`, 'ERROR');
-    return false;
-  }
-}
-
-function loadCollectConfig(sheetName, cellAddress) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const configSheet = ss.getSheetByName('ConfigData');
-
-    if (!configSheet) {
-      return null;
-    }
-
-    const data = configSheet.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
-        let userData = [];
-        try {
-          if (data[i][4]) {
-            userData = JSON.parse(data[i][4]);
-          }
-        } catch (e) {
-          // ignore
-        }
-
-        return {
-          systemPrompt: (data[i][2] && data[i][3]) ? {
-            sheet: data[i][2],
-            cell: data[i][3],
-          } : null,
-          userData: userData,
-        };
-      }
-    }
-
-    return null;
-  } catch (error) {
-    addCollectLog(`Ошибка загрузки: ${error.message}`, 'ERROR');
-    return null;
-  }
-}
-
-// eslint-disable-next-line no-unused-vars
-function deleteCollectConfig(sheetName, cellAddress) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const configSheet = ss.getSheetByName('ConfigData');
-
-    if (!configSheet) {
-      return false;
-    }
-
-    const data = configSheet.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
-        configSheet.deleteRow(i + 1);
-        addCollectLog(`🗑️ Конфигурация удалена: ${sheetName}!${cellAddress}`, 'INFO');
-        return true;
-      }
-    }
-
-    return false;
-  } catch (error) {
-    addCollectLog(`Ошибка удаления: ${error.message}`, 'ERROR');
-    return false;
-  }
-}
-
-// eslint-disable-next-line no-unused-vars
-function updateLastRun(sheetName, cellAddress) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const configSheet = ss.getSheetByName('ConfigData');
-
-    if (!configSheet) {
-      return;
-    }
-
-    const data = configSheet.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
-        configSheet.getRange(i + 1, 7).setValue(new Date().toISOString());
-        return;
-      }
-    }
-  } catch (error) {
-    // ignore
-  }
-}
-
-// ============================================================================
 // ФУНКЦИИ ДЛЯ UI: PREVIEW
 // ============================================================================
 // eslint-disable-next-line no-unused-vars
@@ -388,14 +277,26 @@ function getCellPreview(sheetName, cellAddress, tableId) {
       return '⚠️ Не указаны параметры';
     }
 
-    // Only server preview (NO fallback)
-    const serverPreview = callCollectConfigPreview_(sheetName, cellAddress, tableId);
+    // Call server for preview
+    const config = {
+      userData: [{
+        sheet: sheetName,
+        cell: cellAddress,
+      }],
+    };
 
-    if (!serverPreview || serverPreview.length === 0) {
-      return '(пусто)';
+    const serverResult = callServerAction_('collect_config_preview', {
+      config: config,
+      tableId: tableId || '',
+    });
+
+    if (!serverResult || !serverResult.ok) {
+      const errorMsg = serverResult && serverResult.error ? serverResult.error : 'Сервер вернул ошибку';
+      return `❌ Ошибка: ${errorMsg}`;
     }
 
-    return serverPreview.length <= 100 ? serverPreview : (serverPreview.substring(0, 100) + '...');
+    const preview = serverResult.data || '';
+    return preview.length <= 100 ? preview : (preview.substring(0, 100) + '...');
   } catch (error) {
     return `❌ Ошибка: ${error.message}`;
   }
@@ -418,7 +319,14 @@ function refreshCellWithConfig() {
 
     const sheetName = sheet.getName();
     const cellAddress = range.getA1Notation();
-    const config = loadCollectConfig(sheetName, cellAddress);
+
+    // Load existing config from server
+    const loadResult = callServerAction_('collect_config_init', {
+      sheetName: sheetName,
+      cellAddress: cellAddress,
+    });
+
+    const config = loadResult && loadResult.ok && loadResult.data && loadResult.data.existingConfig;
 
     if (!config) {
       const response = ui.alert(
@@ -435,13 +343,17 @@ function refreshCellWithConfig() {
 
     ui.alert('🚀 Запуск...', 'Выполняю запрос через сервер...', ui.ButtonSet.OK);
 
-    // ONLY server execution (NO fallback)
-    const serverResult = callCollectConfigServer_(config, sheetName, cellAddress);
+    // Execute via server
+    const executeResult = callServerAction_('collect_config_execute', {
+      sheetName: sheetName,
+      cellAddress: cellAddress,
+      config: config,
+    });
 
-    if (serverResult && serverResult.ok) {
+    if (executeResult && executeResult.ok) {
       ui.alert('✅ Готово!', `Результат записан в ${cellAddress}`, ui.ButtonSet.OK);
     } else {
-      const errorMsg = serverResult && serverResult.error ? serverResult.error : 'Неизвестная ошибка';
+      const errorMsg = executeResult && executeResult.error ? executeResult.error : 'Неизвестная ошибка';
       ui.alert('❌ Ошибка', errorMsg, ui.ButtonSet.OK);
     }
   } catch (error) {
@@ -455,9 +367,13 @@ function refreshCellWithConfig() {
 // eslint-disable-next-line no-unused-vars
 function serverGetAllTemplates() {
   try {
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
-    const templates = getAllTemplates(user);
+    const serverResult = callServerAction_('collect_config_templates_get_all', {});
 
+    if (!serverResult || !serverResult.ok) {
+      return {};
+    }
+
+    const templates = serverResult.data || {};
     const result = {};
     for (const name in templates) {
       if (Object.prototype.hasOwnProperty.call(templates, name)) {
@@ -474,8 +390,15 @@ function serverGetAllTemplates() {
 // eslint-disable-next-line no-unused-vars
 function serverGetTemplate(templateName) {
   try {
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
-    const template = getTemplate(user, templateName);
+    const serverResult = callServerAction_('collect_config_templates_get', {
+      templateName: templateName,
+    });
+
+    if (!serverResult || !serverResult.ok) {
+      return null;
+    }
+
+    const template = serverResult.data;
     return template ? (template.config || template) : null;
   } catch (e) {
     return null;
@@ -485,8 +408,13 @@ function serverGetTemplate(templateName) {
 // eslint-disable-next-line no-unused-vars
 function serverGetTemplatesStats() {
   try {
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
-    return getTemplatesStats(user);
+    const serverResult = callServerAction_('collect_config_templates_stats', {});
+
+    if (!serverResult || !serverResult.ok) {
+      return {count: 0, totalSize: 0, templates: []};
+    }
+
+    return serverResult.data || {count: 0, totalSize: 0, templates: []};
   } catch (e) {
     return {count: 0, totalSize: 0, templates: []};
   }
@@ -495,8 +423,16 @@ function serverGetTemplatesStats() {
 // eslint-disable-next-line no-unused-vars
 function serverSaveTemplate(templateName, config) {
   try {
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
-    return saveTemplate(user, templateName, config);
+    const serverResult = callServerAction_('collect_config_templates_save', {
+      templateName: templateName,
+      config: config,
+    });
+
+    if (!serverResult || !serverResult.ok) {
+      return {success: false, message: serverResult && serverResult.error ? serverResult.error : 'Unknown error'};
+    }
+
+    return serverResult.data || {success: true, message: 'Template saved successfully'};
   } catch (e) {
     return {success: false, message: e.message};
   }
@@ -505,29 +441,31 @@ function serverSaveTemplate(templateName, config) {
 // eslint-disable-next-line no-unused-vars
 function serverDeleteTemplate(templateName) {
   try {
-    const user = Session.getActiveUser().getEmail() || 'anonymous';
-    return deleteTemplate(user, templateName);
+    const serverResult = callServerAction_('collect_config_templates_delete', {
+      templateName: templateName,
+    });
+
+    if (!serverResult || !serverResult.ok) {
+      return {success: false, message: serverResult && serverResult.error ? serverResult.error : 'Unknown error'};
+    }
+
+    return serverResult.data || {success: true, message: 'Template deleted successfully'};
   } catch (e) {
     return {success: false, message: e.message};
   }
 }
 
 // ============================================================================
-// SERVER INTEGRATION FUNCTIONS
+// SERVER INTEGRATION - CENTRALIZED CALL FUNCTION
 // ============================================================================
 
 /**
- * Call CollectConfig server for execution
- * @param {Object} config - CollectConfig configuration
- * @param {string} sheetName - Target sheet name
- * @param {string} cellAddress - Target cell address
+ * Centralized function to call server actions
+ * @param {string} action - Server action name
+ * @param {Object} data - Data to send to server
  * @return {Object} Server response
  */
-function callCollectConfigServer_(config, sheetName, cellAddress) {
-  // ═══════════════════════════════════════════════════════════════
-  // VALIDATION OF SETTINGS (detailed error messages)
-  // ═══════════════════════════════════════════════════════════════
-
+function callServerAction_(action, data) {
   // Get credentials from ScriptProperties
   const props = PropertiesService.getScriptProperties();
   const serverUrl = props.getProperty('SERVER_URL') || (typeof SERVER_URL !== 'undefined' ? SERVER_URL : '');
@@ -543,38 +481,32 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
     throw new Error('Лицензионные данные не настроены. Откройте Settings и укажите LICENSE_EMAIL и LICENSE_TOKEN.');
   }
 
-  if (!geminiApiKey) {
-    throw new Error('GEMINI_API_KEY не настроен. Откройте Settings и укажите API ключ Gemini.');
-  }
-
-  const scriptId = ScriptApp.getScriptId();  // ⭐ Добавить
+  const scriptId = ScriptApp.getScriptId();
   const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
 
   const payload = {
-    action: 'collect_config_execute',
-    config: config,
+    action: action,
+    ...data,
     spreadsheetId: spreadsheetId,
-    sheetName: sheetName,
-    cellAddress: cellAddress,
-    apiKey: geminiApiKey,
+    scriptId: scriptId,
     email: licenseEmail,
     token: licenseToken,
-    scriptId: scriptId,        // ⭐ Для привязки
-    // spreadsheetId уже есть выше для работы
   };
+
+  // Add API key only for actions that need it
+  if (['collect_config_execute', 'collect_config_preview'].includes(action)) {
+    payload.apiKey = geminiApiKey;
+  }
 
   const options = {
     method: 'post',
     contentType: 'application/json',
     payload: JSON.stringify(payload),
     muteHttpExceptions: true,
-    timeout: 60, // 60 seconds timeout
+    timeout: 60,
   };
 
-  addCollectLog(`📤 Отправка запроса на сервер: ${serverUrl}`, 'INFO');
-  addCollectLog(`📋 Payload config.systemPrompt: ${JSON.stringify(config.systemPrompt)}`, 'DEBUG');
-  addCollectLog(`📋 Payload config.userData: ${config.userData ? config.userData.length + ' источников' : 'нет'}`, 'DEBUG');
-  addCollectLog(`📋 SpreadsheetId: ${spreadsheetId}`, 'DEBUG');
+  addCollectLog(`📤 Отправка запроса на сервер: ${action}`, 'INFO');
 
   const response = UrlFetchApp.fetch(serverUrl, options);
   const responseCode = response.getResponseCode();
@@ -596,67 +528,9 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
   return result;
 }
 
-/**
- * Call CollectConfig server for preview
- * @param {string} sheetName - Sheet name
- * @param {string} cellAddress - Cell address
- * @param {string} tableId - Optional table ID
- * @return {string} Preview text
- */
-function callCollectConfigPreview_(sheetName, cellAddress, tableId) {
-  // Get credentials from ScriptProperties
-  const props = PropertiesService.getScriptProperties();
-  const serverUrl = props.getProperty('SERVER_URL') || (typeof SERVER_URL !== 'undefined' ? SERVER_URL : '');
-  const licenseEmail = props.getProperty('LICENSE_EMAIL') || '';
-  const licenseToken = props.getProperty('LICENSE_TOKEN') || '';
-
-  if (!serverUrl || !licenseEmail || !licenseToken) {
-    throw new Error('Сервер не настроен');
-  }
-
-  const scriptId = ScriptApp.getScriptId();  // ⭐ Добавить
-  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
-
-  const config = {
-    userData: [{
-      sheet: sheetName,
-      cell: cellAddress,
-    }],
-  };
-
-  const payload = {
-    action: 'collect_config_preview',
-    config: config,
-    spreadsheetId: spreadsheetId,
-    tableId: tableId || '',
-    email: licenseEmail,
-    token: licenseToken,
-    scriptId: scriptId,  // ⭐ Для привязки
-  };
-
-  const options = {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true,
-    timeout: 30, // 30 seconds timeout
-  };
-
-  const response = UrlFetchApp.fetch(serverUrl, options);
-  const responseCode = response.getResponseCode();
-
-  if (responseCode >= 400) {
-    throw new Error(`HTTP ${responseCode}`);
-  }
-
-  const result = JSON.parse(response.getContentText());
-
-  if (!result.ok) {
-    throw new Error(result.error || 'UNKNOWN_ERROR');
-  }
-
-  return result.data || '';
-}
+// ============================================================================
+// SERVER INTEGRATION FUNCTIONS
+// ============================================================================
 
 /**
  * Merge server logs into UI log
@@ -708,8 +582,17 @@ function hasConfigForCurrentCell() {
     const range = sheet.getActiveRange();
     if (!range) return false;
 
-    const config = loadCollectConfig(sheet.getName(), range.getA1Notation());
-    return config !== null;
+    const sheetName = sheet.getName();
+    const cellAddress = range.getA1Notation();
+
+    // Check via server
+    const loadResult = callServerAction_('collect_config_init', {
+      sheetName: sheetName,
+      cellAddress: cellAddress,
+    });
+
+    const config = loadResult && loadResult.ok && loadResult.data && loadResult.data.existingConfig;
+    return config !== null && config !== undefined;
   } catch (e) {
     return false;
   }
