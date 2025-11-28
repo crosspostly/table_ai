@@ -547,6 +547,7 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
     throw new Error('GEMINI_API_KEY не настроен. Откройте Settings и укажите API ключ Gemini.');
   }
 
+  const scriptId = ScriptApp.getScriptId();  // ⭐ Добавить
   const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
 
   const payload = {
@@ -558,7 +559,8 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
     apiKey: geminiApiKey,
     email: licenseEmail,
     token: licenseToken,
-    sheetId: spreadsheetId,
+    scriptId: scriptId,        // ⭐ Для привязки
+    // spreadsheetId уже есть выше для работы
   };
 
   const options = {
@@ -612,6 +614,7 @@ function callCollectConfigPreview_(sheetName, cellAddress, tableId) {
     throw new Error('Сервер не настроен');
   }
 
+  const scriptId = ScriptApp.getScriptId();  // ⭐ Добавить
   const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
 
   const config = {
@@ -628,7 +631,7 @@ function callCollectConfigPreview_(sheetName, cellAddress, tableId) {
     tableId: tableId || '',
     email: licenseEmail,
     token: licenseToken,
-    sheetId: spreadsheetId,
+    scriptId: scriptId,  // ⭐ Для привязки
   };
 
   const options = {
