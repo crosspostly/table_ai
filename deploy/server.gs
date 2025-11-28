@@ -34,8 +34,8 @@ function doPost(_e) {
     Logger.log('spreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET'));  // ⭐
     Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
 
-    // License gate for all actions except 'status'
-    if (action !== 'status') {
+    // License gate for all actions except 'status' and 'validate'
+    if (action !== 'status' && action !== 'validate') {
       Logger.log('Checking license...');
       const lic = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅ Оба ID
       Logger.log('License check result: ' + JSON.stringify(lic));
@@ -221,6 +221,34 @@ function doPost(_e) {
         message: status.message || null,
       });
     }
+    case 'validate': {
+      Logger.log('Processing validate action');
+      const status = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅
+      Logger.log('License check result: ' + JSON.stringify(status));
+
+      try {
+        serverLog_({
+          action: 'validate',
+          ok: status.ok,
+          error: status.error || null,
+          email: email,
+          token: token,
+          promptLen: 0,
+          ms: 0,
+          keySource: 'NONE',
+        });
+      } catch (_) {}
+
+      Logger.log('Returning validate response');
+      return json_({
+        ok: status.ok,
+        error: status.error || null,
+        until: status.until || null,
+        row: status.row || null,
+        quota: status.quota || null,
+        message: status.message || null,
+      });
+    }
     case 'collect_config_preview': {
       const config = data.config || {};
       const spreadsheetId = (data.spreadsheetId || '').toString();
@@ -368,309 +396,6 @@ function doPost(_e) {
 
 
 // ===== License =====
-// ===== License (ВЕРСИЯ 2.0: Привязка по Script ID + множественная привязка) =====
-
-/**
- * ✅ ВЕРСИЯ 2.0: Привязка по Script ID (колонка G)
- * 
- * @param {string} token - Токен лицензии
- * @param {string} email - Email пользователя
- * @param {string} scriptId - Script ID (для привязки)
- * @param {string} spreadsheetId - Spreadsheet ID (для названия и работы)
- * @return {Object} Результат проверки лицензии
- */
-function checkLicense_(token, email, scriptId, spreadsheetId) {
-  const lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(10000);
-
-    // ═══════════════════════════════════════════════════════════════
-    // ⭐ ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
-    // ═══════════════════════════════════════════════════════════════
-    
-    if (!token) {
-      Logger.log('❌ NO_TOKEN');
-      return {ok: false, error: 'NO_TOKEN'};
-    }
-    if (!email) {
-      Logger.log('❌ NO_EMAIL');
-      return {ok: false, error: 'NO_EMAIL'};
-    }
-    if (!scriptId) {
-      Logger.log('❌ NO_SCRIPT_ID');
-      return {ok: false, error: 'NO_SCRIPT_ID'};
-    }
-
-    Logger.log('📋 License check: email=' + email + ', scriptId=' + scriptId.substring(0, 12) + '...');
-
-    // ═══════════════════════════════════════════════════════════════
-    // ⭐ ОТКРЫТИЕ ТАБЛИЦЫ ЛИЦЕНЗИЙ
-    // ═══════════════════════════════════════════════════════════════
-    
-    const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
-    const sh = LICENSE_SHEET_NAME ? ss.getSheetByName(LICENSE_SHEET_NAME) : ss.getSheets()[0];
-    
-    if (!sh) {
-      Logger.log('❌ LICENSE_SHEET_NOT_FOUND');
-      return {ok: false, error: 'LICENSE_SHEET_NOT_FOUND'};
-    }
-
-    const range = sh.getDataRange();
-    const values = range.getValues();
-    
-    if (!values || values.length < 2) {
-      Logger.log('❌ LICENSE_SHEET_EMPTY');
-      return {ok: false, error: 'LICENSE_SHEET_EMPTY'};
-    }
-
-    const emailL = String(email).toLowerCase().trim();
-    const tokenS = String(token).trim();
-    const now = new Date();
-
-    // ═══════════════════════════════════════════════════════════════
-    // ⭐ ПОИСК ЛИЦЕНЗИИ ПО EMAIL И TOKEN
-    // ═══════════════════════════════════════════════════════════════
-    
-    for (let r = 1; r < values.length; r++) {
-      const row = values[r];
-      const em = String(row[0] || '').toLowerCase().trim();  // A: Email
-      const t = String(row[1] || '').trim();                 // B: Token
-      const dateCell = row[2];                               // C: ExpiredDate
-      const statusCell = String(row[3] || '').toLowerCase().trim(); // D: Status
-      const sheetIdsCell = String(row[4] || '').trim();      // E: sheet_ids
-      const copiesCountCell = row[5];                        // F: copies_count
-      const scriptIdsCell = String(row[6] || '').trim();     // G: script_ids ⭐
-
-      if (t && em && t === tokenS && em === emailL) {
-        Logger.log('✅ Лицензия найдена в строке ' + (r + 1));
-
-        // ═══════════════════════════════════════════════════════════════
-        // ⭐ ПРОВЕРКА 1: СТАТУС
-        // ═══════════════════════════════════════════════════════════════
-        
-        const active = (statusCell === 'active' || statusCell === 'активен' || statusCell === 'активный');
-        if (!active) {
-          Logger.log('❌ INACTIVE: статус = ' + statusCell);
-          return {ok: false, error: 'INACTIVE', row: r + 1};
-        }
-
-        // ═══════════════════════════════════════════════════════════════
-        // ⭐ ПРОВЕРКА 2: ДАТА ИСТЕЧЕНИЯ
-        // ═══════════════════════════════════════════════════════════════
-        
-        let untilOk = true;
-        let untilIso = null;
-
-        if (dateCell) {
-          const dt = (dateCell instanceof Date) ? dateCell : new Date(dateCell);
-          untilOk = dt && dt >= now;
-          untilIso = dt && dt.toISOString();
-        }
-
-        if (!untilOk) {
-          Logger.log('❌ EXPIRED: until = ' + untilIso);
-          return {ok: false, error: 'EXPIRED', until: untilIso, row: r + 1};
-        }
-
-        // ═══════════════════════════════════════════════════════════════
-        // ⭐ ПРОВЕРКА 3: ПРИВЯЗКА СКРИПТА (ОСНОВНАЯ ЛОГИКА)
-        // ═══════════════════════════════════════════════════════════════
-        
-        const copiesCount = parseInt(String(copiesCountCell || '0').trim()) || 0;
-        Logger.log('📊 Доступно копий: ' + copiesCount);
-
-        // ──────────────────────────────────────────────────────────────
-        // 📌 СЛУЧАЙ 1: Лицензия новая (script_ids пустое)
-        // ──────────────────────────────────────────────────────────────
-        
-        if (!scriptIdsCell) {
-          Logger.log('📝 Новая лицензия (script_ids пусто)');
-
-          if (copiesCount <= 0) {
-            Logger.log('❌ NO_QUOTA_LEFT');
-            return {
-              ok: false,
-              error: 'NO_QUOTA_LEFT',
-              message: 'Количество копий исчерпано. Обратитесь к создателю: https://vk.com/daoqub',
-              row: r + 1,
-              quota: {remaining: 0, total: 0},
-            };
-          }
-
-          // ⭐ ПЕРВАЯ ПРИВЯЗКА
-          try {
-            let displayName = 'Unknown';
-            
-            // Пытаемся получить название таблицы
-            if (spreadsheetId) {
-              try {
-                displayName = SpreadsheetApp.openById(spreadsheetId).getName();
-                Logger.log('✅ Название получено: ' + displayName);
-              } catch (e) {
-                displayName = 'Script ' + scriptId.substring(0, 8) + '...';
-                Logger.log('⚠️ Название не получено, используем scriptId');
-              }
-            } else {
-              displayName = 'Script ' + scriptId.substring(0, 8) + '...';
-            }
-
-            const dateStr = new Date().toLocaleDateString('ru-RU');
-            
-            // ⭐ Записываем в G (script_ids)
-            sh.getRange(r + 1, 7).setValue(scriptId);
-            
-            // ⭐ Записываем в E (sheet_ids + название)
-            const sheetBinding = spreadsheetId + '\n' + displayName + ' (' + dateStr + ')';
-            sh.getRange(r + 1, 5).setValue(sheetBinding);
-            
-            // ⭐ Уменьшаем счётчик копий
-            const newCopiesCount = copiesCount - 1;
-            sh.getRange(r + 1, 6).setValue(newCopiesCount);
-
-            Logger.log('✅ Первая привязка успешна');
-            Logger.log('  Script ID: ' + scriptId);
-            Logger.log('  Sheet ID: ' + spreadsheetId);
-            Logger.log('  Название: ' + displayName);
-            Logger.log('  Копий осталось: ' + newCopiesCount);
-
-            return {
-              ok: true,
-              until: untilIso,
-              row: r + 1,
-              message: 'SCRIPT_BOUND',
-              quota: {remaining: newCopiesCount, total: copiesCount, used: 1},
-            };
-          } catch (e) {
-            Logger.log('❌ Ошибка первой привязки: ' + e.message);
-            return {ok: false, error: 'SCRIPT_BINDING_ERROR: ' + e.message, row: r + 1};
-          }
-        }
-
-        // ──────────────────────────────────────────────────────────────
-        // 📌 СЛУЧАЙ 2: Лицензия существует (script_ids НЕ пустое)
-        // ──────────────────────────────────────────────────────────────
-        
-        // ⭐ Парсим список привязанных скриптов
-        const boundScriptIds = scriptIdsCell.split('\n')
-          .map(function(line) { return line.trim(); })
-          .filter(function(line) { return line.length > 0; });
-
-        Logger.log('📋 Привязанные скрипты (' + boundScriptIds.length + '): ' + JSON.stringify(boundScriptIds));
-        Logger.log('🔍 Проверяем: ' + scriptId);
-
-        // ──────────────────────────────────────────────────────────────
-        // 📌 ПОДСЛУЧАЙ 2.1: Скрипт УЖЕ ПРИВЯЗАН
-        // ──────────────────────────────────────────────────────────────
-        
-        if (boundScriptIds.indexOf(scriptId) !== -1) {
-          const usedCopies = boundScriptIds.length;
-          const totalCopies = copiesCount + usedCopies;
-          
-          Logger.log('✅ Скрипт уже привязан, доступ разрешён');
-          Logger.log('  Использовано: ' + usedCopies);
-          Logger.log('  Доступно: ' + copiesCount);
-          Logger.log('  Всего: ' + totalCopies);
-
-          return {
-            ok: true,
-            until: untilIso,
-            row: r + 1,
-            message: 'SCRIPT_ALLOWED',
-            quota: {remaining: copiesCount, total: totalCopies, used: usedCopies},
-          };
-        }
-
-        // ──────────────────────────────────────────────────────────────
-        // 📌 ПОДСЛУЧАЙ 2.2: Скрипт НЕ ПРИВЯЗАН, но есть копии
-        // ──────────────────────────────────────────────────────────────
-        
-        if (copiesCount > 0) {
-          Logger.log('🔄 Привязываем новый скрипт (копий доступно: ' + copiesCount + ')');
-
-          try {
-            let displayName = 'Unknown';
-            
-            // Пытаемся получить название таблицы
-            if (spreadsheetId) {
-              try {
-                displayName = SpreadsheetApp.openById(spreadsheetId).getName();
-                Logger.log('✅ Название получено: ' + displayName);
-              } catch (e) {
-                displayName = 'Script ' + scriptId.substring(0, 8) + '...';
-                Logger.log('⚠️ Название не получено, используем scriptId');
-              }
-            } else {
-              displayName = 'Script ' + scriptId.substring(0, 8) + '...';
-            }
-
-            const dateStr = new Date().toLocaleDateString('ru-RU');
-            
-            // ⭐ ДОБАВЛЯЕМ новую строку в G (script_ids)
-            const updatedScriptIds = scriptIdsCell + '\n' + scriptId;
-            sh.getRange(r + 1, 7).setValue(updatedScriptIds);
-            
-            // ⭐ ДОБАВЛЯЕМ новую строку в E (sheet_ids)
-            const sheetBinding = spreadsheetId + '\n' + displayName + ' (' + dateStr + ')';
-            const updatedSheetIds = sheetIdsCell + '\n' + sheetBinding;
-            sh.getRange(r + 1, 5).setValue(updatedSheetIds);
-            
-            // ⭐ Уменьшаем счётчик копий
-            const newCopiesCount = copiesCount - 1;
-            sh.getRange(r + 1, 6).setValue(newCopiesCount);
-
-            const usedCopies = boundScriptIds.length + 1;
-            const totalCopies = newCopiesCount + usedCopies;
-
-            Logger.log('✅ Новый скрипт привязан');
-            Logger.log('  Script ID: ' + scriptId);
-            Logger.log('  Sheet ID: ' + spreadsheetId);
-            Logger.log('  Название: ' + displayName);
-            Logger.log('  Использовано: ' + usedCopies);
-            Logger.log('  Копий осталось: ' + newCopiesCount);
-
-            return {
-              ok: true,
-              until: untilIso,
-              row: r + 1,
-              message: 'SCRIPT_BOUND_NEW',
-              quota: {remaining: newCopiesCount, total: totalCopies, used: usedCopies},
-            };
-          } catch (e) {
-            Logger.log('❌ Ошибка привязки нового скрипта: ' + e.message);
-            return {ok: false, error: 'SCRIPT_BINDING_ERROR: ' + e.message, row: r + 1};
-          }
-        }
-
-        // ──────────────────────────────────────────────────────────────
-        // 📌 ПОДСЛУЧАЙ 2.3: Скрипт НЕ ПРИВЯЗАН и копий НЕТ
-        // ──────────────────────────────────────────────────────────────
-        
-        Logger.log('❌ Нет доступных копий');
-        return {
-          ok: false,
-          error: 'NO_QUOTA_LEFT',
-          message: 'Количество копий исчерпано. Обратитесь к создателю: https://vk.com/daoqub',
-          row: r + 1,
-          quota: {remaining: 0, total: boundScriptIds.length},
-        };
-      }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // ⭐ ЛИЦЕНЗИЯ НЕ НАЙДЕНА
-    // ═══════════════════════════════════════════════════════════════
-    
-    Logger.log('❌ NOT_FOUND: email=' + email + ', token=' + token.substring(0, 4) + '****');
-    return {ok: false, error: 'NOT_FOUND'};
-    
-  } catch (e) {
-    Logger.log('❌ checkLicense_ EXCEPTION: ' + e.message);
-    return {ok: false, error: 'LICENSE_ERROR: ' + e.message};
-  } finally {
-    lock.releaseLock();
-  }
-}
-
 // ===== Gemini (server-side) =====
 function serverGM_(prompt, maxTokens, temperature, apiKey) {
   Logger.log('=== serverGM_ START ===');
