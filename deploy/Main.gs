@@ -610,7 +610,7 @@ function onOpen() {
       .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
       .addSeparator()
       .addItem('⚙️ Настройки', 'openSettingsUI')
-      .addItem('🔒 Проверить лицензию', 'checkLicenseStatusUI')
+      // ⭐ Убрали отдельную кнопку - проверка теперь в Settings при сохранении
       .addToUi();
 
     if (DEV_MODE) {
@@ -1326,7 +1326,10 @@ function serverStatus() {
   // 1) Читаем значения из ScriptProperties (после возможного seed)
   const email = getLicenseEmail();
   const token = getLicenseToken();
-  const sheetId = SpreadsheetApp.getActive().getId();
+  
+  // ⭐ ОБА ID
+  const scriptId = ScriptApp.getScriptId();             // ⭐ Для привязки лицензии
+  const spreadsheetId = SpreadsheetApp.getActive().getId(); // ⭐ Для работы и названия
 
   if (DEV_MODE) {
     addLog(`STATUS REQUEST: email=${email}, token=${token ? token.substring(0, 4) : null}`, 'DEBUG');
@@ -1336,7 +1339,8 @@ function serverStatus() {
     action: 'status',
     email: email,
     token: token,
-    sheetId: sheetId,
+    scriptId: scriptId,        // ⭐ Для привязки
+    spreadsheetId: spreadsheetId, // ⭐ Для названия
   };
 
   const options = {
@@ -1443,55 +1447,157 @@ function getSettingsData() {
 function saveSettingsData(data) {
   try {
     Logger.log('=== saveSettingsData START ===');
-    Logger.log('data.apiKey: ' + (data.apiKey ? 'SET (length: ' + data.apiKey.length + ')' : 'NOT SET'));
-    Logger.log('data.email: ' + (data.email ? 'SET' : 'NOT SET'));
-    Logger.log('data.token: ' + (data.token ? 'SET (length: ' + data.token.length + ')' : 'NOT SET'));
+    Logger.log('Validation mode: ENABLED');
 
     const props = PropertiesService.getScriptProperties();
+    const logs = []; // ⭐ Массив логов для пользователя
+
+    // ═══════════════════════════════════════════════════════════════
+    // ⭐ ШАГ 1: ВАЛИДАЦИЯ ЛИЦЕНЗИИ (если email/token введены)
+    // ═══════════════════════════════════════════════════════════════
+
+    const emailToSave = (data.email !== undefined && data.email && String(data.email).trim()) 
+      ? String(data.email).trim() 
+      : null;
+    const tokenToSave = (data.token !== undefined && data.token && String(data.token).trim()) 
+      ? String(data.token).trim() 
+      : null;
+
+    // Если пользователь ввёл email ИЛИ token - проверяем лицензию
+    if (emailToSave || tokenToSave) {
+      logs.push('🔍 Проверка лицензии на сервере...');
+      Logger.log('📡 License validation: email=' + (emailToSave || 'не изменён') + ', token=' + (tokenToSave ? 'введён' : 'не изменён'));
+
+      // ⭐ Используем текущие значения если новые не введены
+      const emailForCheck = emailToSave || getLicenseEmail();
+      const tokenForCheck = tokenToSave || getLicenseToken();
+
+      if (!emailForCheck || !tokenForCheck) {
+        Logger.log('❌ Validation failed: missing email or token');
+        logs.push('❌ Для проверки нужны email И token');
+        return {
+          success: false,
+          message: '❌ Ошибка: укажите email И token лицензии',
+          logs: logs,
+        };
+      }
+
+      // ⭐ ПРОВЕРЯЕМ ЛИЦЕНЗИЮ НА СЕРВЕРЕ
+      const licenseStatus = serverStatus();
+      Logger.log('📥 License check result: ' + JSON.stringify(licenseStatus));
+
+      if (!licenseStatus || !licenseStatus.ok) {
+        const errorMsg = licenseStatus && licenseStatus.error ? licenseStatus.error : 'UNKNOWN_ERROR';
+        const userMsg = getLicenseErrorMessage_(errorMsg);
+
+        Logger.log('❌ License validation FAILED: ' + errorMsg);
+        logs.push('❌ Проверка лицензии не пройдена');
+        logs.push('');
+        logs.push('📋 Детали:');
+        logs.push('  • Ошибка: ' + userMsg);
+        logs.push('  • Email: ' + emailForCheck);
+        logs.push('  • Token: ' + (tokenForCheck ? tokenForCheck.substring(0, 4) + '****' : '—'));
+
+        return {
+          success: false,
+          message: '❌ Лицензия недействительна. Данные НЕ сохранены.\n\n' + userMsg,
+          logs: logs,
+        };
+      }
+
+      // ⭐ ЛИЦЕНЗИЯ ВАЛИДНА - логируем детали
+      Logger.log('✅ License validation PASSED');
+      logs.push('✅ Лицензия проверена успешно');
+      logs.push('');
+      logs.push('📋 Информация о лицензии:');
+      logs.push('  • Статус: ' + (licenseStatus.message || 'активна'));
+      logs.push('  • Действует до: ' + (licenseStatus.until ? new Date(licenseStatus.until).toLocaleDateString('ru-RU') : '—'));
+      
+      if (licenseStatus.quota) {
+        logs.push('  • Доступно копий: ' + licenseStatus.quota.remaining + ' из ' + licenseStatus.quota.total);
+      }
+      logs.push('');
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ⭐ ШАГ 2: СОХРАНЕНИЕ ДАННЫХ (только если валидация прошла)
+    // ═══════════════════════════════════════════════════════════════
+
+    logs.push('💾 Сохранение настроек...');
     const updated = [];
 
-    // ===== API KEY (safe mode) =====
+    // API KEY
     if (data.apiKey !== undefined && data.apiKey && String(data.apiKey).trim()) {
-      // Сохраняем ТОЛЬКО если введено новое значение
       props.setProperty('GEMINI_API_KEY', String(data.apiKey).trim());
-      updated.push('API ключ обновлён');
-      Logger.log('✅ GEMINI_API_KEY UPDATED, length: ' + data.apiKey.length);
+      updated.push('API ключ');
+      Logger.log('✅ GEMINI_API_KEY saved, length: ' + data.apiKey.length);
     }
-    // Если поле пустое - НЕ трогаем существующий ключ
 
-    // ===== LICENSE EMAIL =====
-    if (data.email !== undefined && data.email && String(data.email).trim()) {
-      props.setProperty('LICENSE_EMAIL', String(data.email).trim()); // ✅ ВЕРНЫЙ КЛЮЧ
-      updated.push('Email обновлён');
-      Logger.log('✅ LICENSE_EMAIL UPDATED: ' + data.email);
+    // LICENSE EMAIL
+    if (emailToSave) {
+      props.setProperty('LICENSE_EMAIL', emailToSave);
+      updated.push('Email лицензии');
+      Logger.log('✅ LICENSE_EMAIL saved: ' + emailToSave);
     }
-    // Если пустое - не трогаем существующее значение
 
-    // ===== LICENSE TOKEN =====
-    if (data.token !== undefined && data.token && String(data.token).trim()) {
-      props.setProperty('LICENSE_TOKEN', String(data.token).trim()); // ✅ ВЕРНЫЙ КЛЮЧ
-      updated.push('Токен обновлён');
-      Logger.log('✅ LICENSE_TOKEN UPDATED, length: ' + data.token.length);
+    // LICENSE TOKEN
+    if (tokenToSave) {
+      props.setProperty('LICENSE_TOKEN', tokenToSave);
+      updated.push('Token лицензии');
+      Logger.log('✅ LICENSE_TOKEN saved, length: ' + tokenToSave.length);
     }
-    // Если пустое - не трогаем существующее значение
 
     if (updated.length === 0) {
-      Logger.log('saveSettingsData: No data to save');
-      return {success: false, message: 'Нет данных для сохранения'};
+      Logger.log('⚠️ No data to save');
+      logs.push('⚠️ Нет данных для сохранения');
+      return {
+        success: false,
+        message: 'Нет данных для сохранения',
+        logs: logs,
+      };
     }
 
-    Logger.log('Settings saved successfully: ' + updated.join(', '));
-    addLog('✅ Настройки сохранены: ' + updated.join(', '), 'INFO');
+    logs.push('✅ Сохранено: ' + updated.join(', '));
+    Logger.log('✅ Settings saved successfully: ' + updated.join(', '));
     
+    addLog('✅ Настройки сохранены и проверены: ' + updated.join(', '), 'INFO');
+
     return {
       success: true,
-      message: '✅ Сохранено: ' + updated.join(', '),
+      message: '✅ Настройки сохранены и проверены успешно!\n\n' + logs.join('\n'),
+      logs: logs,
     };
   } catch (e) {
-    Logger.log('saveSettingsData ERROR: ' + e.message);
+    Logger.log('❌ saveSettingsData ERROR: ' + e.message);
     addLog('❌ Ошибка сохранения настроек: ' + e.message, 'ERROR');
-    return {success: false, message: '❌ Ошибка: ' + e.message};
+    return {
+      success: false,
+      message: '❌ Ошибка: ' + e.message,
+      logs: ['❌ Критическая ошибка: ' + e.message],
+    };
   }
+}
+
+/**
+ * ⭐ Получить понятное сообщение об ошибке лицензии
+ */
+function getLicenseErrorMessage_(errorCode) {
+  const messages = {
+    'NO_TOKEN': 'Не указан токен лицензии',
+    'NO_EMAIL': 'Не указан email лицензии',
+    'NO_SCRIPT_ID': 'Не удалось получить Script ID',
+    'NOT_FOUND': 'Лицензия не найдена в базе данных',
+    'INACTIVE': 'Лицензия неактивна',
+    'EXPIRED': 'Срок действия лицензии истёк',
+    'NO_QUOTA_LEFT': 'Исчерпано количество доступных копий',
+    'LICENSE_SHEET_NOT_FOUND': 'Таблица лицензий не найдена',
+    'LICENSE_SHEET_EMPTY': 'Таблица лицензий пуста',
+    'SCRIPT_BINDING_ERROR': 'Ошибка привязки скрипта',
+    'LICENSE_ERROR': 'Ошибка проверки лицензии на сервере',
+    'REQUEST_FAILED': 'Не удалось связаться с сервером лицензий',
+  };
+
+  return messages[errorCode] || errorCode;
 }
 
 
@@ -1504,12 +1610,16 @@ function serverGM(prompt, maxTokens, temperature) {
   const email = getLicenseEmail();
   const token = getLicenseToken();
   const apiKey = getGeminiApiKey();
-  const sheetId = SpreadsheetApp.getActive().getId();
+  
+  // ⭐ ОБА ID
+  const scriptId = ScriptApp.getScriptId();
+  const spreadsheetId = SpreadsheetApp.getActive().getId();
 
   Logger.log('email: ' + (email ? 'SET' : 'NOT SET'));
   Logger.log('token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
   Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
-  Logger.log('sheetId: ' + sheetId);
+  Logger.log('scriptId: ' + scriptId);
+  Logger.log('spreadsheetId: ' + spreadsheetId);
 
   // DEV логирование
   if (DEV_MODE) {
@@ -1529,7 +1639,8 @@ function serverGM(prompt, maxTokens, temperature) {
     prompt: prompt,
     maxTokens: maxTokens,
     temperature: temperature,
-    sheetId: sheetId,
+    scriptId: scriptId,        // ⭐ Для привязки
+    spreadsheetId: spreadsheetId, // ⭐ Для работы
   };
 
   Logger.log('Request payload: ' + JSON.stringify({

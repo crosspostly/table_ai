@@ -216,6 +216,33 @@
       border-left: 4px solid #1a73e8;
     }
     
+    .status-message {
+      display: none;
+      margin: 15px 0;
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .status-message.success {
+      background-color: rgba(33, 128, 141, 0.15);
+      border: 1px solid rgba(33, 128, 141, 0.25);
+      color: var(--color-success);
+    }
+
+    .status-message.error {
+      background-color: rgba(192, 21, 47, 0.15);
+      border: 1px solid rgba(192, 21, 47, 0.25);
+      color: var(--color-error);
+    }
+
+    .status-message.info {
+      background-color: rgba(98, 108, 113, 0.15);
+      border: 1px solid rgba(98, 108, 113, 0.25);
+      color: var(--color-info);
+    }
+    
     .toggle-password {
       position: absolute;
       right: 12px;
@@ -283,9 +310,12 @@
       
       <!-- Actions -->
       <div class="actions">
-        <button class="btn-primary" onclick="saveSettings()">💾 Сохранить всё</button>
+        <button id="saveAllBtn" class="btn-primary" onclick="saveSettings()">💾 Сохранить всё</button>
         <button class="btn-secondary" onclick="google.script.host.close()">✕ Закрыть</button>
       </div>
+      
+      <!-- ⭐ Новый статус для показа логов -->
+      <div id="statusMessage" class="status-message" style="display: none;"></div>
       
       <div class="status" id="status"></div>
     </div>
@@ -336,23 +366,61 @@
     }
     
     function saveSettings() {
+      const saveBtn = document.getElementById('saveAllBtn');
+      const statusDiv = document.getElementById('statusMessage');
+      
+      saveBtn.disabled = true;
+      saveBtn.textContent = '⏳ Проверка и сохранение...';
+      
+      // ⭐ Показываем статус проверки
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'status-message info';
+        statusDiv.textContent = '🔍 Проверка лицензии на сервере...';
+      }
+
       const apiKey = document.getElementById('apiKey').value.trim();
       const email = document.getElementById('email').value.trim();
       const token = document.getElementById('token').value.trim();
       
       if (!apiKey && !email && !token) {
-        showStatus('❌ Заполните хотя бы одно поле', 'error');
+        if (statusDiv) {
+          statusDiv.className = 'status-message error';
+          statusDiv.textContent = '❌ Заполните хотя бы одно поле';
+        }
+        saveBtn.disabled = false;
+        saveBtn.textContent = '💾 Сохранить всё';
         return;
       }
-      
-      showStatus('💾 Сохранение...', 'info');
-      
+
       google.script.run
         .withSuccessHandler(function(result) {
-          if (result.success) {
-            showStatus('✅ ' + result.message, 'success');
+          saveBtn.disabled = false;
+          saveBtn.textContent = '💾 Сохранить всё';
+          
+          // ⭐ Показываем результат с логами
+          if (statusDiv) {
+            if (result.success) {
+              statusDiv.className = 'status-message success';
+              statusDiv.innerHTML = '<strong>✅ Успешно!</strong><br><br>' + 
+                (result.message || '').replace(/\n/g, '<br>');
+            } else {
+              statusDiv.className = 'status-message error';
+              statusDiv.innerHTML = '<strong>❌ Ошибка</strong><br><br>' + 
+                (result.message || '').replace(/\n/g, '<br>');
+            }
             
-            // Обновляем отображение текущих значений
+            // Скрываем через 10 секунд
+            setTimeout(function() {
+              statusDiv.style.display = 'none';
+            }, 10000);
+          } else {
+            // Fallback если нет statusDiv
+            alert(result.message);
+          }
+
+          // Обновляем отображение текущих значений только при успехе
+          if (result.success) {
             if (apiKey) {
               document.getElementById('currentApiKey').textContent = '✅ Установлен: ' + apiKey.substring(0, 8) + '****';
               document.getElementById('apiKey').value = '';
@@ -364,12 +432,22 @@
               document.getElementById('currentToken').textContent = '🔐 Установлен: ' + token.substring(0, 4) + '****';
               document.getElementById('token').value = '';
             }
-          } else {
-            showStatus('❌ ' + result.message, 'error');
           }
         })
         .withFailureHandler(function(error) {
-          showStatus('❌ Ошибка: ' + error.message, 'error');
+          saveBtn.disabled = false;
+          saveBtn.textContent = '💾 Сохранить всё';
+          
+          if (statusDiv) {
+            statusDiv.className = 'status-message error';
+            statusDiv.textContent = '❌ Критическая ошибка: ' + error.message;
+            
+            setTimeout(function() {
+              statusDiv.style.display = 'none';
+            }, 10000);
+          } else {
+            alert('❌ Ошибка: ' + error.message);
+          }
         })
         .saveSettingsData({
           apiKey: apiKey || null,
