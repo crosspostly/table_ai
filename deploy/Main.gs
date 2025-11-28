@@ -1163,16 +1163,71 @@ function runDevSelfTest() {
 }
 
 // ===== LICENSE & SERVER PROXY (patch) =====
+/**
+ * Автоматическая миграция старых ключей в новый формат
+ * Вызывается при первом обращении к getLicenseEmail/getLicenseToken
+ * @return {boolean} true если была выполнена миграция
+ */
+function migrateLicenseKeysIfNeeded_() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    
+    // Проверяем наличие СТАРЫХ ключей
+    const oldEmail = props.getProperty('LICENSEEMAIL');
+    const oldToken = props.getProperty('LICENSETOKEN');
+    
+    // Проверяем наличие НОВЫХ ключей
+    const newEmail = props.getProperty('LICENSE_EMAIL');
+    const newToken = props.getProperty('LICENSE_TOKEN');
+    
+    let migrated = false;
+    
+    // Если есть старый email, но нет нового - мигрируем
+    if (oldEmail && !newEmail) {
+      props.setProperty('LICENSE_EMAIL', oldEmail);
+      props.deleteProperty('LICENSEEMAIL');
+      Logger.log('✅ Migrated LICENSEEMAIL → LICENSE_EMAIL');
+      migrated = true;
+    }
+    
+    // Если есть старый token, но нет нового - мигрируем
+    if (oldToken && !newToken) {
+      props.setProperty('LICENSE_TOKEN', oldToken);
+      props.deleteProperty('LICENSETOKEN');
+      Logger.log('✅ Migrated LICENSETOKEN → LICENSE_TOKEN');
+      migrated = true;
+    }
+    
+    if (migrated) {
+      addLog('✅ Выполнена миграция лицензионных ключей в новый формат', 'INFO');
+    }
+    
+    return migrated;
+  } catch (e) {
+    Logger.log('⚠️ Migration error (non-critical): ' + e.message);
+    return false;
+  }
+}
+
 function getLicenseEmail() {
-  return PropertiesService.getScriptProperties().getProperty('LICENSEEMAIL') || '';
+  // Автомиграция при первом обращении
+  migrateLicenseKeysIfNeeded_();
+  
+  return PropertiesService.getScriptProperties().getProperty('LICENSE_EMAIL') || '';
 }
 function getLicenseToken() {
-  return PropertiesService.getScriptProperties().getProperty('LICENSETOKEN') || '';
+  // Автомиграция при первом обращении
+  migrateLicenseKeysIfNeeded_();
+  
+  return PropertiesService.getScriptProperties().getProperty('LICENSE_TOKEN') || '';
 }
 function hasStoredLicense() {
+  // Автомиграция перед проверкой
+  migrateLicenseKeysIfNeeded_();
+  
   try {
-    const email = PropertiesService.getScriptProperties().getProperty('LICENSEEMAIL');
-    const token = PropertiesService.getScriptProperties().getProperty('LICENSETOKEN');
+    const email = getLicenseEmail();
+    const token = getLicenseToken();
     return !!(email && token && String(email).trim() && String(token).trim());
   } catch (e) {
     addLog('hasStoredLicense: ' + e.message, 'WARN');
@@ -1194,8 +1249,8 @@ function setLicenseCredentialsUI() {
   if (!email || !token) {
     ui.alert('Email и Токен обязательны.'); return;
   }
-  PropertiesService.getScriptProperties().setProperty('LICENSEEMAIL', email);
-  PropertiesService.getScriptProperties().setProperty('LICENSETOKEN', token);
+  PropertiesService.getScriptProperties().setProperty('LICENSE_EMAIL', email);
+  PropertiesService.getScriptProperties().setProperty('LICENSE_TOKEN', token);
   ui.alert('✅ Лицензия сохранена.');
 }
 
@@ -1212,21 +1267,19 @@ function setScriptProp(key, value) {
 /**
  * Однократное засидывание лицензии из листа "Параметры":
  * - Читает email из G1 и token из H1
- * - Пишет их в ScriptProperties как LICENSEEMAIL / LICENSE_TOKEN
+ * - Пишет их в ScriptProperties как LICENSE_EMAIL / LICENSE_TOKEN
  * - НЕ трогает LICENSE_KEY (пусть создается/проверяется через текущую логику)
  * Возвращает true, если данные записаны; false — если не нашлись или уже были.
  */
 function seedLicenseCredentialsFromParametersSheet() {
   try {
-    const scriptProps = PropertiesService.getScriptProperties();
-    
-    // ✅ ПРОВЕРЯЕМ существующие значения
-    const curEmail = scriptProps.getProperty('LICENSE_EMAIL');
-    const curToken = scriptProps.getProperty('LICENSE_TOKEN');
+    // Проверяем через функции-геттеры (они уже содержат миграцию)
+    const curEmail = getLicenseEmail();
+    const curToken = getLicenseToken();
     
     // Если УЖЕ есть - НЕ перезаписываем
     if (curEmail && curToken) {
-      Logger.log('DEBUG: LICENSE_EMAIL and LICENSE_TOKEN already exist, skipping seed');
+      Logger.log('DEBUG: License already exists, skipping seed');
       return false;
     }
 
@@ -1246,7 +1299,8 @@ function seedLicenseCredentialsFromParametersSheet() {
       return false;
     }
 
-    // ✅ ПЕРЕЗАПИСЫВАЕМ (seed только если было пусто)
+    // Сохраняем в ПРАВИЛЬНЫЕ ключи
+    const scriptProps = PropertiesService.getScriptProperties();
     scriptProps.setProperty('LICENSE_EMAIL', email);
     scriptProps.setProperty('LICENSE_TOKEN', token);
     
@@ -1351,6 +1405,9 @@ function openSettingsUI() {
 function getSettingsData() {
   try {
     Logger.log('=== getSettingsData START ===');
+    
+    // Автомиграция перед чтением
+    migrateLicenseKeysIfNeeded_();
 
     const userProps = PropertiesService.getUserProperties();
     const scriptProps = PropertiesService.getScriptProperties();
@@ -1361,8 +1418,9 @@ function getSettingsData() {
     const currentApiKey = userApiKey || scriptApiKey || '';
     const keySource = userApiKey ? 'USER' : (scriptApiKey ? 'DEFAULT' : 'NONE');
 
-    const email = scriptProps.getProperty('LICENSEEMAIL') || '';
-    const token = scriptProps.getProperty('LICENSETOKEN') || '';
+    // Используем функции-геттеры (они уже содержат миграцию и правильные ключи)
+    const email = getLicenseEmail();
+    const token = getLicenseToken();
 
     Logger.log('currentApiKey: ' + (currentApiKey ? 'SET (' + keySource + ', length: ' + currentApiKey.length + ')' : 'NOT SET'));
     Logger.log('email: ' + (email ? 'SET' : 'NOT SET'));
@@ -1392,46 +1450,30 @@ function saveSettingsData(data) {
     const props = PropertiesService.getScriptProperties();
     const updated = [];
 
-    // ===== API KEY =====
-    if (data.apiKey !== undefined) {
-      if (data.apiKey && String(data.apiKey).trim()) {
-        // ✅ ПЕРЕЗАПИСЫВАЕМ существующий ключ
-        props.setProperty('GEMINI_API_KEY', String(data.apiKey).trim());
-        updated.push('API ключ');
-        Logger.log('✅ GEMINI_API_KEY UPDATED, length: ' + data.apiKey.length);
-      } else {
-        // ❌ Удаляем если пустой
-        props.deleteProperty('GEMINI_API_KEY');
-        updated.push('API ключ (удален)');
-        Logger.log('🗑️ GEMINI_API_KEY DELETED');
-      }
+    // ===== API KEY (safe mode) =====
+    if (data.apiKey !== undefined && data.apiKey && String(data.apiKey).trim()) {
+      // Сохраняем ТОЛЬКО если введено новое значение
+      props.setProperty('GEMINI_API_KEY', String(data.apiKey).trim());
+      updated.push('API ключ обновлён');
+      Logger.log('✅ GEMINI_API_KEY UPDATED, length: ' + data.apiKey.length);
     }
+    // Если поле пустое - НЕ трогаем существующий ключ
 
     // ===== LICENSE EMAIL =====
-    if (data.email !== undefined) {
-      if (data.email && String(data.email).trim()) {
-        // ✅ ПЕРЕЗАПИСЫВАЕМ существующий ключ
-        props.setProperty('LICENSE_EMAIL', String(data.email).trim());
-        updated.push('Email');
-        Logger.log('✅ LICENSE_EMAIL UPDATED: ' + data.email);
-      } else {
-        // Не удаляем если пустой - оставляем старое значение
-        Logger.log('⚠️ LICENSE_EMAIL not updated (empty value)');
-      }
+    if (data.email !== undefined && data.email && String(data.email).trim()) {
+      props.setProperty('LICENSE_EMAIL', String(data.email).trim()); // ✅ ВЕРНЫЙ КЛЮЧ
+      updated.push('Email обновлён');
+      Logger.log('✅ LICENSE_EMAIL UPDATED: ' + data.email);
     }
+    // Если пустое - не трогаем существующее значение
 
     // ===== LICENSE TOKEN =====
-    if (data.token !== undefined) {
-      if (data.token && String(data.token).trim()) {
-        // ✅ ПЕРЕЗАПИСЫВАЕМ существующий ключ
-        props.setProperty('LICENSE_TOKEN', String(data.token).trim());
-        updated.push('Токен');
-        Logger.log('✅ LICENSE_TOKEN UPDATED, length: ' + data.token.length);
-      } else {
-        // Не удаляем если пустой - оставляем старое значение
-        Logger.log('⚠️ LICENSE_TOKEN not updated (empty value)');
-      }
+    if (data.token !== undefined && data.token && String(data.token).trim()) {
+      props.setProperty('LICENSE_TOKEN', String(data.token).trim()); // ✅ ВЕРНЫЙ КЛЮЧ
+      updated.push('Токен обновлён');
+      Logger.log('✅ LICENSE_TOKEN UPDATED, length: ' + data.token.length);
     }
+    // Если пустое - не трогаем существующее значение
 
     if (updated.length === 0) {
       Logger.log('saveSettingsData: No data to save');
