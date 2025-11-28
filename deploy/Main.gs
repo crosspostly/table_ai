@@ -14,8 +14,94 @@ const SERVER_URL = PropertiesService.getScriptProperties().getProperty('SERVER_U
 const DEV_MODE = true; // DEV: показывать DEV-меню/логи
 const DEVMODE = DEV_MODE;
 
+// ====== КЛИЕНТСКОЕ ЛОГИРОВАНИЕ ======
+const LOGS_CACHE_KEY = 'CLIENT_LOGS';
+const MAX_CLIENT_LOGS = 300;
+const CLIENT_LOGS_TTL = 86400; // 24 часа
+
+/**
+ * Добавить запись в клиентский лог
+ * @param {string} msg - Сообщение
+ * @param {string} level - Уровень: INFO, WARN, ERROR, DEBUG
+ */
+function addLog(msg, level = 'INFO') {
+  try {
+    // Получаем кэш
+    const cache = CacheService.getScriptCache();
+
+    // Читаем существующие логи
+    let logs = cache.get(LOGS_CACHE_KEY);
+    logs = logs ? JSON.parse(logs) : [];
+
+    // Формируем timestamp
+    const ts = Utilities.formatDate(
+      new Date(),
+      Session.getScriptTimeZone(),
+      'yyyy-MM-dd HH:mm:ss',
+    );
+
+    // Добавляем новую запись
+    logs.push({
+      timestamp: ts,
+      level: level,
+      message: msg,
+    });
+
+    // Ограничиваем количество
+    if (logs.length > MAX_CLIENT_LOGS) {
+      logs.shift(); // Удаляем самую старую
+    }
+
+    // Сохраняем обратно в кэш
+    cache.put(LOGS_CACHE_KEY, JSON.stringify(logs), CLIENT_LOGS_TTL);
+
+    // Дублируем в console.log
+    console.log(`[CLIENT] [${ts}] ${level}: ${msg}`);
+  } catch (e) {
+    // Если логирование упало - не ломаем основную логику
+    console.error('[CLIENT] Ошибка записи лога:', e.message);
+  }
+}
+
+/**
+ * Получить клиентские логи
+ * @param {number} limit - Количество последних записей
+ * @return {Array} Массив объектов {timestamp, level, message}
+ */
+function getClientLogs(limit = 100) {
+  try {
+    const cache = CacheService.getScriptCache();
+    const logs = cache.get(LOGS_CACHE_KEY);
+
+    if (!logs) return [];
+
+    const arr = JSON.parse(logs);
+    return arr.slice(-limit); // Последние limit записей
+  } catch (e) {
+    console.error('[CLIENT] Ошибка чтения логов:', e.message);
+    return [];
+  }
+}
+
+/**
+ * Очистить клиентские логи
+ */
+function clearClientLogs() {
+  try {
+    CacheService.getScriptCache().remove(LOGS_CACHE_KEY);
+    addLog('✅ Клиентские логи очищены', 'INFO');
+    SpreadsheetApp.getUi().alert('Клиентские логи очищены');
+  } catch (e) {
+    console.error('[CLIENT] Ошибка очистки логов:', e.message);
+    SpreadsheetApp.getUi().alert('Ошибка очистки логов: ' + e.message);
+  }
+}
+
 // ====== ВСПомогательная функция для вызовов сервера ======
 function callServerAction_(action, subaction, payload = {}) {
+  // ЛОГИРУЕМ ДО ВЫЗОВА
+  addLog(`→ SERVER CALL: ${action}/${subaction}`, 'DEBUG');
+
   const options = {
     method: 'post',
     contentType: 'application/json',
@@ -29,22 +115,44 @@ function callServerAction_(action, subaction, payload = {}) {
     muteHttpExceptions: true,
   };
 
-  const response = UrlFetchApp.fetch(SERVER_URL, options);
-  return JSON.parse(response.getContentText());
+  try {
+    const response = UrlFetchApp.fetch(SERVER_URL, options);
+    const code = response.getResponseCode();
+    const result = JSON.parse(response.getContentText());
+
+    // Проверяем HTTP код
+    if (code !== 200) {
+      addLog(`← SERVER ERROR: HTTP ${code}`, 'ERROR');
+      throw new Error(`Сервер вернул ${code}: ${result.error || 'Неизвестная ошибка'}`);
+    }
+
+    // ЛОГИРУЕМ ПОСЛЕ ВЫЗОВА
+    addLog(
+      `← SERVER RESPONSE: ${result.success ? 'OK' : 'ERROR'}`,
+      result.success ? 'INFO' : 'ERROR',
+    );
+
+    return result;
+  } catch (e) {
+    // ЛОГИРУЕМ ОШИБКУ
+    addLog(`❌ SERVER CALL FAILED: ${e.message}`, 'ERROR');
+    throw e; // Пробрасываем дальше
+  }
 }
 
 // ====== ОСНОВНАЯ ТОЧКА ВХОДА ======
 function onOpen() {
+  addLog('🚀 onOpen вызван', 'INFO');
+
   try {
     // Проверяем обновления (неблокирующий вызов)
     checkForUpdates_();
 
-    // Строим меню (как сейчас, без изменений)
+    // Строим меню
     buildMenu_();
   } catch (e) {
-    Logger.log('Error in onOpen: ' + e.message);
-    // В случае ошибки все равно строим меню
-    buildMenu_();
+    addLog(`❌ onOpen упал: ${e.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('Ошибка загрузки меню: ' + e.message);
   }
 }
 
@@ -142,114 +250,7 @@ function refreshCellWithConfig() {
   }
 }
 
-// Batch операции
-function etap1() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'etap1'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-function etap2_1() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'etap2_1'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-function etap2_2() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'etap2_2'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-function faza1() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'faza1'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-function archetype() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'archetype'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-function common_ca() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'common_ca'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-function faza2() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'faza2'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-function faza3() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'faza3'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-function brendDesign() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'brendDesign'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-function resume() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'resume'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-function analizConc() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'analizConc'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
-
-function analizCA() {
-  try {
-    const result = callServerAction_('batchUpdate', 'runSegment', {operation: 'analizCA'});
-    SpreadsheetApp.getUi().alert(result.message || result.error);
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
-  }
-}
+// Batch операции перенесены в reniewCell.gs
 
 // Другие функции
 function openUnpackingViewer() {
@@ -293,14 +294,31 @@ function openSettingsUI() {
 }
 
 // ====== DEV ФУНКЦИИ ======
-function showLogsDialog() {
+function showClientLogsDialog() {
+  try {
+    const logs = getClientLogs();
+    const logText = logs.map((log) =>
+      `[${log.timestamp}] ${log.level}: ${log.message}`,
+    ).join('\n');
+
+    const html = HtmlService.createHtmlOutput(`
+      <div style="font-family: monospace; padding: 10px; white-space: pre-wrap;">${logText || 'Логов нет'}</div>
+    `).setWidth(800).setHeight(600);
+
+    SpreadsheetApp.getUi().showModalDialog(html, '📝 Клиентские логи');
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Ошибка открытия клиентских логов: ' + e.message);
+  }
+}
+
+function showServerLogsDialog() {
   try {
     const html = HtmlService.createHtmlOutputFromFile('logging_system')
       .setWidth(800).setHeight(600);
 
-    SpreadsheetApp.getUi().showModalDialog(html, '📝 Логи системы');
+    SpreadsheetApp.getUi().showModalDialog(html, '📜 Серверные логи');
   } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка открытия логов: ' + e.message);
+    SpreadsheetApp.getUi().alert('Ошибка открытия серверных логов: ' + e.message);
   }
 }
 
@@ -339,36 +357,26 @@ function runDevSelfTest() {
   }
 }
 
-// ====== ПОСТРОЕНИЕ МЕНЮ (без изменений) ======
+// ====== ПОСТРОЕНИЕ МЕНЮ ======
 function buildMenu_() {
+  addLog('📋 Построение меню...', 'INFO');
   const ui = SpreadsheetApp.getUi();
 
-  // Получаем BATCH_OPERATIONS с сервера для динамического меню
-  let batchOperations = {};
+  // Создаём главное меню
+  const mainMenu = ui.createMenu('🤖 Table AI');
+
+  // Подключаем batch операции из reniewCell.gs
   try {
-    const opsResult = callServerAction_('batchUpdate', 'getOperations', {});
-    if (opsResult.ok && opsResult.data && opsResult.data.operations) {
-      batchOperations = opsResult.data.operations;
-    }
+    const batchMenu = buildBatchMenu_(); // ← функция из reniewCell.gs
+    mainMenu.addSubMenu(batchMenu);
+    addLog('✅ Batch меню подключено из reniewCell.gs', 'DEBUG');
   } catch (e) {
-    Logger.log('Error getting batch operations: ' + e.message);
+    addLog(`❌ Ошибка построения batch меню: ${e.message}`, 'ERROR');
+    // Продолжаем строить меню без batch операций
   }
 
-  const aiMenu = ui.createMenu('🎯 AI Конструктор')
-    .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
-    .addItem('🔄 Обновить ячейку', 'refreshCellWithConfig')
-    .addSeparator();
-
-  // Добавляем batch операции динамически
-  Object.entries(batchOperations).forEach(([key, config]) => {
-    const funcName = key.charAt(0).toUpperCase() + key.slice(1);
-    if (typeof this[funcName] === 'function') {
-      aiMenu.addItem(config.name, funcName);
-    }
-  });
-
-  ui.createMenu('🤖 Table AI')
-    .addSubMenu(aiMenu)
+  // Остальные пункты меню
+  mainMenu
     .addSeparator()
     .addItem('📦 Просмотр Распаковки', 'openUnpackingViewer')
     .addSeparator()
@@ -378,14 +386,19 @@ function buildMenu_() {
     .addItem('⚙️ Настройки', 'openSettingsUI')
     .addToUi();
 
+  // DEV меню
   if (DEV_MODE) {
     ui.createMenu('🧰 DEV')
-      .addItem('📝 Показать логи', 'showLogsDialog')
-      .addItem('⬇️ Экспорт логов', 'exportLogsToSheet')
-      .addItem('🗑 Очистить логи', 'clearLogs')
+      .addItem('📝 Логи (клиент)', 'showClientLogsDialog')
+      .addItem('📜 Логи (сервер)', 'showServerLogsDialog')
+      .addItem('🗑 Очистить логи (клиент)', 'clearClientLogs')
+      .addSeparator()
+      .addItem('📊 Статус batch операций', 'showBatchStatus')
       .addItem('🔍 Тест сервера', 'testServerConnection')
       .addItem('🧪 Dev Self Test', 'runDevSelfTest')
       .addItem('🔄 Проверить обновления', 'checkForUpdates_')
       .addToUi();
   }
+
+  addLog('✅ Меню создано успешно', 'INFO');
 }
