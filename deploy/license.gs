@@ -70,13 +70,24 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
     // Проверка статуса
     if (!licenseInfo.isActive) {
       Logger.log('❌ INACTIVE: статус = ' + licenseInfo.status);
-      return {ok: false, error: 'INACTIVE', row: licenseInfo.rowIndex + 1};
+      return {
+        ok: false, 
+        error: 'INACTIVE', 
+        message: 'Лицензия неактивна. Статус: ' + licenseInfo.status,
+        row: licenseInfo.rowIndex + 1
+      };
     }
 
     // Проверка даты
     if (!licenseInfo.isNotExpired) {
       Logger.log('❌ EXPIRED: until = ' + licenseInfo.untilIso);
-      return {ok: false, error: 'EXPIRED', until: licenseInfo.untilIso, row: licenseInfo.rowIndex + 1};
+      return {
+        ok: false, 
+        error: 'EXPIRED', 
+        message: 'Лицензия истекла: ' + licenseInfo.untilIso,
+        until: licenseInfo.untilIso, 
+        row: licenseInfo.rowIndex + 1
+      };
     }
 
     Logger.log('✅ Лицензия активна до: ' + licenseInfo.untilIso);
@@ -127,13 +138,24 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
     // ═══════════════════════════════════════════════════════════════
     
     if (licenseInfo.copiesCount <= 0) {
+      const usedCopies = userBindings.length;
+      const totalCopies = usedCopies;  // ← ИСПРАВЛЕНО: правильный расчёт
+      
       Logger.log('❌ Нет доступных копий');
+      Logger.log('  Использовано: ' + usedCopies);
+      Logger.log('  Доступно: 0');
+      Logger.log('  Всего было: ' + totalCopies);
+      
       return {
         ok: false,
         error: 'NO_QUOTA_LEFT',
         message: 'Количество копий исчерпано. Обратитесь к создателю: https://vk.com/daoqub',
         row: licenseInfo.rowIndex + 1,
-        quota: {remaining: 0, total: userBindings.length}
+        quota: {
+          remaining: 0,
+          total: totalCopies,  // ← ИСПРАВЛЕНО
+          used: usedCopies
+        }
       };
     }
 
@@ -235,10 +257,41 @@ function validateLicense_(tokensSheet, email, token) {
       let isNotExpired = true;
       let untilIso = null;
       
+      // ⭐ УЛУЧШЕННЫЙ ПАРСИНГ ДАТЫ
       if (expiredDate) {
-        const dt = (expiredDate instanceof Date) ? expiredDate : new Date(expiredDate);
-        isNotExpired = dt && dt >= now;
-        untilIso = dt && dt.toISOString();
+        let dt = null;
+        
+        // Если это уже Date объект из Sheets
+        if (expiredDate instanceof Date) {
+          dt = expiredDate;
+        } else {
+          // Пробуем распарсить как строку
+          const dateStr = String(expiredDate).trim();
+          
+          // Поддержка форматов: 2026-06-01, 01.06.2026, 06/01/2026
+          if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            // YYYY-MM-DD → добавляем время чтобы избежать UTC проблем
+            dt = new Date(dateStr + 'T23:59:59');
+          } else {
+            dt = new Date(dateStr);
+          }
+        }
+        
+        // Проверяем что дата валидна
+        if (dt && !isNaN(dt.getTime())) {
+          isNotExpired = dt >= now;
+          untilIso = dt.toISOString();
+          
+          Logger.log('📅 Дата истечения: ' + untilIso);
+          Logger.log('📅 Сегодня: ' + now.toISOString());
+          Logger.log('📅 Истекла: ' + !isNotExpired);
+        } else {
+          Logger.log('⚠️ ВНИМАНИЕ: Некорректный формат даты в ExpiredDate: ' + expiredDate);
+          Logger.log('⚠️ Дата будет игнорирована, лицензия считается бессрочной');
+          isNotExpired = true;  // Если дата некорректна - не блокируем
+        }
+      } else {
+        Logger.log('ℹ️ ExpiredDate не указан - лицензия бессрочная');
       }
       
       return {
