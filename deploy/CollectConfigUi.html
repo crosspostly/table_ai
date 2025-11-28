@@ -486,19 +486,35 @@
     }
 
 
+    // Вспомогательная функция для вызовов сервера
+    function callServerAction(action, subaction, payload) {
+      return new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject)
+          .callServerAction_(action, subaction, payload);
+      });
+    }
+    
     let sheetName = '';
     let cellAddress = '';
     let sheets = [];
     
-    google.script.run
-      .withSuccessHandler(initialize)
-      .withFailureHandler(showError)
-      .getCollectConfigInitData();
+    // Инициализация через сервер
+    callServerAction('collectConfig', 'init', {})
+      .then(function(data) {
+        if (data.success) {
+          initialize(data.data);
+        } else {
+          showError(data.error);
+        }
+      })
+      .catch(showError);
     
     function initialize(data) {
       sheetName = data.sheetName;
       cellAddress = data.cellAddress;
-      sheets = data.sheets;
+      sheets = ['Распаковка', 'ЦА']; // Можно получить с сервера
       
       document.getElementById('cellInfo').textContent = 
         '📌 ' + sheetName + '!' + cellAddress;
@@ -516,29 +532,24 @@
     }
     
     function loadExistingConfig() {
-      google.script.run
-        .withSuccessHandler(function(config) {
-          if (config) {
-            if (config.systemPrompt) {
-              document.getElementById('systemSheet').value = config.systemPrompt.sheet;
-              document.getElementById('systemCell').value = config.systemPrompt.cell;
-            }
-            
-            if (config.userData && config.userData.length > 0) {
-              config.userData.forEach(function(data) {
-                addUserDataRow(data.sheet, data.cell);
-              });
-            } else {
-              addUserDataRow();
-            }
-          } else {
-            addUserDataRow();
-          }
-        })
-        .withFailureHandler(function() {
+      // Загружаем существующую конфигурацию (если есть)
+      if (data.existingConfig) {
+        const config = data.existingConfig;
+        if (config.systemPrompt) {
+          document.getElementById('systemSheet').value = config.systemPrompt.sheet;
+          document.getElementById('systemCell').value = config.systemPrompt.cell;
+        }
+        
+        if (config.userData && config.userData.length > 0) {
+          config.userData.forEach(function(data) {
+            addUserDataRow(data.sheet, data.cell);
+          });
+        } else {
           addUserDataRow();
-        })
-        .loadCollectConfig(sheetName, cellAddress);
+        }
+      } else {
+        addUserDataRow();
+      }
     }
     
     function addUserDataRow(sheet, cell) {
@@ -597,8 +608,9 @@
         const c = input.value.trim();
         
         if (s && c) {
-          google.script.run
-            .withSuccessHandler(function(text) {
+          callServerAction('collectConfig', 'getCellPreview', { sheet: s, cell: c })
+            .then(function(result) {
+              const text = result.data || '(пусто)';
               preview.textContent = text;
               preview.style.display = 'block';
               
@@ -610,7 +622,11 @@
                 preview.className = 'cell-preview';
               }
             })
-            .getCellPreview(s, c);
+            .catch(function(error) {
+              preview.textContent = '❌ Ошибка: ' + error.message;
+              preview.style.display = 'block';
+              preview.className = 'cell-preview error';
+            });
         } else {
           preview.style.display = 'none';
         }
@@ -750,15 +766,19 @@
       showStatus('🚀 Сохранение и выполнение...', 'info');
       addLogEntry('Отправка запроса на сервер...', 'info');
       
-      google.script.run
-        .withSuccessHandler(function(result) {
+      callServerAction('collectConfig', 'execute', { 
+        config: config,
+        sheetName: sheetName,
+        cellAddress: cellAddress
+      })
+        .then(function(result) {
           console.log('Результат выполнения:', result);
           addLogEntry('✅ Ответ от сервера получен', 'success');
           
-          if (result.success) {
+          if (result.ok) {
             showStatus('✅ Готово! Результат записан в ' + cellAddress, 'success');
             addLogEntry('✅ УСПЕХ! Результат записан в ' + cellAddress, 'success');
-            addLogEntry('Результат: ' + (result.result ? result.result.substring(0, 100) + '...' : 'пусто'), 'info');
+            addLogEntry('Результат: ' + (result.data ? JSON.stringify(result.data).substring(0, 100) + '...' : 'пусто'), 'info');
             setTimeout(function() {
               google.script.host.close();
             }, 2000);
@@ -767,27 +787,28 @@
             addLogEntry('❌ ОШИБКА ВЫПОЛНЕНИЯ: ' + (result.error || 'Неизвестная ошибка'), 'error');
           }
         })
-        .withFailureHandler(function(error) {
+        .catch(function(error) {
           console.error('Критическая ошибка:', error);
           showStatus('❌ Критическая ошибка: ' + error.message, 'error');
           addLogEntry('❌ КРИТИЧЕСКАЯ ОШИБКА: ' + error.message, 'error');
-        })
-        .saveAndExecuteCollectConfig(sheetName, cellAddress, config);
+        });
     }
     
     function resetConfig() {
       if (confirm('Удалить сохранённую конфигурацию?')) {
-        google.script.run
-          .withSuccessHandler(function() {
+        callServerAction('collectConfig', 'delete', {
+          sheetName: sheetName,
+          cellAddress: cellAddress
+        })
+          .then(function() {
             showStatus('✅ Конфигурация сброшена!', 'success');
             setTimeout(function() {
               google.script.host.close();
             }, 1000);
           })
-          .withFailureHandler(function(error) {
+          .catch(function(error) {
             showStatus('❌ Ошибка: ' + error, 'error');
-          })
-          .deleteCollectConfig(sheetName, cellAddress);
+          });
       }
     }
     
@@ -796,20 +817,24 @@
     // ============================================================================
     
     function loadTemplatesList() {
-      google.script.run
-        .withSuccessHandler(function(templates) {
-          const select = document.getElementById('templateSelect');
-          select.options.length = 1;
-          
-          for (const templateName in templates) {
-            const option = document.createElement('option');
-            option.value = templateName;
-            option.textContent = templateName;
-            select.appendChild(option);
+      callServerAction('collectConfig', 'getTemplates', {})
+        .then(function(result) {
+          if (result.ok) {
+            const templates = result.data.templates;
+            const select = document.getElementById('templateSelect');
+            select.options.length = 1;
+            
+            for (const templateName in templates) {
+              const option = document.createElement('option');
+              option.value = templateName;
+              option.textContent = templateName;
+              select.appendChild(option);
+            }
+          } else {
+            showError(result.error);
           }
         })
-        .withFailureHandler(showError)
-        .serverGetAllTemplates();
+        .catch(showError);
     }
     
     function loadSelectedTemplate() {
@@ -823,31 +848,35 @@
       
       showStatus('Загрузка шаблона "' + templateName + '"...', 'info');
       
-      google.script.run
-        .withSuccessHandler(function(config) {
-          if (!config) {
-            showError('Шаблон "' + templateName + '" не найден');
-            return;
+      callServerAction('collectConfig', 'getTemplate', { templateName: templateName })
+        .then(function(result) {
+          if (result.ok) {
+            const config = result.data;
+            if (!config) {
+              showError('Шаблон "' + templateName + '" не найден');
+              return;
+            }
+            
+            document.getElementById('systemSheet').value = config.systemPrompt ? config.systemPrompt.sheet : '';
+            document.getElementById('systemCell').value = config.systemPrompt ? config.systemPrompt.cell : '';
+            
+            const userDataList = document.getElementById('userDataList');
+            userDataList.innerHTML = '';
+            
+            if (config.userData && config.userData.length > 0) {
+              config.userData.forEach(function(ud) {
+                addUserDataRow(ud.sheet, ud.cell);
+              });
+            }
+            
+            document.getElementById('templateNameInput').value = templateName;
+            
+            showStatus('Шаблон "' + templateName + '" загружен', 'success');
+          } else {
+            showError(result.error);
           }
-          
-          document.getElementById('systemSheet').value = config.systemPrompt ? config.systemPrompt.sheet : '';
-          document.getElementById('systemCell').value = config.systemPrompt ? config.systemPrompt.cell : '';
-          
-          const userDataList = document.getElementById('userDataList');
-          userDataList.innerHTML = '';
-          
-          if (config.userData && config.userData.length > 0) {
-            config.userData.forEach(function(ud) {
-              addUserDataRow(ud.sheet, ud.cell);
-            });
-          }
-          
-          document.getElementById('templateNameInput').value = templateName;
-          
-          showStatus('Шаблон "' + templateName + '" загружен', 'success');
         })
-        .withFailureHandler(showError)
-        .serverGetTemplate(templateName);
+        .catch(showError);
     }
     
     function saveAsTemplate() {
@@ -867,17 +896,19 @@
       
       showStatus('Сохранение шаблона "' + templateName + '"...', 'info');
       
-      google.script.run
-        .withSuccessHandler(function(response) {
-          if (response.success) {
+      callServerAction('collectConfig', 'saveTemplate', { 
+        templateName: templateName, 
+        config: config 
+      })
+        .then(function(response) {
+          if (response.ok) {
             showStatus(response.message + (response.size ? ' (' + response.size + ' байт)' : ''), 'success');
             loadTemplatesList();
           } else {
             showError(response.message);
           }
         })
-        .withFailureHandler(showError)
-        .serverSaveTemplate(templateName, config);
+        .catch(showError);
     }
     
     function deleteSelectedTemplate() {
@@ -895,18 +926,19 @@
       
       showStatus('Удаление шаблона "' + templateName + '"...', 'info');
       
-      google.script.run
-        .withSuccessHandler(function(response) {
-          if (response.success) {
+      callServerAction('collectConfig', 'deleteTemplate', { templateName: templateName })
+        .then(function(response) {
+          if (response.ok) {
             showStatus(response.message, 'success');
-            document.getElementById('templateNameInput').value = '';
             loadTemplatesList();
+            if (document.getElementById('templateNameInput').value === templateName) {
+              document.getElementById('templateNameInput').value = '';
+            }
           } else {
             showError(response.message);
           }
         })
-        .withFailureHandler(showError)
-        .serverDeleteTemplate(templateName);
+        .catch(showError);
     }
     
     // ============================================================================
