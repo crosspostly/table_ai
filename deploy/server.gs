@@ -4,9 +4,12 @@
 // ===== Constants =====
 const S_GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
-const LICENSE_SHEET_NAME = 'Tokens';
 const LOG_SHEET_NAME = 'Логи';
 const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
+
+// ===== Version Constants =====
+const SERVER_VERSION = '4.0.0';
+const MIN_CLIENT_VERSION = '3.0.0';
 
 // ===== Entry points =====
 function doGet(_e) {
@@ -21,23 +24,23 @@ function doPost(_e) {
     const action = (data.action || '').toString();
     const token = (data.token || '').toString();
     const email = (data.email || '').toString();
-    
+
     // ⭐ ОБА ID для разных целей
-    const scriptId = (data.scriptId || '').toString();      // ⭐ Для привязки
+    const scriptId = (data.scriptId || '').toString(); // ⭐ Для привязки
     const spreadsheetId = (data.spreadsheetId || '').toString(); // ⭐ Для работы
     const apiKey = (data.apiKey || '').toString();
 
     Logger.log('action: ' + action);
     Logger.log('email: ' + (email ? 'SET' : 'NOT SET'));
     Logger.log('token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
-    Logger.log('scriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET'));  // ⭐
-    Logger.log('spreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET'));  // ⭐
+    Logger.log('scriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET')); // ⭐
+    Logger.log('spreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET')); // ⭐
     Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
 
-    // License gate for all actions except 'status' and 'validate'
-    if (action !== 'status' && action !== 'validate') {
+    // License gate for all actions except 'status', 'validate', and 'capabilities'
+    if (action !== 'status' && action !== 'validate' && action !== 'capabilities') {
       Logger.log('Checking license...');
-      const lic = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅ Оба ID
+      const lic = checkLicense_(token, email, scriptId, spreadsheetId); // ✅ Оба ID
       Logger.log('License check result: ' + JSON.stringify(lic));
 
       if (!lic.ok) {
@@ -48,6 +51,82 @@ function doPost(_e) {
     }
 
     switch (action) {
+    case 'capabilities': {
+      Logger.log('Processing capabilities action');
+      const clientVersion = (data.clientVersion || '').toString();
+
+      Logger.log('clientVersion: ' + (clientVersion || 'NOT SET'));
+
+      const capabilities = {
+        serverVersion: SERVER_VERSION,
+        minClientVersion: MIN_CLIENT_VERSION,
+        supportedActions: [
+          'capabilities', 'status', 'validate', 'gm', 'gm_image',
+          'collect_config_preview', 'collect_config_execute',
+        ],
+        featureFlags: {
+          serverSideCollectConfig: true,
+          serverSideOcr: false,
+          serverSideUnpackingViewer: false,
+          serverSideVkImport: false,
+          serverSideBatchUpdate: false,
+          enhancedLogging: true,
+          rateLimitingV2: false,
+        },
+        menuEntries: [
+          {
+            id: 'collect_config',
+            name: '🎯 AI Конструктор',
+            serverSide: true,
+            clientFunction: 'openCollectConfigUI',
+          },
+          {
+            id: 'ocr_run',
+            name: '📸 OCR Обработка',
+            serverSide: false,
+            clientFunction: 'ocrRun',
+          },
+          {
+            id: 'unpacking_viewer',
+            name: '📦 Просмотр Распаковка + ЦА',
+            serverSide: false,
+            clientFunction: 'openUnpackingViewer',
+          },
+          {
+            id: 'vk_import',
+            name: '📥 Импорт VK-постов',
+            serverSide: false,
+            clientFunction: 'importVkPosts',
+          },
+          {
+            id: 'batch_update',
+            name: '🔄 Пакетное обновление',
+            serverSide: false,
+            clientFunction: 'BatchStart',
+          },
+        ],
+        endpoints: {
+          primary: 'https://script.google.com/macros/s/AKfycbyyUlB5YWP4bwv3gHHniTv_12cAHlqjYfra7fQ3m3Vri5XvZTQ_uUZZovCYeTo2_u6gQw/exec',
+          fallback: null,
+        },
+      };
+
+      try {
+        serverLog_({
+          action: 'capabilities',
+          ok: true,
+          error: null,
+          email: email,
+          token: token,
+          promptLen: 0,
+          ms: 0,
+          keySource: 'NONE',
+        });
+      } catch (_) {}
+
+      Logger.log('Returning capabilities response');
+      return json_({ok: true, data: capabilities});
+    }
     case 'gm': {
       Logger.log('Processing gm action');
       const prompt = (data.prompt || '').toString();
@@ -195,7 +274,7 @@ function doPost(_e) {
     }
     case 'status': {
       Logger.log('Processing status action');
-      const status = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅
+      const status = checkLicense_(token, email, scriptId, spreadsheetId); // ✅
       Logger.log('License check result: ' + JSON.stringify(status));
 
       try {
@@ -223,7 +302,7 @@ function doPost(_e) {
     }
     case 'validate': {
       Logger.log('Processing validate action');
-      const status = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅
+      const status = checkLicense_(token, email, scriptId, spreadsheetId); // ✅
       Logger.log('License check result: ' + JSON.stringify(status));
 
       try {
