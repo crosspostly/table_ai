@@ -9,68 +9,14 @@
 // ============================================================================
 // КОНФИГУРАЦИЯ BATCH-ОПЕРАЦИЙ
 // ============================================================================
-const BATCH_OPERATIONS = {
-  etap1: {
-    name: '📋 обновить Презентация',
-    startRow: 2,
-    endRow: 9,
-  },
-  etap2_1: {
-    name: '📦 обновить Рефлексия (часть 1)',
-    startRow: 10,
-    endRow: 23,
-  },
-  etap2_2: {
-    name: '🎯 обновить Рефлексия (часть 2)',
-    startRow: 24,
-    endRow: 36,
-  },
-  faza1: {
-    name: '🎯 обновить Фаза 1',
-    startRow: 37,
-    endRow: 41,
-  },
-  archetype: {
-    name: '🎯 обновить Архетип',
-    startRow: 42,
-    endRow: 42,
-  },
-  common_ca: {
-    name: '🎯 обновить ЦА (общая)',
-    startRow: 43,
-    endRow: 45,
-  },
-  faza2: {
-    name: '🎯 обновить Фаза 2',
-    startRow: 46,
-    endRow: 53,
-  },
-  faza3: {
-    name: '🎯 обновить фаза 3',
-    startRow: 54,
-    endRow: 58,
-  },
-  brendDesign: {
-    name: '🎯 обновить Бренд-Дизайн',
-    startRow: 59,
-    endRow: 62,
-  },
-  resume: {
-    name: '🎯 обновить Итог распаковки',
-    startRow: 63,
-    endRow: 65,
-  },
-  analizConc: {
-    name: '🎯 обновить Анализ конкурентов',
-    startRow: 66,
-    endRow: 67,
-  },
-  analizCA: {
-    name: '🎯 обновить Анализ ЦА',
-    startRow: 68,
-    endRow: 77,
-  },
-};
+// ❌ BATCH_OPERATIONS УДАЛЕНА!
+// Почему: она живёт на клиенте в файле reniewCell.gs
+// Сервер получает config в payload от клиента
+
+/*
+// СТАРАЯ КОНСТАНТА УДАЛЕНА
+// Теперь живёт в reniewCell.ts на клиенте
+*/
 
 // ============================================================================
 // ГЛОБАЛЬНЫЙ СЕМАФОР
@@ -99,18 +45,24 @@ function batchUpdateRunSegment(spreadsheetId, payload) {
   const logs = [];
 
   try {
-    const {operation, sheetName = 'Распаковка'} = payload;
+    const {operation, config, sheetName = 'Распаковка'} = payload;
 
     if (!operation) {
       throw new Error('Не указана операция');
     }
 
-    const config = BATCH_OPERATIONS[operation];
+    // ✅ ПОЛУЧАЕМ config С КЛИЕНТА
     if (!config) {
-      throw new Error('Неизвестная операция: ' + operation);
+      throw new Error('Config не передан с клиента');
     }
 
-    logs.push('🚀 Запуск батч-операции: ' + config.name);
+    // ВАЛИДАЦИЯ: проверяем что config пришёл и полный
+    if (!config.name || config.startRow === undefined || config.endRow === undefined) {
+      throw new Error('Неполный config: ' + JSON.stringify(config));
+    }
+
+    logs.push('🚀 Запуск: ' + config.name);
+    logs.push('📍 Диапазон: A' + config.startRow + ':A' + config.endRow);
 
     const ss = SpreadsheetApp.openById(spreadsheetId);
     const sheet = ss.getSheetByName(sheetName);
@@ -119,9 +71,10 @@ function batchUpdateRunSegment(spreadsheetId, payload) {
       throw new Error('Лист "' + sheetName + '" не найден');
     }
 
+    // ✅ ОБРАБАТЫВАЕМ используя config
     const result = batchUpdateProcessRange(ss, sheet, config, logs);
 
-    logs.push('✅ Батч-операция завершена: ' + result.processed + ' ячеек');
+    logs.push('✅ Завершено: ' + result.processed + ' ячеек');
 
     return {
       success: true,
@@ -136,7 +89,7 @@ function batchUpdateRunSegment(spreadsheetId, payload) {
       logs: logs,
     };
   } catch (error) {
-    logs.push('❌ Ошибка батч-операции: ' + error.message);
+    logs.push('❌ Ошибка: ' + error.message);
     return {
       success: false,
       error: error.message,
@@ -155,7 +108,12 @@ function batchUpdateRunBatch(spreadsheetId, payload) {
   const logs = [];
 
   try {
-    const {operations = Object.keys(BATCH_OPERATIONS), sheetName = 'Распаковка'} = payload;
+    const {operations, sheetName = 'Распаковка'} = payload;
+
+    // Проверяем что operations передан (массив объектов {operation, config})
+    if (!operations || !Array.isArray(operations)) {
+      throw new Error('Operations не передан или не является массивом');
+    }
 
     logs.push('🔄 Запуск полного обновления: ' + operations.length + ' операций');
 
@@ -171,10 +129,12 @@ function batchUpdateRunBatch(spreadsheetId, payload) {
     let totalErrors = 0;
     let totalSkipped = 0;
 
-    for (const operation of operations) {
-      const config = BATCH_OPERATIONS[operation];
-      if (!config) {
-        logs.push('⚠️ Пропуск неизвестной операции: ' + operation);
+    for (const opData of operations) {
+      // ✅ ПОЛУЧАЕМ config ИЗ МАССИВА
+      const {operation, config} = opData;
+
+      if (!operation || !config) {
+        logs.push('⚠️ Пропуск некорректной операции: ' + JSON.stringify(opData));
         continue;
       }
 
@@ -268,7 +228,14 @@ function batchUpdateGetStatus(spreadsheetId, payload) {
   const logs = [];
 
   try {
-    logs.push('📊 Получение статуса батч-операций');
+    const {operations} = payload;
+
+    // Проверяем что operations передан (массив объектов {operation, config})
+    if (!operations || !Array.isArray(operations)) {
+      throw new Error('Operations не передан или не является массивом');
+    }
+
+    logs.push('📊 Получение статуса батч-операций: ' + operations.length + ' операций');
 
     const ss = SpreadsheetApp.openById(spreadsheetId);
     const sheet = ss.getSheetByName('Распаковка');
@@ -282,7 +249,14 @@ function batchUpdateGetStatus(spreadsheetId, payload) {
     let processedCells = 0;
 
     // Проверяем статус каждой операции
-    Object.entries(BATCH_OPERATIONS).forEach(([key, config]) => {
+    for (const opData of operations) {
+      const {operation, config} = opData;
+
+      if (!operation || !config) {
+        logs.push('⚠️ Пропуск некорректной операции: ' + JSON.stringify(opData));
+        continue;
+      }
+
       const range = sheet.getRange(config.startRow, 1, config.endRow - config.startRow + 1, 2);
       const values = range.getValues();
 
@@ -298,7 +272,7 @@ function batchUpdateGetStatus(spreadsheetId, payload) {
         }
       });
 
-      status[key] = {
+      status[operation] = {
         name: config.name,
         total: total,
         processed: processed,
@@ -308,7 +282,7 @@ function batchUpdateGetStatus(spreadsheetId, payload) {
 
       totalCells += total;
       processedCells += processed;
-    });
+    }
 
     const overallStatus = {
       total: totalCells,
@@ -440,32 +414,33 @@ function batchUpdateShouldUpdate(sheet, row, formula, result) {
 
 /**
  * Валидация операции
- * @param {string} operation - Операция
+ * @param {string} operation - Операция (опционально)
+ * @param {Object} config - Конфигурация операции
  * @return {Object} Результат валидации
  */
-function batchUpdateValidateOperation(operation) {
+function batchUpdateValidateOperation(operation, config) {
   const errors = [];
   const warnings = [];
 
-  if (!operation) {
-    errors.push('Не указана операция');
+  if (!config) {
+    errors.push('Config не передан');
     return {valid: false, errors, warnings};
   }
 
-  const config = BATCH_OPERATIONS[operation];
-  if (!config) {
-    errors.push('Неизвестная операция: ' + operation);
-    return {valid: false, errors, warnings};
+  if (!config.name) {
+    errors.push('Не указано имя операции');
   }
 
   if (!config.startRow || !config.endRow) {
-    errors.push('Некорректная конфигурация операции');
-    return {valid: false, errors, warnings};
+    errors.push('Некорректная конфигурация операции (startRow/endRow)');
   }
 
   if (config.startRow > config.endRow) {
     errors.push('Начальная строка больше конечной');
-    return {valid: false, errors, warnings};
+  }
+
+  if (config.startRow < 1) {
+    errors.push('Начальная строка должна быть >= 1');
   }
 
   return {
@@ -477,25 +452,19 @@ function batchUpdateValidateOperation(operation) {
 
 /**
  * Получение списка всех операций
- * @return {Object} Список операций
+ * @return {Object} Информация о перемещении операций
  */
 function batchUpdateGetOperations() {
-  const operations = {};
-
-  Object.entries(BATCH_OPERATIONS).forEach(([key, config]) => {
-    operations[key] = {
-      name: config.name,
-      startRow: config.startRow,
-      endRow: config.endRow,
-      totalRows: config.endRow - config.startRow + 1,
-    };
-  });
+  // ❌ ЭТА ФУНКЦИЯ УСТАРЕЛА!
+  // BATCH_OPERATIONS теперь живёт на клиенте в reniewCell.gs
+  // Сервер получает config в payload от клиента
 
   return {
     success: true,
     data: {
-      operations: operations,
-      count: Object.keys(operations).length,
+      message: 'BATCH_OPERATIONS перенесены на клиент (reniewCell.gs)',
+      operations: {}, // Пустой объект
+      count: 0,
     },
   };
 }
@@ -510,29 +479,38 @@ function batchUpdateClearResults(spreadsheetId, payload) {
   const logs = [];
 
   try {
-    const {operations = Object.keys(BATCH_OPERATIONS), sheetName = 'Распаковка'} = payload;
+    const {operations} = payload;
 
-    logs.push('🧹 Очистка результатов операций');
+    // Проверяем что operations передан (массив объектов {operation, config})
+    if (!operations || !Array.isArray(operations)) {
+      throw new Error('Operations не передан или не является массивом');
+    }
+
+    logs.push('🧹 Очистка результатов операций: ' + operations.length + ' операций');
 
     const ss = SpreadsheetApp.openById(spreadsheetId);
-    const sheet = ss.getSheetByName(sheetName);
+    const sheet = ss.getSheetByName('Распаковка');
 
     if (!sheet) {
-      throw new Error('Лист "' + sheetName + '" не найден');
+      throw new Error('Лист "Распаковка" не найден');
     }
 
     let clearedCells = 0;
 
-    operations.forEach((operation) => {
-      const config = BATCH_OPERATIONS[operation];
-      if (config) {
-        // Очищаем колонку B для диапазона операции
-        const range = sheet.getRange(config.startRow, 2, config.endRow - config.startRow + 1, 1);
-        range.clearContent();
-        clearedCells += config.endRow - config.startRow + 1;
+    operations.forEach((opData) => {
+      const {operation, config} = opData;
 
-        logs.push('✅ Очищены результаты операции: ' + config.name);
+      if (!operation || !config) {
+        logs.push('⚠️ Пропуск некорректной операции: ' + JSON.stringify(opData));
+        return;
       }
+
+      // Очищаем колонку B для диапазона операции
+      const range = sheet.getRange(config.startRow, 2, config.endRow - config.startRow + 1, 1);
+      range.clearContent();
+      clearedCells += config.endRow - config.startRow + 1;
+
+      logs.push('✅ Очищены результаты операции: ' + config.name);
     });
 
     logs.push('✅ Очистка завершена: ' + clearedCells + ' ячеек');

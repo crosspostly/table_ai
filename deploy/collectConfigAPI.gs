@@ -336,11 +336,11 @@ function collectConfigGetExistingConfig(spreadsheetId, sheetName, cellAddress) {
     const props = PropertiesService.getScriptProperties();
     const key = 'collectConfig_' + sheetName + '_' + cellAddress;
     const configJson = props.getProperty(key);
-    
+
     if (configJson) {
       return JSON.parse(configJson);
     }
-    
+
     return null;
   } catch (e) {
     return null;
@@ -356,6 +356,6 @@ if (typeof module !== 'undefined') {
     collectConfigSave,
     collectConfigDelete,
     collectConfigGetTemplates,
-    collectConfigGetExistingConfig
+    collectConfigGetExistingConfig,
   };
 }
