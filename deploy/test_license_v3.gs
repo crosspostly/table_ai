@@ -15,7 +15,7 @@ function testLicenseModule() {
   const testScriptId = 'AKfycbyTEST123456789';
   const testSpreadsheetId = '1testSpreadsheetIdForTesting1234567890';
   
-  Logger.log('📋 Тестовые данные:');
+  Logger.log('Тестовые данные:');
   Logger.log('  Email: ' + testEmail);
   Logger.log('  Token: ' + testToken);
   Logger.log('  Script ID: ' + testScriptId);
@@ -48,16 +48,16 @@ function testLicenseModule() {
     Logger.log('=== ТЕСТИРОВАНИЕ ЗАВЕРШЕНО ===');
     
   } catch (e) {
-    Logger.log('❌ КРИТИЧЕСКАЯ ОШИБКА: ' + e.message);
+    Logger.log('КРИТИЧЕСКАЯ ОШИБКА: ' + e.message);
     Logger.log('Stack trace: ' + e.stack);
   }
 }
 
 /**
- * Тестирование серверных endpoint'ов
+ * Тестирование серверных endpoints
  */
 function testServerEndpoints() {
-  Logger.log('=== ТЕСТИРОВАНИЕ СЕРВЕРНЫХ ENDPOINT\'ОВ ===');
+  Logger.log('=== ТЕСТИРОВАНИЕ СЕРВЕРНЫХ ENDPOINTS ===');
   
   const testData = {
     email: 'sheepoff@gmail.com',
@@ -87,7 +87,7 @@ function testServerEndpoints() {
     Logger.log('Ответ: ' + responseText.substring(0, 500) + '...');
     
   } catch (e) {
-    Logger.log('❌ ОШИБКА: ' + e.message);
+    Logger.log('ОШИБКА: ' + e.message);
     Logger.log('Stack trace: ' + e.stack);
   }
   
@@ -112,12 +112,12 @@ function testServerEndpoints() {
     Logger.log('Ответ: ' + responseText.substring(0, 500) + '...');
     
   } catch (e) {
-    Logger.log('❌ ОШИБКА: ' + e.message);
+    Logger.log('ОШИБКА: ' + e.message);
     Logger.log('Stack trace: ' + e.stack);
   }
   
   Logger.log('');
-  Logger.log('=== ТЕСТИРОВАНИЕ ENDPOINT\'ОВ ЗАВЕРШЕНО ===');
+  Logger.log('=== ТЕСТИРОВАНИЕ ENDPOINTS ЗАВЕРШЕНО ===');
 }
 
 /**
@@ -144,7 +144,7 @@ function testClientFunctions() {
     Logger.log('=== ТЕСТИРОВАНИЕ КЛИЕНТСКИХ ФУНКЦИЙ ЗАВЕРШЕНО ===');
     
   } catch (e) {
-    Logger.log('❌ КРИТИЧЕСКАЯ ОШИБКА: ' + e.message);
+    Logger.log('КРИТИЧЕСКАЯ ОШИБКА: ' + e.message);
     Logger.log('Stack trace: ' + e.stack);
   }
 }
