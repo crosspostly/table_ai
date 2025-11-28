@@ -11,7 +11,7 @@ const BINDINGS_SHEET_NAME = 'Bindings';
 
 /**
  * ✅ ОСНОВНАЯ ФУНКЦИЯ: Проверка лицензии и управление привязками
- * 
+ *
  * @param {string} token - Токен лицензии
  * @param {string} email - Email пользователя
  * @param {string} scriptId - Script ID (для привязки)
@@ -26,7 +26,7 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
     // ═══════════════════════════════════════════════════════════════
     // ⭐ ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
     // ═══════════════════════════════════════════════════════════════
-    
+
     if (!token) {
       Logger.log('❌ NO_TOKEN');
       return {ok: false, error: 'NO_TOKEN'};
@@ -45,13 +45,13 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
     // ═══════════════════════════════════════════════════════════════
     // ⭐ ОТКРЫТИЕ ТАБЛИЦЫ ЛИЦЕНЗИЙ
     // ═══════════════════════════════════════════════════════════════
-    
+
     const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
-    
+
     // ═══════════════════════════════════════════════════════════════
     // ⭐ ШАГ 1: ПРОВЕРКА ЛИЦЕНЗИИ В "Tokens"
     // ═══════════════════════════════════════════════════════════════
-    
+
     const tokensSheet = ss.getSheetByName(TOKENS_SHEET_NAME);
     if (!tokensSheet) {
       Logger.log('❌ TOKENS_SHEET_NOT_FOUND');
@@ -59,7 +59,7 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
     }
 
     const licenseInfo = validateLicense_(tokensSheet, email, token);
-    
+
     if (!licenseInfo) {
       Logger.log('❌ NOT_FOUND: email=' + email + ', token=' + token.substring(0, 4) + '****');
       return {ok: false, error: 'NOT_FOUND'};
@@ -71,10 +71,10 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
     if (!licenseInfo.isActive) {
       Logger.log('❌ INACTIVE: статус = ' + licenseInfo.status);
       return {
-        ok: false, 
-        error: 'INACTIVE', 
+        ok: false,
+        error: 'INACTIVE',
         message: 'Лицензия неактивна. Статус: ' + licenseInfo.status,
-        row: licenseInfo.rowIndex + 1
+        row: licenseInfo.rowIndex + 1,
       };
     }
 
@@ -82,11 +82,11 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
     if (!licenseInfo.isNotExpired) {
       Logger.log('❌ EXPIRED: until = ' + licenseInfo.untilIso);
       return {
-        ok: false, 
-        error: 'EXPIRED', 
+        ok: false,
+        error: 'EXPIRED',
         message: 'Лицензия истекла: ' + licenseInfo.untilIso,
-        until: licenseInfo.untilIso, 
-        row: licenseInfo.rowIndex + 1
+        until: licenseInfo.untilIso,
+        row: licenseInfo.rowIndex + 1,
       };
     }
 
@@ -96,12 +96,12 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
     // ═══════════════════════════════════════════════════════════════
     // ⭐ ШАГ 2: ПРОВЕРКА ПРИВЯЗОК В "Bindings"
     // ═══════════════════════════════════════════════════════════════
-    
+
     const bindingsSheet = ensureBindingsSheet_(ss);
     const userBindings = getBindings_(bindingsSheet, email);
 
     Logger.log('📋 Найдено привязок для ' + email + ': ' + userBindings.length);
-    
+
     // Проверяем есть ли уже такой scriptId
     const existingBinding = userBindings.find(function(b) {
       return b.scriptId === scriptId;
@@ -110,11 +110,11 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
     // ═══════════════════════════════════════════════════════════════
     // ⭐ СЛУЧАЙ 1: Скрипт УЖЕ ПРИВЯЗАН
     // ═══════════════════════════════════════════════════════════════
-    
+
     if (existingBinding) {
       const usedCopies = userBindings.length;
       const totalCopies = licenseInfo.copiesCount + usedCopies;
-      
+
       Logger.log('✅ Скрипт уже привязан, доступ разрешён');
       Logger.log('  Использовано: ' + usedCopies);
       Logger.log('  Доступно: ' + licenseInfo.copiesCount);
@@ -128,24 +128,24 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
         quota: {
           remaining: licenseInfo.copiesCount,
           total: totalCopies,
-          used: usedCopies
-        }
+          used: usedCopies,
+        },
       };
     }
 
     // ═══════════════════════════════════════════════════════════════
     // ⭐ СЛУЧАЙ 2: Скрипт НЕ ПРИВЯЗАН - Проверяем квоту
     // ═══════════════════════════════════════════════════════════════
-    
+
     if (licenseInfo.copiesCount <= 0) {
       const usedCopies = userBindings.length;
-      const totalCopies = usedCopies;  // ← ИСПРАВЛЕНО: правильный расчёт
-      
+      const totalCopies = usedCopies; // ← ИСПРАВЛЕНО: правильный расчёт
+
       Logger.log('❌ Нет доступных копий');
       Logger.log('  Использовано: ' + usedCopies);
       Logger.log('  Доступно: 0');
       Logger.log('  Всего было: ' + totalCopies);
-      
+
       return {
         ok: false,
         error: 'NO_QUOTA_LEFT',
@@ -153,16 +153,16 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
         row: licenseInfo.rowIndex + 1,
         quota: {
           remaining: 0,
-          total: totalCopies,  // ← ИСПРАВЛЕНО
-          used: usedCopies
-        }
+          total: totalCopies, // ← ИСПРАВЛЕНО
+          used: usedCopies,
+        },
       };
     }
 
     // ═══════════════════════════════════════════════════════════════
     // ⭐ СЛУЧАЙ 3: Есть квота - Добавляем новую привязку
     // ═══════════════════════════════════════════════════════════════
-    
+
     Logger.log('🔄 Привязываем новый скрипт (копий доступно: ' + licenseInfo.copiesCount + ')');
 
     try {
@@ -171,22 +171,22 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
       if (!bindingAdded) {
         throw new Error('Не удалось добавить привязку');
       }
-      
+
       Logger.log('✅ Новая привязка добавлена');
-      
+
       // Сортируем "Bindings"
       sortSheetByEmail_(bindingsSheet, 3);
       Logger.log('✅ Лист "Bindings" отсортирован');
-      
+
       // Обновляем copies_count
       const newCopiesCount = licenseInfo.copiesCount - 1;
       const countUpdated = updateCopiesCount_(tokensSheet, licenseInfo.rowIndex, newCopiesCount);
       if (!countUpdated) {
         throw new Error('Не удалось обновить copies_count');
       }
-      
+
       Logger.log('✅ copies_count обновлён: ' + licenseInfo.copiesCount + ' → ' + newCopiesCount);
-      
+
       // Сортируем "Tokens"
       sortSheetByEmail_(tokensSheet, 5);
       Logger.log('✅ Лист "Tokens" отсортирован');
@@ -208,14 +208,13 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
         quota: {
           remaining: newCopiesCount,
           total: totalCopies,
-          used: usedCopies
-        }
+          used: usedCopies,
+        },
       };
     } catch (e) {
       Logger.log('❌ Ошибка привязки: ' + e.message);
       return {ok: false, error: 'BINDING_ERROR: ' + e.message, row: licenseInfo.rowIndex + 1};
     }
-    
   } catch (e) {
     Logger.log('❌ checkLicense_ EXCEPTION: ' + e.message);
     return {ok: false, error: 'LICENSE_ERROR: ' + e.message};
@@ -233,7 +232,7 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
  */
 function validateLicense_(tokensSheet, email, token) {
   const tokensData = tokensSheet.getDataRange().getValues();
-  
+
   if (!tokensData || tokensData.length < 2) {
     return null;
   }
@@ -244,30 +243,30 @@ function validateLicense_(tokensSheet, email, token) {
 
   for (let r = 1; r < tokensData.length; r++) {
     const row = tokensData[r];
-    const em = String(row[0] || '').toLowerCase().trim();  // A: Email
-    const t = String(row[1] || '').trim();                 // B: Token
-    
+    const em = String(row[0] || '').toLowerCase().trim(); // A: Email
+    const t = String(row[1] || '').trim(); // B: Token
+
     if (t && em && t === tokenS && em === emailL) {
-      const expiredDate = row[2];  // C: ExpiredDate
-      const status = String(row[3] || '').toLowerCase().trim();  // D: Status
-      const copiesCount = parseInt(String(row[4] || '0').trim()) || 0;  // E: copies_count
-      
+      const expiredDate = row[2]; // C: ExpiredDate
+      const status = String(row[3] || '').toLowerCase().trim(); // D: Status
+      const copiesCount = parseInt(String(row[4] || '0').trim()) || 0; // E: copies_count
+
       const isActive = (status === 'active' || status === 'активен' || status === 'активный');
-      
+
       let isNotExpired = true;
       let untilIso = null;
-      
+
       // ⭐ УЛУЧШЕННЫЙ ПАРСИНГ ДАТЫ
       if (expiredDate) {
         let dt = null;
-        
+
         // Если это уже Date объект из Sheets
         if (expiredDate instanceof Date) {
           dt = expiredDate;
         } else {
           // Пробуем распарсить как строку
           const dateStr = String(expiredDate).trim();
-          
+
           // Поддержка форматов: 2026-06-01, 01.06.2026, 06/01/2026
           if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
             // YYYY-MM-DD → добавляем время чтобы избежать UTC проблем
@@ -276,24 +275,24 @@ function validateLicense_(tokensSheet, email, token) {
             dt = new Date(dateStr);
           }
         }
-        
+
         // Проверяем что дата валидна
         if (dt && !isNaN(dt.getTime())) {
           isNotExpired = dt >= now;
           untilIso = dt.toISOString();
-          
+
           Logger.log('📅 Дата истечения: ' + untilIso);
           Logger.log('📅 Сегодня: ' + now.toISOString());
           Logger.log('📅 Истекла: ' + !isNotExpired);
         } else {
           Logger.log('⚠️ ВНИМАНИЕ: Некорректный формат даты в ExpiredDate: ' + expiredDate);
           Logger.log('⚠️ Дата будет игнорирована, лицензия считается бессрочной');
-          isNotExpired = true;  // Если дата некорректна - не блокируем
+          isNotExpired = true; // Если дата некорректна - не блокируем
         }
       } else {
         Logger.log('ℹ️ ExpiredDate не указан - лицензия бессрочная');
       }
-      
+
       return {
         rowIndex: r,
         email: em,
@@ -303,11 +302,11 @@ function validateLicense_(tokensSheet, email, token) {
         expiredDate: expiredDate,
         isNotExpired: isNotExpired,
         untilIso: untilIso,
-        copiesCount: copiesCount
+        copiesCount: copiesCount,
       };
     }
   }
-  
+
   return null;
 }
 
@@ -321,21 +320,21 @@ function getBindings_(bindingsSheet, email) {
   const bindingsData = bindingsSheet.getDataRange().getValues();
   const emailL = String(email).toLowerCase().trim();
   const userBindings = [];
-  
+
   for (let r = 1; r < bindingsData.length; r++) {
     const row = bindingsData[r];
-    const bindEmail = String(row[0] || '').toLowerCase().trim();  // A: Email
-    
+    const bindEmail = String(row[0] || '').toLowerCase().trim(); // A: Email
+
     if (bindEmail === emailL) {
       userBindings.push({
         rowIndex: r,
         email: bindEmail,
-        sheetId: String(row[1] || '').trim(),   // B: sheet_ids
-        scriptId: String(row[2] || '').trim()   // C: script_ids
+        sheetId: String(row[1] || '').trim(), // B: sheet_ids
+        scriptId: String(row[2] || '').trim(), // C: script_ids
       });
     }
   }
-  
+
   return userBindings;
 }
 
@@ -366,7 +365,7 @@ function addBinding_(bindingsSheet, email, spreadsheetId, scriptId) {
  */
 function updateCopiesCount_(tokensSheet, rowIndex, newValue) {
   try {
-    tokensSheet.getRange(rowIndex + 1, 5).setValue(newValue);  // E: copies_count
+    tokensSheet.getRange(rowIndex + 1, 5).setValue(newValue); // E: copies_count
     return true;
   } catch (e) {
     Logger.log('❌ updateCopiesCount_ error: ' + e.message);
@@ -383,10 +382,10 @@ function updateCopiesCount_(tokensSheet, rowIndex, newValue) {
 function sortSheetByEmail_(sheet, numColumns) {
   try {
     const lastRow = sheet.getLastRow();
-    if (lastRow <= 1) return true;  // Нечего сортировать
-    
+    if (lastRow <= 1) return true; // Нечего сортировать
+
     const range = sheet.getRange(2, 1, lastRow - 1, numColumns);
-    range.sort(1);  // Сортировка по колонке 1 (A = Email)
+    range.sort(1); // Сортировка по колонке 1 (A = Email)
     return true;
   } catch (e) {
     Logger.log('❌ sortSheetByEmail_ error: ' + e.message);
@@ -401,13 +400,13 @@ function sortSheetByEmail_(sheet, numColumns) {
  */
 function ensureBindingsSheet_(ss) {
   let sheet = ss.getSheetByName(BINDINGS_SHEET_NAME);
-  
+
   if (!sheet) {
     Logger.log('⚠️ Лист "Bindings" не найден, создаём...');
     sheet = ss.insertSheet(BINDINGS_SHEET_NAME);
     sheet.appendRow(['Email', 'sheet_ids', 'script_ids']);
     Logger.log('✅ Лист "Bindings" создан');
   }
-  
+
   return sheet;
 }

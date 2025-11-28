@@ -511,34 +511,39 @@
         systemSheet.appendChild(option);
       });
       
+      // Load server logs into UI
+      if (data.logs && Array.isArray(data.logs)) {
+        data.logs.forEach(function(logEntry) {
+          if (logEntry && logEntry.message) {
+            addLogEntry(logEntry.message, logEntry.level.toLowerCase());
+          }
+        });
+      }
+      
       loadTemplatesList();
-      loadExistingConfig();
+      loadExistingConfig(data.existingConfig);
     }
     
-    function loadExistingConfig() {
-      google.script.run
-        .withSuccessHandler(function(config) {
-          if (config) {
-            if (config.systemPrompt) {
-              document.getElementById('systemSheet').value = config.systemPrompt.sheet;
-              document.getElementById('systemCell').value = config.systemPrompt.cell;
-            }
-            
-            if (config.userData && config.userData.length > 0) {
-              config.userData.forEach(function(data) {
-                addUserDataRow(data.sheet, data.cell);
-              });
-            } else {
-              addUserDataRow();
-            }
-          } else {
-            addUserDataRow();
-          }
-        })
-        .withFailureHandler(function() {
+    function loadExistingConfig(existingConfig) {
+      // Use the config passed from initialize() if available
+      const config = existingConfig !== undefined ? existingConfig : null;
+      
+      if (config) {
+        if (config.systemPrompt) {
+          document.getElementById('systemSheet').value = config.systemPrompt.sheet;
+          document.getElementById('systemCell').value = config.systemPrompt.cell;
+        }
+        
+        if (config.userData && config.userData.length > 0) {
+          config.userData.forEach(function(data) {
+            addUserDataRow(data.sheet, data.cell);
+          });
+        } else {
           addUserDataRow();
-        })
-        .loadCollectConfig(sheetName, cellAddress);
+        }
+      } else {
+        addUserDataRow();
+      }
     }
     
     function addUserDataRow(sheet, cell) {

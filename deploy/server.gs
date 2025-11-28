@@ -4,7 +4,7 @@
 // ===== Constants =====
 const S_GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
-const LICENSE_SHEET_NAME = 'Tokens';
+// ⭐ Для привязки скрипта до пользователя/таблиці
 const LOG_SHEET_NAME = 'Логи';
 const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
 
@@ -21,23 +21,23 @@ function doPost(_e) {
     const action = (data.action || '').toString();
     const token = (data.token || '').toString();
     const email = (data.email || '').toString();
-    
+
     // ⭐ ОБА ID для разных целей
-    const scriptId = (data.scriptId || '').toString();      // ⭐ Для привязки
+    const scriptId = (data.scriptId || '').toString(); // ⭐ Для привязки
     const spreadsheetId = (data.spreadsheetId || '').toString(); // ⭐ Для работы
     const apiKey = (data.apiKey || '').toString();
 
     Logger.log('action: ' + action);
     Logger.log('email: ' + (email ? 'SET' : 'NOT SET'));
     Logger.log('token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
-    Logger.log('scriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET'));  // ⭐
-    Logger.log('spreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET'));  // ⭐
+    Logger.log('scriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET')); // ⭐
+    Logger.log('spreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET')); // ⭐
     Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
 
     // License gate for all actions except 'status' and 'validate'
     if (action !== 'status' && action !== 'validate') {
       Logger.log('Checking license...');
-      const lic = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅ Оба ID
+      const lic = checkLicense_(token, email, scriptId, spreadsheetId); // ✅ Оба ID
       Logger.log('License check result: ' + JSON.stringify(lic));
 
       if (!lic.ok) {
@@ -195,7 +195,7 @@ function doPost(_e) {
     }
     case 'status': {
       Logger.log('Processing status action');
-      const status = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅
+      const status = checkLicense_(token, email, scriptId, spreadsheetId); // ✅
       Logger.log('License check result: ' + JSON.stringify(status));
 
       try {
@@ -223,7 +223,7 @@ function doPost(_e) {
     }
     case 'validate': {
       Logger.log('Processing validate action');
-      const status = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅
+      const status = checkLicense_(token, email, scriptId, spreadsheetId); // ✅
       Logger.log('License check result: ' + JSON.stringify(status));
 
       try {
@@ -383,6 +383,326 @@ function doPost(_e) {
 
       Logger.log('Returning successful response');
       return json_({ok: true, data: result, logs: logs});
+    }
+    case 'collect_config_init': {
+      Logger.log('Processing collect_config_init action');
+      const spreadsheetId = (data.spreadsheetId || '').toString();
+      const sheetName = (data.sheetName || '').toString();
+      const cellAddress = (data.cellAddress || '').toString();
+      const logs = [];
+
+      const t0 = Date.now();
+      let ok = true;
+      let err = null;
+      let result = {};
+
+      try {
+        if (!spreadsheetId) throw new Error('NO_SPREADSHEET_ID');
+
+        logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🚀 CollectConfig server initialization'});
+
+        // Get spreadsheet info
+        const ss = SpreadsheetApp.openById(spreadsheetId);
+        const sheets = ss.getSheets().map(function(s) {
+          return s.getName();
+        });
+
+        logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📋 Found ${sheets.length} sheets`});
+
+        // Load existing config if any
+        const existingConfig = serverLoadCollectConfig_(spreadsheetId, sheetName, cellAddress, logs);
+
+        result = {
+          sheets: sheets,
+          existingConfig: existingConfig,
+          version: '3.0.0',
+          lastUpdate: '2025-06-18 00:00:00',
+        };
+
+        logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ Initialization complete'});
+      } catch (ex) {
+        ok = false;
+        err = String(ex && ex.message || ex);
+      }
+
+      try {
+        serverLog_({
+          action: 'collect_config_init',
+          ok: ok,
+          error: err,
+          email: email,
+          token: token,
+          promptLen: JSON.stringify(result).length,
+          ms: Date.now() - t0,
+        });
+      } catch (_) {}
+      if (!ok) return json_({ok: false, error: err, logs: logs}, 400);
+      return json_({ok: true, data: result, logs: logs});
+    }
+    case 'collect_config_save': {
+      Logger.log('Processing collect_config_save action');
+      const spreadsheetId = (data.spreadsheetId || '').toString();
+      const sheetName = (data.sheetName || '').toString();
+      const cellAddress = (data.cellAddress || '').toString();
+      const config = data.config || {};
+      const logs = [];
+
+      const t0 = Date.now();
+      let ok = true;
+      let err = null;
+
+      try {
+        if (!spreadsheetId) throw new Error('NO_SPREADSHEET_ID');
+        if (!sheetName) throw new Error('NO_SHEET_NAME');
+        if (!cellAddress) throw new Error('NO_CELL_ADDRESS');
+        if (!config) throw new Error('NO_CONFIG');
+
+        logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '💾 Saving CollectConfig configuration'});
+
+        const saved = serverSaveCollectConfig_(spreadsheetId, sheetName, cellAddress, config, logs);
+        if (saved) {
+          logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ Configuration saved successfully'});
+        } else {
+          throw new Error('Failed to save configuration');
+        }
+      } catch (ex) {
+        ok = false;
+        err = String(ex && ex.message || ex);
+      }
+
+      try {
+        serverLog_({
+          action: 'collect_config_save',
+          ok: ok,
+          error: err,
+          email: email,
+          token: token,
+          promptLen: JSON.stringify(config).length,
+          ms: Date.now() - t0,
+        });
+      } catch (_) {}
+      if (!ok) return json_({ok: false, error: err, logs: logs}, 400);
+      return json_({ok: true, logs: logs});
+    }
+    case 'collect_config_delete': {
+      Logger.log('Processing collect_config_delete action');
+      const spreadsheetId = (data.spreadsheetId || '').toString();
+      const sheetName = (data.sheetName || '').toString();
+      const cellAddress = (data.cellAddress || '').toString();
+      const logs = [];
+
+      const t0 = Date.now();
+      let ok = true;
+      let err = null;
+      let deleted = false;
+
+      try {
+        if (!spreadsheetId) throw new Error('NO_SPREADSHEET_ID');
+        if (!sheetName) throw new Error('NO_SHEET_NAME');
+        if (!cellAddress) throw new Error('NO_CELL_ADDRESS');
+
+        logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🗑️ Deleting CollectConfig configuration'});
+
+        deleted = serverDeleteCollectConfig_(spreadsheetId, sheetName, cellAddress, logs);
+        if (deleted) {
+          logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ Configuration deleted successfully'});
+        } else {
+          logs.push({timestamp: new Date().toISOString(), level: 'WARN', message: '⚠️ Configuration not found'});
+        }
+      } catch (ex) {
+        ok = false;
+        err = String(ex && ex.message || ex);
+      }
+
+      try {
+        serverLog_({
+          action: 'collect_config_delete',
+          ok: ok,
+          error: err,
+          email: email,
+          token: token,
+          promptLen: 0,
+          ms: Date.now() - t0,
+        });
+      } catch (_) {}
+      if (!ok) return json_({ok: false, error: err, logs: logs}, 400);
+      return json_({ok: true, data: {deleted: deleted}, logs: logs});
+    }
+    case 'collect_config_templates_get_all': {
+      Logger.log('Processing collect_config_templates_get_all action');
+      const logs = [];
+
+      const t0 = Date.now();
+      let ok = true;
+      let err = null;
+      let templates = {};
+
+      try {
+        const user = email || 'anonymous';
+        templates = getAllTemplates(user);
+
+        logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📋 Loaded ${Object.keys(templates).length} templates`});
+      } catch (ex) {
+        ok = false;
+        err = String(ex && ex.message || ex);
+      }
+
+      try {
+        serverLog_({
+          action: 'collect_config_templates_get_all',
+          ok: ok,
+          error: err,
+          email: email,
+          token: token,
+          promptLen: JSON.stringify(templates).length,
+          ms: Date.now() - t0,
+        });
+      } catch (_) {}
+      if (!ok) return json_({ok: false, error: err, logs: logs}, 400);
+      return json_({ok: true, data: templates, logs: logs});
+    }
+    case 'collect_config_templates_get': {
+      Logger.log('Processing collect_config_templates_get action');
+      const templateName = (data.templateName || '').toString();
+      const logs = [];
+
+      const t0 = Date.now();
+      let ok = true;
+      let err = null;
+      let template = null;
+
+      try {
+        if (!templateName) throw new Error('NO_TEMPLATE_NAME');
+
+        const user = email || 'anonymous';
+        template = getTemplate(user, templateName);
+
+        logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📋 Loaded template: ${templateName}`});
+      } catch (ex) {
+        ok = false;
+        err = String(ex && ex.message || ex);
+      }
+
+      try {
+        serverLog_({
+          action: 'collect_config_templates_get',
+          ok: ok,
+          error: err,
+          email: email,
+          token: token,
+          promptLen: template ? JSON.stringify(template).length : 0,
+          ms: Date.now() - t0,
+        });
+      } catch (_) {}
+      if (!ok) return json_({ok: false, error: err, logs: logs}, 400);
+      return json_({ok: true, data: template, logs: logs});
+    }
+    case 'collect_config_templates_save': {
+      Logger.log('Processing collect_config_templates_save action');
+      const templateName = (data.templateName || '').toString();
+      const config = data.config || {};
+      const logs = [];
+
+      const t0 = Date.now();
+      let ok = true;
+      let err = null;
+      let result = null;
+
+      try {
+        if (!templateName) throw new Error('NO_TEMPLATE_NAME');
+        if (!config) throw new Error('NO_CONFIG');
+
+        const user = email || 'anonymous';
+        result = saveTemplate(user, templateName, config);
+
+        logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `💾 Saved template: ${templateName}`});
+      } catch (ex) {
+        ok = false;
+        err = String(ex && ex.message || ex);
+      }
+
+      try {
+        serverLog_({
+          action: 'collect_config_templates_save',
+          ok: ok,
+          error: err,
+          email: email,
+          token: token,
+          promptLen: JSON.stringify(config).length,
+          ms: Date.now() - t0,
+        });
+      } catch (_) {}
+      if (!ok) return json_({ok: false, error: err, logs: logs}, 400);
+      return json_({ok: true, data: result, logs: logs});
+    }
+    case 'collect_config_templates_delete': {
+      Logger.log('Processing collect_config_templates_delete action');
+      const templateName = (data.templateName || '').toString();
+      const logs = [];
+
+      const t0 = Date.now();
+      let ok = true;
+      let err = null;
+      let result = null;
+
+      try {
+        if (!templateName) throw new Error('NO_TEMPLATE_NAME');
+
+        const user = email || 'anonymous';
+        result = deleteTemplate(user, templateName);
+
+        logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `🗑️ Deleted template: ${templateName}`});
+      } catch (ex) {
+        ok = false;
+        err = String(ex && ex.message || ex);
+      }
+
+      try {
+        serverLog_({
+          action: 'collect_config_templates_delete',
+          ok: ok,
+          error: err,
+          email: email,
+          token: token,
+          promptLen: 0,
+          ms: Date.now() - t0,
+        });
+      } catch (_) {}
+      if (!ok) return json_({ok: false, error: err, logs: logs}, 400);
+      return json_({ok: true, data: result, logs: logs});
+    }
+    case 'collect_config_templates_stats': {
+      Logger.log('Processing collect_config_templates_stats action');
+      const logs = [];
+
+      const t0 = Date.now();
+      let ok = true;
+      let err = null;
+      let stats = {count: 0, totalSize: 0, templates: []};
+
+      try {
+        const user = email || 'anonymous';
+        stats = getTemplatesStats(user);
+
+        logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📊 Template stats: ${stats.count} templates, ${stats.totalSize} bytes`});
+      } catch (ex) {
+        ok = false;
+        err = String(ex && ex.message || ex);
+      }
+
+      try {
+        serverLog_({
+          action: 'collect_config_templates_stats',
+          ok: ok,
+          error: err,
+          email: email,
+          token: token,
+          promptLen: JSON.stringify(stats).length,
+          ms: Date.now() - t0,
+        });
+      } catch (_) {}
+      if (!ok) return json_({ok: false, error: err, logs: logs}, 400);
+      return json_({ok: true, data: stats, logs: logs});
     }
     default:
       Logger.log('ERROR: Unknown action - ' + action);
@@ -625,6 +945,158 @@ function maskToken_(t) {
   const s = String(t || '');
   if (s.length <= 4) return '****';
   return s.substring(0, 4) + '****';
+}
+
+// ===== CollectConfig Server-Side Configuration Management =====
+
+/**
+ * Load CollectConfig configuration from server-side ConfigData sheet
+ * @param {string} spreadsheetId - Spreadsheet ID
+ * @param {string} sheetName - Sheet name
+ * @param {string} cellAddress - Cell address
+ * @param {Array} logs - Array to collect log entries
+ * @return {Object|null} Configuration object or null
+ */
+function serverLoadCollectConfig_(spreadsheetId, sheetName, cellAddress, logs) {
+  try {
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const configSheet = ss.getSheetByName('ConfigData');
+
+    if (!configSheet) {
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 ConfigData sheet not found, creating new one'});
+      return null;
+    }
+
+    const data = configSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
+        let userData = [];
+        try {
+          if (data[i][4]) {
+            userData = JSON.parse(data[i][4]);
+          }
+        } catch (e) {
+          logs.push({timestamp: new Date().toISOString(), level: 'WARN', message: '⚠️ Failed to parse userData JSON'});
+        }
+
+        const config = {
+          systemPrompt: (data[i][2] && data[i][3]) ? {
+            sheet: data[i][2],
+            cell: data[i][3],
+          } : null,
+          userData: userData,
+        };
+
+        logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '✅ Found existing configuration'});
+        return config;
+      }
+    }
+
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 No existing configuration found'});
+    return null;
+  } catch (error) {
+    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `❌ Error loading configuration: ${error.message}`});
+    return null;
+  }
+}
+
+/**
+ * Save CollectConfig configuration to server-side ConfigData sheet
+ * @param {string} spreadsheetId - Spreadsheet ID
+ * @param {string} sheetName - Sheet name
+ * @param {string} cellAddress - Cell address
+ * @param {Object} config - Configuration object
+ * @param {Array} logs - Array to collect log entries
+ * @return {boolean} Success status
+ */
+function serverSaveCollectConfig_(spreadsheetId, sheetName, cellAddress, config, logs) {
+  try {
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    let configSheet = ss.getSheetByName('ConfigData');
+
+    if (!configSheet) {
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 Creating ConfigData sheet'});
+      configSheet = ss.insertSheet('ConfigData');
+      configSheet.hideSheet();
+
+      // Headers
+      const headers = ['Sheet', 'Cell', 'SystemPromptSheet', 'SystemPromptCell', 'UserDataJSON', 'CreatedAt', 'LastRun'];
+      configSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+        .setFontWeight('bold')
+        .setBackground('#4285f4')
+        .setFontColor('white');
+    }
+
+    // Find existing row
+    const data = configSheet.getDataRange().getValues();
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    const rowData = [
+      sheetName,
+      cellAddress,
+      config.systemPrompt ? config.systemPrompt.sheet : '',
+      config.systemPrompt ? config.systemPrompt.cell : '',
+      JSON.stringify(config.userData || []),
+      rowIndex === -1 ? new Date().toISOString() : data[rowIndex - 1][5],
+      new Date().toISOString(),
+    ];
+
+    if (rowIndex > 0) {
+      // Update existing
+      configSheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '✅ Updated existing configuration'});
+    } else {
+      // Add new
+      configSheet.appendRow(rowData);
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '✅ Added new configuration'});
+    }
+
+    return true;
+  } catch (error) {
+    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `❌ Error saving configuration: ${error.message}`});
+    return false;
+  }
+}
+
+/**
+ * Delete CollectConfig configuration from server-side ConfigData sheet
+ * @param {string} spreadsheetId - Spreadsheet ID
+ * @param {string} sheetName - Sheet name
+ * @param {string} cellAddress - Cell address
+ * @param {Array} logs - Array to collect log entries
+ * @return {boolean} True if deleted, false if not found
+ */
+function serverDeleteCollectConfig_(spreadsheetId, sheetName, cellAddress, logs) {
+  try {
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const configSheet = ss.getSheetByName('ConfigData');
+
+    if (!configSheet) {
+      logs.push({timestamp: new Date().toISOString(), level: 'WARN', message: '⚠️ ConfigData sheet not found'});
+      return false;
+    }
+
+    const data = configSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === sheetName && data[i][1] === cellAddress) {
+        configSheet.deleteRow(i + 1);
+        logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `🗑️ Deleted configuration: ${sheetName}!${cellAddress}`});
+        return true;
+      }
+    }
+
+    logs.push({timestamp: new Date().toISOString(), level: 'WARN', message: '⚠️ Configuration not found for deletion'});
+    return false;
+  } catch (error) {
+    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `❌ Error deleting configuration: ${error.message}`});
+    return false;
+  }
 }
 
 // ===== CollectConfig Server Functions =====

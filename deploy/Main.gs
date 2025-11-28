@@ -638,9 +638,9 @@ function onOpen() {
 function listExposedFunctions() {
   try {
     addLog('📱 Запрос списка функций от мобильного приложения', 'INFO');
-    
+
     const functions = [];
-    
+
     // AI Constructor меню
     functions.push(
       {
@@ -651,7 +651,7 @@ function listExposedFunctions() {
         menuPath: '🎯 AI Конструктор',
         order: 1,
         returnsHtml: false,
-        parameters: []
+        parameters: [],
       },
       {
         name: 'refreshCellWithConfig',
@@ -666,12 +666,12 @@ function listExposedFunctions() {
             name: 'targetCell',
             type: 'string',
             description: 'Адрес ячейки для обновления (опционально)',
-            required: false
-          }
-        ]
-      }
+            required: false,
+          },
+        ],
+      },
     );
-    
+
     // Batch операции из BATCH_OPERATIONS
     if (typeof BATCH_OPERATIONS !== 'undefined') {
       let batchOrder = 10;
@@ -690,13 +690,13 @@ function listExposedFunctions() {
               name: 'sheetName',
               type: 'string',
               description: 'Имя листа для обработки',
-              required: false
-            }
-          ]
+              required: false,
+            },
+          ],
         });
       }
     }
-    
+
     // Основное меню Table AI
     functions.push(
       {
@@ -707,7 +707,7 @@ function listExposedFunctions() {
         menuPath: '🤖 Table AI',
         order: 100,
         returnsHtml: true,
-        parameters: []
+        parameters: [],
       },
       {
         name: 'importVkPosts',
@@ -722,9 +722,9 @@ function listExposedFunctions() {
             name: 'sourceUrl',
             type: 'string',
             description: 'URL источника VK постов',
-            required: false
-          }
-        ]
+            required: false,
+          },
+        ],
       },
       {
         name: 'ocrRun',
@@ -739,9 +739,9 @@ function listExposedFunctions() {
             name: 'range',
             type: 'string',
             description: 'Диапазон ячеек с изображениями',
-            required: false
-          }
-        ]
+            required: false,
+          },
+        ],
       },
       {
         name: 'openSettingsUI',
@@ -751,7 +751,7 @@ function listExposedFunctions() {
         menuPath: '🤖 Table AI',
         order: 103,
         returnsHtml: true,
-        parameters: []
+        parameters: [],
       },
       {
         name: 'checkLicenseStatusUI',
@@ -761,10 +761,10 @@ function listExposedFunctions() {
         menuPath: '🤖 Table AI',
         order: 104,
         returnsHtml: false,
-        parameters: []
-      }
+        parameters: [],
+      },
     );
-    
+
     // Dev функции (если в DEV_MODE)
     if (DEV_MODE) {
       functions.push(
@@ -776,7 +776,7 @@ function listExposedFunctions() {
           menuPath: '🧰 DEV',
           order: 200,
           returnsHtml: false,
-          parameters: []
+          parameters: [],
         },
         {
           name: 'exportLogsToSheet',
@@ -786,7 +786,7 @@ function listExposedFunctions() {
           menuPath: '🧰 DEV',
           order: 201,
           returnsHtml: false,
-          parameters: []
+          parameters: [],
         },
         {
           name: 'clearLogs',
@@ -796,7 +796,7 @@ function listExposedFunctions() {
           menuPath: '🧰 DEV',
           order: 202,
           returnsHtml: false,
-          parameters: []
+          parameters: [],
         },
         {
           name: 'testServerConnection',
@@ -806,7 +806,7 @@ function listExposedFunctions() {
           menuPath: '🧰 DEV',
           order: 203,
           returnsHtml: false,
-          parameters: []
+          parameters: [],
         },
         {
           name: 'runDevSelfTest',
@@ -816,11 +816,11 @@ function listExposedFunctions() {
           menuPath: '🧰 DEV',
           order: 204,
           returnsHtml: false,
-          parameters: []
-        }
+          parameters: [],
+        },
       );
     }
-    
+
     const result = {
       success: true,
       functions: functions.sort((a, b) => a.order - b.order),
@@ -828,20 +828,19 @@ function listExposedFunctions() {
         version: '3.0.0',
         devMode: DEV_MODE,
         totalFunctions: functions.length,
-        timestamp: new Date().toISOString()
-      }
+        timestamp: new Date().toISOString(),
+      },
     };
-    
+
     addLog(`✅ Список функций сформирован: ${functions.length} функций`, 'INFO');
     return result;
-    
   } catch (e) {
     const errorMsg = `Ошибка формирования списка функций: ${e.message}`;
     addLog(`❌ ${errorMsg}`, 'ERROR');
     return {
       success: false,
       error: errorMsg,
-      functions: []
+      functions: [],
     };
   }
 }
@@ -855,16 +854,16 @@ function listExposedFunctions() {
 function executeFunction(functionName, parameters = {}) {
   try {
     addLog(`📱 Запуск функции "${functionName}" из мобильного приложения`, 'INFO');
-    
+
     // Проверяем существование функции
     if (typeof this[functionName] !== 'function') {
       throw new Error(`Функция "${functionName}" не найдена`);
     }
-    
+
     // Выполняем функцию с параметрами
     const startTime = Date.now();
     let result;
-    
+
     try {
       if (Object.keys(parameters).length > 0) {
         result = this[functionName](parameters);
@@ -874,29 +873,28 @@ function executeFunction(functionName, parameters = {}) {
     } catch (funcError) {
       throw funcError;
     }
-    
+
     const executionTime = Date.now() - startTime;
-    
+
     const response = {
       success: true,
       functionName: functionName,
       result: result,
       executionTime: executionTime,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
-    
+
     addLog(`✅ Функция "${functionName}" выполнена за ${executionTime}мс`, 'INFO');
     return response;
-    
   } catch (e) {
     const errorMsg = `Ошибка выполнения функции "${functionName}": ${e.message}`;
     addLog(`❌ ${errorMsg}`, 'ERROR');
-    
+
     return {
       success: false,
       functionName: functionName,
       error: errorMsg,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 }
@@ -916,19 +914,18 @@ function getScriptStatus() {
       version: '3.0.0',
       lastUpdated: new Date().toISOString(),
       user: Session.getEffectiveUser().getEmail(),
-      functions: listExposedFunctions()
+      functions: listExposedFunctions(),
     };
-    
+
     addLog('📱 Запрос статуса скрипта от мобильного приложения', 'INFO');
     return status;
-    
   } catch (e) {
     const errorMsg = `Ошибка получения статуса скрипта: ${e.message}`;
     addLog(`❌ ${errorMsg}`, 'ERROR');
-    
+
     return {
       success: false,
-      error: errorMsg
+      error: errorMsg,
     };
   }
 }
@@ -1171,17 +1168,17 @@ function runDevSelfTest() {
 function migrateLicenseKeysIfNeeded_() {
   try {
     const props = PropertiesService.getScriptProperties();
-    
+
     // Проверяем наличие СТАРЫХ ключей
     const oldEmail = props.getProperty('LICENSEEMAIL');
     const oldToken = props.getProperty('LICENSETOKEN');
-    
+
     // Проверяем наличие НОВЫХ ключей
     const newEmail = props.getProperty('LICENSE_EMAIL');
     const newToken = props.getProperty('LICENSE_TOKEN');
-    
+
     let migrated = false;
-    
+
     // Если есть старый email, но нет нового - мигрируем
     if (oldEmail && !newEmail) {
       props.setProperty('LICENSE_EMAIL', oldEmail);
@@ -1189,7 +1186,7 @@ function migrateLicenseKeysIfNeeded_() {
       Logger.log('✅ Migrated LICENSEEMAIL → LICENSE_EMAIL');
       migrated = true;
     }
-    
+
     // Если есть старый token, но нет нового - мигрируем
     if (oldToken && !newToken) {
       props.setProperty('LICENSE_TOKEN', oldToken);
@@ -1197,11 +1194,11 @@ function migrateLicenseKeysIfNeeded_() {
       Logger.log('✅ Migrated LICENSETOKEN → LICENSE_TOKEN');
       migrated = true;
     }
-    
+
     if (migrated) {
       addLog('✅ Выполнена миграция лицензионных ключей в новый формат', 'INFO');
     }
-    
+
     return migrated;
   } catch (e) {
     Logger.log('⚠️ Migration error (non-critical): ' + e.message);
@@ -1212,19 +1209,19 @@ function migrateLicenseKeysIfNeeded_() {
 function getLicenseEmail() {
   // Автомиграция при первом обращении
   migrateLicenseKeysIfNeeded_();
-  
+
   return PropertiesService.getScriptProperties().getProperty('LICENSE_EMAIL') || '';
 }
 function getLicenseToken() {
   // Автомиграция при первом обращении
   migrateLicenseKeysIfNeeded_();
-  
+
   return PropertiesService.getScriptProperties().getProperty('LICENSE_TOKEN') || '';
 }
 function hasStoredLicense() {
   // Автомиграция перед проверкой
   migrateLicenseKeysIfNeeded_();
-  
+
   try {
     const email = getLicenseEmail();
     const token = getLicenseToken();
@@ -1276,7 +1273,7 @@ function seedLicenseCredentialsFromParametersSheet() {
     // Проверяем через функции-геттеры (они уже содержат миграцию)
     const curEmail = getLicenseEmail();
     const curToken = getLicenseToken();
-    
+
     // Если УЖЕ есть - НЕ перезаписываем
     if (curEmail && curToken) {
       Logger.log('DEBUG: License already exists, skipping seed');
@@ -1293,7 +1290,7 @@ function seedLicenseCredentialsFromParametersSheet() {
     // Читаем из G1 и H1
     const email = String(sheet.getRange('G1').getDisplayValue() || '').trim();
     const token = String(sheet.getRange('H1').getDisplayValue() || '').trim();
-    
+
     if (!email || !token) {
       Logger.log('DEBUG: G1 or H1 empty (G1="' + email + '", H1="' + (token ? '***' : '') + '")');
       return false;
@@ -1303,11 +1300,11 @@ function seedLicenseCredentialsFromParametersSheet() {
     const scriptProps = PropertiesService.getScriptProperties();
     scriptProps.setProperty('LICENSE_EMAIL', email);
     scriptProps.setProperty('LICENSE_TOKEN', token);
-    
+
     Logger.log('INFO: License credentials seeded from Параметры sheet');
     Logger.log('  - LICENSE_EMAIL: ' + email);
     Logger.log('  - LICENSE_TOKEN: ' + token.substring(0, 4) + '***');
-    
+
     addLog('✅ Лицензия загружена из листа "Параметры"', 'INFO');
     return true;
   } catch (e) {
@@ -1326,9 +1323,9 @@ function serverStatus() {
   // 1) Читаем значения из ScriptProperties (после возможного seed)
   const email = getLicenseEmail();
   const token = getLicenseToken();
-  
+
   // ⭐ ОБА ID
-  const scriptId = ScriptApp.getScriptId();             // ⭐ Для привязки лицензии
+  const scriptId = ScriptApp.getScriptId(); // ⭐ Для привязки лицензии
   const spreadsheetId = SpreadsheetApp.getActive().getId(); // ⭐ Для работы и названия
 
   if (DEV_MODE) {
@@ -1339,7 +1336,7 @@ function serverStatus() {
     action: 'status',
     email: email,
     token: token,
-    scriptId: scriptId,        // ⭐ Для привязки
+    scriptId: scriptId, // ⭐ Для привязки
     spreadsheetId: spreadsheetId, // ⭐ Для названия
   };
 
@@ -1382,7 +1379,7 @@ function serverStatus() {
 /**
  * ✅ ВАЛИДАЦИЯ ЛИЦЕНЗИИ (без привязки)
  * Используется в saveSettingsData для проверки перед сохранением
- * 
+ *
  * @param {string} email - Email пользователя
  * @param {string} token - Токен лицензии
  * @return {Object} Результат проверки лицензии
@@ -1394,14 +1391,14 @@ function validateLicense(email, token) {
     Logger.log('token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
 
     // ⭐ ОБА ID
-    const scriptId = ScriptApp.getScriptId();             // ⭐ Для привязки
+    const scriptId = ScriptApp.getScriptId(); // ⭐ Для привязки
     const spreadsheetId = SpreadsheetApp.getActive().getId(); // ⭐ Для работы и названия
 
     const payload = {
-      action: 'validate',  // ⭐ ВАЛИДАЦИЯ БЕЗ ПРИВЯЗКИ
+      action: 'validate', // ⭐ ВАЛИДАЦИЯ БЕЗ ПРИВЯЗКИ
       email: email,
       token: token,
-      scriptId: scriptId,        // ⭐ Для привязки
+      scriptId: scriptId, // ⭐ Для привязки
       spreadsheetId: spreadsheetId, // ⭐ Для названия
     };
 
@@ -1470,7 +1467,7 @@ function openSettingsUI() {
 function getSettingsData() {
   try {
     Logger.log('=== getSettingsData START ===');
-    
+
     // Автомиграция перед чтением
     migrateLicenseKeysIfNeeded_();
 
@@ -1517,12 +1514,12 @@ function saveSettingsData(data) {
     // ⭐ ШАГ 1: ВАЛИДАЦИЯ ЛИЦЕНЗИИ (если email/token введены)
     // ═══════════════════════════════════════════════════════════════
 
-    const emailToSave = (data.email !== undefined && data.email && String(data.email).trim()) 
-      ? String(data.email).trim() 
-      : null;
-    const tokenToSave = (data.token !== undefined && data.token && String(data.token).trim()) 
-      ? String(data.token).trim() 
-      : null;
+    const emailToSave = (data.email !== undefined && data.email && String(data.email).trim()) ?
+      String(data.email).trim() :
+      null;
+    const tokenToSave = (data.token !== undefined && data.token && String(data.token).trim()) ?
+      String(data.token).trim() :
+      null;
 
     // Если пользователь ввёл email ИЛИ token - проверяем лицензию
     if (emailToSave || tokenToSave) {
@@ -1573,7 +1570,7 @@ function saveSettingsData(data) {
       logs.push('📋 Информация о лицензии:');
       logs.push('  • Статус: ' + (licenseStatus.message || 'активна'));
       logs.push('  • Действует до: ' + (licenseStatus.until ? new Date(licenseStatus.until).toLocaleDateString('ru-RU') : '—'));
-      
+
       if (licenseStatus.quota) {
         logs.push('  • Доступно копий: ' + licenseStatus.quota.remaining + ' из ' + licenseStatus.quota.total);
       }
@@ -1620,7 +1617,7 @@ function saveSettingsData(data) {
 
     logs.push('✅ Сохранено: ' + updated.join(', '));
     Logger.log('✅ Settings saved successfully: ' + updated.join(', '));
-    
+
     addLog('✅ Настройки сохранены и проверены: ' + updated.join(', '), 'INFO');
 
     return {
@@ -1671,7 +1668,7 @@ function serverGM(prompt, maxTokens, temperature) {
   const email = getLicenseEmail();
   const token = getLicenseToken();
   const apiKey = getGeminiApiKey();
-  
+
   // ⭐ ОБА ID
   const scriptId = ScriptApp.getScriptId();
   const spreadsheetId = SpreadsheetApp.getActive().getId();
@@ -1700,7 +1697,7 @@ function serverGM(prompt, maxTokens, temperature) {
     prompt: prompt,
     maxTokens: maxTokens,
     temperature: temperature,
-    scriptId: scriptId,        // ⭐ Для привязки
+    scriptId: scriptId, // ⭐ Для привязки
     spreadsheetId: spreadsheetId, // ⭐ Для работы
   };
 
