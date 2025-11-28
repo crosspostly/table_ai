@@ -419,7 +419,7 @@ function checkLicense_(token, email, sheetId) {
           if (copiesCount <= 0) {
             return {
               ok: false,
-              error: 'NO_QUOTA_LEFT',
+              error: 'Для данной лицензия не поддерживает привязку новых таблиц. Пишите vk.com/daoqub',
               row: r + 1,
               quota: {remaining: 0, total: 0},
             };
@@ -502,7 +502,7 @@ function checkLicense_(token, email, sheetId) {
             // Лист не привязан к этой лицензии
             return {
               ok: false,
-              error: 'SHEET_BOUND_TO_OTHER',
+              error: 'Эта лицензия привязана к другому аккаунту Google Sheets. Обратитесь к создателю: https://vk.com/daoqub',
               message: 'Эта лицензия привязана к другому аккаунту Google Sheets. Обратитесь к создателю: https://vk.com/daoqub',
               row: r + 1,
             };
