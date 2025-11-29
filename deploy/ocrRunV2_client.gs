@@ -169,8 +169,7 @@ function extractSourcesV2_(textVal, formula, richUrl) {
   try {
     var cleaned = cleanTextForUrlsV2_(String(textVal||''));
     (cleaned.match(/https?:\/\/[^\s<>\)\]"]+/g) || []).forEach(function(s){ push(s.replace(/[),.;]+$/, '')); });
-    (cleaned.match(/(?:^|\s)(?:vk\.com|drive\.google\.com|docs\.google\.com|yadi\.sk|disk\.yandex\.(?:ru|com)|dropbox\.com|script\.google\.com|script\.googleusercontent\.com)\/[^
-\s<>\)\]"]+/gi) || [])
+    (cleaned.match(/(?:^|\s)(?:vk\.com|drive\.google\.com|docs\.google\.com|yadi\.sk|disk\.yandex\.(?:ru|com)|dropbox\.com|script\.google\.com|script\.googleusercontent\.com)\/[^\s<>\)\]"]+/gi) || [])
       .forEach(function(s){ push(String(s).trim()); });
   } catch (e) { log_('V2 extract: text scan error: ' + e.message, 'WARN'); }
 
