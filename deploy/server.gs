@@ -3,19 +3,19 @@
 
 // ===== Constants =====
 const S_GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
-// eslint-disable-next-line no-unused-vars
-const LICENSE_SHEET_NAME = 'Tokens';
 const LOG_SHEET_NAME = 'Логи';
 const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
+const AUTO_UPDATE_CHECK_INTERVAL = 6;
 
 // ⭐ OTA UPDATES
-const SERVER_VERSION = '3.1.1'; //огонь
+const SERVER_VERSION = '3.1.1';
+
 
 // ===== Entry points =====
 function doGet(_e) {
   return json_({ok: true, ping: 'pong', time: new Date().toISOString()});
 }
+
 
 function doPost(_e) {
   try {
@@ -389,10 +389,25 @@ function doPost(_e) {
       return json_({ok: true, data: result, logs: logs});
     }
 
-    // ⭐ OTA UPDATES
+        // ⭐ OTA UPDATES
     case 'ota': {
       Logger.log('Processing OTA action');
       const subaction = (data.subaction || '').toString();
+
+      // ════════════════════════════════════════════════════════
+      // ШАГ 1: Если scriptId не передан - получаем из Bindings
+      // ════════════════════════════════════════════════════════
+      if (!scriptId && email) {
+        Logger.log('📚 [OTA] scriptId not provided, fetching from Bindings');
+        scriptId = getScriptIdFromBindingsForOTA_(email);
+        
+        if (!scriptId) {
+          Logger.log(`❌ [OTA] Cannot find scriptId for ${email}`);
+          return json_({ok: false, error: 'NO_SCRIPT_ID'}, 400);
+        }
+        
+        Logger.log(`✅ [OTA] Got scriptId from Bindings: ${scriptId.substring(0, 12)}...`);
+      }
 
       // ════════════════════════════════════════════════════════
       // SUBACTION: CHECK UPDATES
@@ -415,6 +430,16 @@ function doPost(_e) {
       // SUBACTION: GET UPDATED FILES
       // ════════════════════════════════════════════════════════
       if (subaction === 'getUpdatedFiles') {
+        // Проверяем лицензию перед отправкой файлов
+        const lic = checkLicense_(token, email, scriptId, spreadsheetId);
+        
+        if (!lic.ok) {
+          Logger.log(`❌ [OTA] License check failed: ${lic.error}`);
+          return json_(lic, 403);
+        }
+
+        Logger.log(`✅ [OTA] License check passed`);
+
         // Список всех клиентских файлов
         const clientFiles = [
           'Main.gs',
@@ -432,18 +457,28 @@ function doPost(_e) {
         ];
 
         const files = [];
+        let successCount = 0;
+        let failCount = 0;
+
+        Logger.log(`📦 [OTA] Processing ${clientFiles.length} files`);
 
         // Скачиваем каждый файл с GitHub
         for (let i = 0; i < clientFiles.length; i++) {
           const fileName = clientFiles[i];
+          Logger.log(`   📄 [${i+1}/${clientFiles.length}] Fetching ${fileName}...`);
+          
           const content = fetchFileContent_(fileName);
 
           if (!content) {
+            failCount++;
+            Logger.log(`   ❌ FAILED: ${fileName} (fail #${failCount})`);
             return json_({
               ok: false,
               error: `Failed to fetch: ${fileName}`,
-            });
+            }, 400);
           }
+
+          successCount++;
 
           // Определяем тип файла для Apps Script API
           let type = 'SERVER_JS'; // .gs файлы
@@ -458,21 +493,32 @@ function doPost(_e) {
             type: type,
             source: content,
           });
+
+          Logger.log(`   ✅ LOADED: ${fileName} (${content.length} bytes)`);
         }
 
-        Logger.log(`OTA: prepared ${files.length} files`);
+        Logger.log(`🎉 [OTA] Prepared ${successCount} files, ${failCount} failed`);
 
         return json_({
           ok: true,
           files: files,
           count: files.length,
           version: SERVER_VERSION,
+          email: email,
+          scriptId: scriptId,
         });
       }
 
+      // ════════════════════════════════════════════════════════
+      // UNKNOWN SUBACTION
+      // ════════════════════════════════════════════════════════
+      Logger.log(`❌ [OTA] Unknown subaction: ${subaction}`);
       return json_({ok: false, error: 'Unknown OTA subaction'}, 400);
     }
 
+    // ════════════════════════════════════════════════════════
+    // DEFAULT
+    // ════════════════════════════════════════════════════════
     default:
       Logger.log('ERROR: Unknown action - ' + action);
       return json_({ok: false, error: 'UNKNOWN_ACTION'}, 400);
@@ -480,6 +526,49 @@ function doPost(_e) {
   } catch (err) {
     Logger.log('doPost ERROR: ' + String(err.message || err));
     return json_({ok: false, error: String(err && err.message || err)}, 500);
+  }
+}
+
+/**
+ * Получить scriptId из листа Bindings (для OTA)
+ * @param {string} email - Email пользователя
+ * @return {string|null} Script ID или null
+ */
+function getScriptIdFromBindingsForOTA_(email) {
+  try {
+    const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
+    const bindingsSheet = ss.getSheetByName(BINDINGS_SHEET_NAME);
+    
+    if (!bindingsSheet) {
+      Logger.log('❌ [OTA] Bindings sheet not found');
+      return null;
+    }
+    
+    // Получаем все данные из листа Bindings
+    const bindingsData = bindingsSheet.getDataRange().getValues();
+    const emailL = String(email).toLowerCase().trim();
+    
+    // Ищем строку с email
+    for (let r = 1; r < bindingsData.length; r++) {
+      const row = bindingsData[r];
+      const bindEmail = String(row[0] || '').toLowerCase().trim(); // A: Email
+      
+      if (bindEmail === emailL) {
+        const scriptId = String(row[2] || '').trim(); // C: script_ids
+        
+        if (scriptId) {
+          Logger.log(`✅ [OTA] Found scriptId for ${email}: ${scriptId.substring(0, 12)}...`);
+          return scriptId;
+        }
+      }
+    }
+    
+    Logger.log(`❌ [OTA] No scriptId found for email: ${email}`);
+    return null;
+    
+  } catch (e) {
+    Logger.log(`❌ [OTA] Error getting scriptId from Bindings: ${e.message}`);
+    return null;
   }
 }
 
@@ -966,5 +1055,181 @@ function serverReadData_(spreadsheetId, sheetName, cellAddress, logs) {
   } catch (error) {
     logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `  ❌ Ошибка чтения: ${error.message}`});
     throw new Error(`Не удалось прочитать ${sheetName}!${cellAddress}: ${error.message}`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ⭐ SERVER AUTO-UPDATE
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Фоновая проверка обновлений сервера (триггер каждые 6 часов)
+ */
+function checkServerAutoUpdate_() {
+  try {
+    Logger.log('🌙 Server auto-update check started');
+    
+    // Получаем текущий серверный код
+    const currentScript = ScriptApp.getScript();
+    const currentServerCode = getServerFileContent_('server.gs');
+    
+    if (!currentServerCode) {
+      Logger.log('❌ Cannot get current server code');
+      return;
+    }
+    
+    // Получаем код с GitHub
+    const githubServerCode = fetchFileContent_(SERVER_PATH);
+    
+    if (!githubServerCode) {
+      Logger.log('⚠️ Cannot fetch from GitHub - skipping update');
+      return;
+    }
+    
+    // Сравниваем
+    const currentHash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, currentServerCode);
+    const githubHash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, githubServerCode);
+    
+    const currentHashB64 = Utilities.base64Encode(currentHash);
+    const githubHashB64 = Utilities.base64Encode(githubHash);
+    
+    Logger.log(`Current server hash: ${currentHashB64.substring(0, 20)}...`);
+    Logger.log(`GitHub server hash:  ${githubHashB64.substring(0, 20)}...`);
+    
+    if (currentHashB64 === githubHashB64) {
+      Logger.log('✅ Server is up to date');
+      return;
+    }
+    
+    // Обновление доступно!
+    Logger.log('🚀 Server update available! Updating...');
+    
+    // Обновляем серверный файл
+    const currentProject = ScriptApp.getScript();
+    const serverFile = currentProject.getFiles().find(function(file) {
+      return file.getName() === 'server';
+    });
+    
+    if (!serverFile) {
+      Logger.log('❌ Server file not found in project');
+      return;
+    }
+    
+    try {
+      serverFile.setContent(githubServerCode);
+      Logger.log('✅ Server file updated successfully!');
+      
+      // Логируем обновление
+      serverLog_({
+        action: 'SERVER_AUTO_UPDATE',
+        oldVersion: SERVER_VERSION,
+        newHash: githubHashB64.substring(0, 20) + '...',
+        timestamp: new Date().toISOString()
+      });
+      
+      // Перезагружаем deployment (если нужно)
+      Logger.log('🎉 Server auto-update completed!');
+      
+    } catch (updateError) {
+      Logger.log('❌ Update failed: ' + updateError.message);
+      serverLog_({
+        action: 'SERVER_AUTO_UPDATE_ERROR',
+        error: updateError.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+  } catch (e) {
+    Logger.log('❌ Server auto-update error: ' + e.message);
+  }
+}
+
+/**
+ * Получить содержимое файла сервера
+ */
+function getServerFileContent_(fileName) {
+  try {
+    const project = ScriptApp.getScript();
+    const files = project.getFiles();
+    
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].getName() === fileName) {
+        return files[i].getContentAsString();
+      }
+    }
+    return null;
+  } catch (e) {
+    Logger.log('Error getting file content: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * Установить триггер автообновления сервера
+ */
+function installServerAutoUpdate_() {
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    let hasAutoUpdate = false;
+    
+    for (let i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === 'checkServerAutoUpdate_') {
+        hasAutoUpdate = true;
+        break;
+      }
+    }
+    
+    if (hasAutoUpdate) {
+      Logger.log('Server auto-update trigger already exists');
+      return;
+    }
+    
+    ScriptApp.newTrigger('checkServerAutoUpdate_')
+      .timeBased()
+      .everyHours(AUTO_UPDATE_CHECK_INTERVAL)
+      .create();
+    
+    Logger.log(`✅ Server auto-update trigger installed (every ${AUTO_UPDATE_CHECK_INTERVAL} hours)`);
+    
+  } catch (e) {
+    Logger.log('❌ Error installing server auto-update: ' + e.message);
+  }
+}
+/**
+ * Установить все триггеры для сервера (запустить один раз после деплоя)
+ */
+function setupServerTriggers() {
+  Logger.log('=== SETUP SERVER TRIGGERS ===');
+  
+  try {
+    // 1. Устанавливаем триггер автообновления
+    installServerAutoUpdate_();
+    
+    // 2. Проверяем что он создался
+    const triggers = ScriptApp.getProjectTriggers();
+    let autoUpdateCount = 0;
+    
+    for (let i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === 'checkServerAutoUpdate_') {
+        autoUpdateCount++;
+      }
+    }
+    
+    Logger.log(`✅ Server auto-update trigger: ${autoUpdateCount} installed`);
+    Logger.log(`⏰ Check every ${AUTO_UPDATE_CHECK_INTERVAL} hours`);
+    
+    // 3. Логируем в sheet
+    serverLog_({
+      action: 'SERVER_TRIGGERS_INSTALLED',
+      triggers: autoUpdateCount,
+      version: SERVER_VERSION,
+      timestamp: new Date().toISOString()
+    });
+    
+    return {success: true, triggers: autoUpdateCount};
+    
+  } catch (e) {
+    Logger.log('❌ Setup error: ' + e.message);
+    return {success: false, error: e.message};
   }
 }
