@@ -1,3 +1,5 @@
+
+
 /**
  * TABLE AI - CLIENT (Google Sheets Container-bound Script)
  * v3.0.0 Refactoring: CLIENT = UI ONLY
@@ -617,6 +619,7 @@ function onOpen() {
       .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
       .addSeparator()
       .addItem('⚙️ Настройки', 'openSettingsUI')
+      .addItem('🔄 Автообновление', 'setupOTATriggers')
       // ⭐ Убрали отдельную кнопку - проверка теперь в Settings при сохранении
       .addToUi();
 
@@ -636,8 +639,85 @@ function onOpen() {
     addLog('❌ Ошибка меню: ' + e.message, 'ERROR');
   }
 }
-
-// ====== MOBILE APP API ======
+/**
+ * Установить триггеры OTA (кнопка в меню)
+ * Создаёт/обновляет триггер для проверки обновлений
+ */
+function setupOTATriggers() {
+  try {
+    Logger.log('=== УСТАНОВКА ТРИГГЕРОВ OTA ===');
+    
+    const ui = SpreadsheetApp.getUi();
+    
+    // Проверяем текущие триггеры
+    const triggers = ScriptApp.getProjectTriggers();
+    let hasOTA = false;
+    let oldCount = triggers.length;
+    
+    Logger.log('Найдено триггеров: ' + oldCount);
+    
+    // Удаляем старые OTA триггеры (если есть)
+    for (let i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === 'checkForUpdatesBackground_') {
+        try {
+          ScriptApp.deleteTrigger(triggers[i]);
+          Logger.log('✅ Удалён старый OTA триггер #' + i);
+          hasOTA = true;
+        } catch (e) {
+          Logger.log('⚠️ Не удалось удалить старый триггер: ' + e.message);
+        }
+      }
+    }
+    
+    // Если был старый триггер - пересчитываем
+    if (hasOTA) {
+      const newTriggers = ScriptApp.getProjectTriggers();
+      Logger.log('Триггеров после очистки: ' + newTriggers.length);
+    }
+    
+    // Создаём новый триггер
+    Logger.log('Создаю новый OTA триггер...');
+    
+    const newTrigger = ScriptApp.newTrigger('checkForUpdatesBackground_')
+      .timeBased()
+      .atHour(3)
+      .everyDays(1)
+      .create();
+    
+    Logger.log('✅ Новый триггер создан!');
+    Logger.log('ID: ' + newTrigger.getUniqueId());
+    Logger.log('Расписание: Каждый день в 3:00 AM');
+    
+    // Показываем пользователю результат
+    ui.alert(
+      '✅ Автообновление установлено!',
+      `Создан автоматическая проверка обновлений приложения.\n\n`,
+      ui.ButtonSet.OK
+    );
+    
+    addLog('✅ Триггеры OTA установлены пользователем', 'INFO');
+    
+    // Автоматически запускаем проверку обновлений
+    checkForUpdatesManual_();
+    
+  } catch (e) {
+    Logger.log('❌ ОШИБКА УСТАНОВКИ: ' + e.message);
+    Logger.log('Stack: ' + e.stack);
+    
+    SpreadsheetApp.getUi().alert(
+      '❌ Ошибка установки триггеров',
+      'Не удалось установить триггеры OTA:\n\n' + e.message + '\n\n' +
+      'Возможные причины:\n' +
+      '• Недостаточно прав доступа\n' +
+      '• Ошибка в коде\n' +
+      '• Проблемы с Google Apps Script\n\n' +
+      'Проверьте логи: DEV → Показать логи',
+      ui.ButtonSet.OK
+    );
+    
+    addLog(`❌ Ошибка установки триггеров: ${e.message}`, 'ERROR');
+  }
+}
 
 /**
  * Возвращает полный список доступных функций Table AI для мобильного приложения
@@ -1350,6 +1430,7 @@ function serverStatus() {
     spreadsheetId: spreadsheetId, // ⭐ Для названия
   };
 
+
   const options = {
     method: 'post',
     contentType: 'application/json',
@@ -1911,30 +1992,57 @@ function GM(prompt, maxTokens, temperature) {
  * Установить триггер для фоновой проверки обновлений
  * Вызывается из onOpen(), быстро (<1 сек)
  */
+/**
+ * Установить триггер для фоновой проверки обновлений
+ * Вызывается из onOpen(), быстро (<1 сек)
+ */
 function installUpdateTrigger_() {
   try {
+    Logger.log('DEBUG: installUpdateTrigger_() called');  // ← ОТЛАДКА
+    
     const triggers = ScriptApp.getProjectTriggers();
-    const exists = triggers.find((t) =>
-      t.getHandlerFunction() === 'checkForUpdatesBackground_',
-    );
+    Logger.log('DEBUG: Found ' + triggers.length + ' triggers');  // ← ОТЛАДКА
+    
+    // ⭐ Измени find() на обычный цикл (более совместимо)
+    let exists = false;
+    for (let i = 0; i < triggers.length; i++) {
+      const handler = triggers[i].getHandlerFunction();
+      Logger.log('DEBUG: Trigger ' + i + ': ' + handler);  // ← ОТЛАДКА
+      
+      if (handler === 'checkForUpdatesBackground_') {
+        exists = true;
+        break;
+      }
+    }
 
     if (exists) {
       addLog('ℹ️ Триггер обновлений уже установлен', 'DEBUG');
+      Logger.log('DEBUG: Trigger already exists');  // ← ОТЛАДКА
       return;
     }
 
-    ScriptApp.newTrigger('checkForUpdatesBackground_')
+    Logger.log('DEBUG: Creating new trigger...');  // ← ОТЛАДКА
+    
+    const trigger = ScriptApp.newTrigger('checkForUpdatesBackground_')
       .timeBased()
       .atHour(3)
       .everyDays(1)
       .create();
 
+    Logger.log('DEBUG: Trigger created with ID: ' + trigger.getUniqueId());  // ← ОТЛАДКА
+    
     addLog('✅ Триггер обновлений установлен (каждый день в 3:00)', 'INFO');
   } catch (e) {
+    Logger.log('❌ EXCEPTION in installUpdateTrigger_: ' + e.message);  // ← ОТЛАДКА
+    Logger.log('Stack: ' + e.stack);  // ← ОТЛАДКА
     addLog(`❌ Ошибка установки триггера: ${e.message}`, 'ERROR');
   }
 }
 
+
+/**
+ * Фоновая проверка обновлений (вызывается триггером в 3:00)
+ */
 /**
  * Фоновая проверка обновлений (вызывается триггером в 3:00)
  */
@@ -1951,6 +2059,8 @@ function checkForUpdatesBackground_() {
       clientVersion: CLIENT_VERSION,
       email: getLicenseEmail(),
       token: getLicenseToken(),
+      scriptId: ScriptApp.getScriptId(),
+      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId()
     };
 
     const checkOptions = {
@@ -1962,6 +2072,11 @@ function checkForUpdatesBackground_() {
 
     const checkResp = UrlFetchApp.fetch(SERVER_URL, checkOptions);
     const updateInfo = JSON.parse(checkResp.getContentText());
+
+    if (!updateInfo.ok) {
+      addLog(`❌ Ошибка проверки версии: ${updateInfo.error}`, 'ERROR');
+      return;
+    }
 
     if (!updateInfo.updateAvailable) {
       addLog('✅ Версия актуальна: ' + updateInfo.serverVersion, 'INFO');
@@ -1978,6 +2093,8 @@ function checkForUpdatesBackground_() {
       subaction: 'getUpdatedFiles',
       email: getLicenseEmail(),
       token: getLicenseToken(),
+      scriptId: ScriptApp.getScriptId(),
+      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId()
     };
 
     const filesOptions = {
@@ -1991,7 +2108,7 @@ function checkForUpdatesBackground_() {
     const filesData = JSON.parse(filesResp.getContentText());
 
     if (!filesData.ok || !filesData.files) {
-      throw new Error('Failed to get files');
+      throw new Error('Failed to get files: ' + (filesData.error || 'unknown'));
     }
 
     addLog(`📥 Получено ${filesData.count} файлов`, 'INFO');
@@ -2036,72 +2153,18 @@ function checkForUpdatesBackground_() {
     }
 
     addLog('✅ Файлы обновлены через API', 'INFO');
-
-    // ═══════════════════════════════════════════════════════════
-    // ШАГ 5: Email пользователю
-    // ═══════════════════════════════════════════════════════════
-    sendUpdateEmail_(updateInfo.serverVersion);
-
     addLog('🎉 Обновление завершено!', 'INFO');
+    
   } catch (e) {
     addLog(`❌ Ошибка обновления: ${e.message}`, 'ERROR');
-    sendErrorEmail_(e.message);
   }
 }
 
-/**
- * Отправить email об успешном обновлении
- */
-function sendUpdateEmail_(newVersion) {
-  try {
-    const email = getLicenseEmail();
-    if (!email) return;
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-    MailApp.sendEmail({
-      to: email,
-      subject: '✅ Table AI обновлён до версии ' + newVersion,
-      htmlBody: `
-        <h2>✅ Обновление завершено!</h2>
-        <p><strong>Новая версия:</strong> ${newVersion}</p>
-        <p><strong>Предыдущая версия:</strong> ${CLIENT_VERSION}</p>
-        <p><strong>Таблица:</strong> <a href="${ss.getUrl()}">${ss.getName()}</a></p>
-        <hr>
-        <p>✅ Все данные сохранены<br>✅ Готово к работе</p>
-      `,
-    });
-
-    addLog('✅ Email отправлен на ' + email, 'INFO');
-  } catch (e) {
-    addLog(`⚠️ Ошибка email: ${e.message}`, 'WARN');
-  }
-}
-
-/**
- * Отправить email об ошибке
- */
-function sendErrorEmail_(error) {
-  try {
-    const email = getLicenseEmail();
-    if (!email) return;
-
-    MailApp.sendEmail({
-      to: email,
-      subject: '❌ Ошибка обновления Table AI',
-      body: `Не удалось обновить таблицу.\n\nОшибка: ${error}`,
-    });
-
-    addLog('✅ Email об ошибке отправлен', 'INFO');
-  } catch (e) {
-    addLog(`⚠️ Ошибка email: ${e.message}`, 'WARN');
-  }
-}
 
 /**
  * Ручная проверка обновлений (для тестирования)
  */
-// eslint-disable-next-line no-unused-vars
 function checkForUpdatesManual_() {
   addLog('🔍 Ручная проверка обновлений', 'INFO');
 
@@ -2112,6 +2175,8 @@ function checkForUpdatesManual_() {
       clientVersion: CLIENT_VERSION,
       email: getLicenseEmail(),
       token: getLicenseToken(),
+      scriptId: ScriptApp.getScriptId(),        // ← ДОБАВИЛ
+      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId()  // ← ДОБАВИЛ
     };
 
     const options = {
@@ -2123,6 +2188,13 @@ function checkForUpdatesManual_() {
 
     const resp = UrlFetchApp.fetch(SERVER_URL, options);
     const updateInfo = JSON.parse(resp.getContentText());
+
+    // ⭐ ПРОВЕРКА ОШИБКИ
+    if (!updateInfo.ok) {
+      addLog(`❌ Ошибка сервера: ${updateInfo.error}`, 'ERROR');
+      SpreadsheetApp.getUi().alert('❌ Ошибка сервера: ' + updateInfo.error);
+      return;
+    }
 
     const ui = SpreadsheetApp.getUi();
 
@@ -2145,7 +2217,7 @@ function checkForUpdatesManual_() {
 
     ui.alert('⏳ Обновление запущено...');
     checkForUpdatesBackground_();
-    ui.alert('✅ Готово! Проверьте email.');
+    ui.alert('✅ Готово!');
   } catch (e) {
     addLog(`❌ Ошибка: ${e.message}`, 'ERROR');
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + e.message);
