@@ -1,5 +1,6 @@
 // Table AI Server (Apps Script Web App)
 // Backend: лицензии, прокси к Gemini с КЛЮЧОМ КЛИЕНТА, серверные логи
+/* exported checkServerAutoUpdate_, setupServerTriggers */
 
 // ===== Constants =====
 const S_GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
@@ -223,6 +224,7 @@ function doPost(_e) {
         row: status.row || null,
         quota: status.quota || null,
         message: status.message || null,
+        scriptId: status.scriptId || scriptId || null,
       });
     }
     case 'validate': {
@@ -389,7 +391,7 @@ function doPost(_e) {
       return json_({ok: true, data: result, logs: logs});
     }
 
-        // ⭐ OTA UPDATES
+    // ⭐ OTA UPDATES
     case 'ota': {
       Logger.log('Processing OTA action');
       const subaction = (data.subaction || '').toString();
@@ -400,12 +402,12 @@ function doPost(_e) {
       if (!scriptId && email) {
         Logger.log('📚 [OTA] scriptId not provided, fetching from Bindings');
         scriptId = getScriptIdFromBindingsForOTA_(email);
-        
+
         if (!scriptId) {
           Logger.log(`❌ [OTA] Cannot find scriptId for ${email}`);
           return json_({ok: false, error: 'NO_SCRIPT_ID'}, 400);
         }
-        
+
         Logger.log(`✅ [OTA] Got scriptId from Bindings: ${scriptId.substring(0, 12)}...`);
       }
 
@@ -432,13 +434,13 @@ function doPost(_e) {
       if (subaction === 'getUpdatedFiles') {
         // Проверяем лицензию перед отправкой файлов
         const lic = checkLicense_(token, email, scriptId, spreadsheetId);
-        
+
         if (!lic.ok) {
           Logger.log(`❌ [OTA] License check failed: ${lic.error}`);
           return json_(lic, 403);
         }
 
-        Logger.log(`✅ [OTA] License check passed`);
+        Logger.log('✅ [OTA] License check passed');
 
         // Список всех клиентских файлов
         const clientFiles = [
@@ -466,7 +468,7 @@ function doPost(_e) {
         for (let i = 0; i < clientFiles.length; i++) {
           const fileName = clientFiles[i];
           Logger.log(`   📄 [${i+1}/${clientFiles.length}] Fetching ${fileName}...`);
-          
+
           const content = fetchFileContent_(fileName);
 
           if (!content) {
@@ -538,34 +540,33 @@ function getScriptIdFromBindingsForOTA_(email) {
   try {
     const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
     const bindingsSheet = ss.getSheetByName(BINDINGS_SHEET_NAME);
-    
+
     if (!bindingsSheet) {
       Logger.log('❌ [OTA] Bindings sheet not found');
       return null;
     }
-    
+
     // Получаем все данные из листа Bindings
     const bindingsData = bindingsSheet.getDataRange().getValues();
     const emailL = String(email).toLowerCase().trim();
-    
+
     // Ищем строку с email
     for (let r = 1; r < bindingsData.length; r++) {
       const row = bindingsData[r];
       const bindEmail = String(row[0] || '').toLowerCase().trim(); // A: Email
-      
+
       if (bindEmail === emailL) {
         const scriptId = String(row[2] || '').trim(); // C: script_ids
-        
+
         if (scriptId) {
           Logger.log(`✅ [OTA] Found scriptId for ${email}: ${scriptId.substring(0, 12)}...`);
           return scriptId;
         }
       }
     }
-    
+
     Logger.log(`❌ [OTA] No scriptId found for email: ${email}`);
     return null;
-    
   } catch (e) {
     Logger.log(`❌ [OTA] Error getting scriptId from Bindings: ${e.message}`);
     return null;
@@ -1065,80 +1066,78 @@ function serverReadData_(spreadsheetId, sheetName, cellAddress, logs) {
 /**
  * Фоновая проверка обновлений сервера (триггер каждые 6 часов)
  */
+// eslint-disable-next-line no-unused-vars
 function checkServerAutoUpdate_() {
   try {
     Logger.log('🌙 Server auto-update check started');
-    
+
     // Получаем текущий серверный код
-    const currentScript = ScriptApp.getScript();
     const currentServerCode = getServerFileContent_('server.gs');
-    
+
     if (!currentServerCode) {
       Logger.log('❌ Cannot get current server code');
       return;
     }
-    
+
     // Получаем код с GitHub
     const githubServerCode = fetchFileContent_(SERVER_PATH);
-    
+
     if (!githubServerCode) {
       Logger.log('⚠️ Cannot fetch from GitHub - skipping update');
       return;
     }
-    
+
     // Сравниваем
     const currentHash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, currentServerCode);
     const githubHash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, githubServerCode);
-    
+
     const currentHashB64 = Utilities.base64Encode(currentHash);
     const githubHashB64 = Utilities.base64Encode(githubHash);
-    
+
     Logger.log(`Current server hash: ${currentHashB64.substring(0, 20)}...`);
     Logger.log(`GitHub server hash:  ${githubHashB64.substring(0, 20)}...`);
-    
+
     if (currentHashB64 === githubHashB64) {
       Logger.log('✅ Server is up to date');
       return;
     }
-    
+
     // Обновление доступно!
     Logger.log('🚀 Server update available! Updating...');
-    
+
     // Обновляем серверный файл
     const currentProject = ScriptApp.getScript();
     const serverFile = currentProject.getFiles().find(function(file) {
       return file.getName() === 'server';
     });
-    
+
     if (!serverFile) {
       Logger.log('❌ Server file not found in project');
       return;
     }
-    
+
     try {
       serverFile.setContent(githubServerCode);
       Logger.log('✅ Server file updated successfully!');
-      
+
       // Логируем обновление
       serverLog_({
         action: 'SERVER_AUTO_UPDATE',
         oldVersion: SERVER_VERSION,
         newHash: githubHashB64.substring(0, 20) + '...',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
-      
+
       // Перезагружаем deployment (если нужно)
       Logger.log('🎉 Server auto-update completed!');
-      
     } catch (updateError) {
       Logger.log('❌ Update failed: ' + updateError.message);
       serverLog_({
         action: 'SERVER_AUTO_UPDATE_ERROR',
         error: updateError.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
-    
   } catch (e) {
     Logger.log('❌ Server auto-update error: ' + e.message);
   }
@@ -1151,7 +1150,7 @@ function getServerFileContent_(fileName) {
   try {
     const project = ScriptApp.getScript();
     const files = project.getFiles();
-    
+
     for (let i = 0; i < files.length; i++) {
       if (files[i].getName() === fileName) {
         return files[i].getContentAsString();
@@ -1171,26 +1170,25 @@ function installServerAutoUpdate_() {
   try {
     const triggers = ScriptApp.getProjectTriggers();
     let hasAutoUpdate = false;
-    
+
     for (let i = 0; i < triggers.length; i++) {
       if (triggers[i].getHandlerFunction() === 'checkServerAutoUpdate_') {
         hasAutoUpdate = true;
         break;
       }
     }
-    
+
     if (hasAutoUpdate) {
       Logger.log('Server auto-update trigger already exists');
       return;
     }
-    
+
     ScriptApp.newTrigger('checkServerAutoUpdate_')
       .timeBased()
       .everyHours(AUTO_UPDATE_CHECK_INTERVAL)
       .create();
-    
+
     Logger.log(`✅ Server auto-update trigger installed (every ${AUTO_UPDATE_CHECK_INTERVAL} hours)`);
-    
   } catch (e) {
     Logger.log('❌ Error installing server auto-update: ' + e.message);
   }
@@ -1198,36 +1196,36 @@ function installServerAutoUpdate_() {
 /**
  * Установить все триггеры для сервера (запустить один раз после деплоя)
  */
+// eslint-disable-next-line no-unused-vars
 function setupServerTriggers() {
   Logger.log('=== SETUP SERVER TRIGGERS ===');
-  
+
   try {
     // 1. Устанавливаем триггер автообновления
     installServerAutoUpdate_();
-    
+
     // 2. Проверяем что он создался
     const triggers = ScriptApp.getProjectTriggers();
     let autoUpdateCount = 0;
-    
+
     for (let i = 0; i < triggers.length; i++) {
       if (triggers[i].getHandlerFunction() === 'checkServerAutoUpdate_') {
         autoUpdateCount++;
       }
     }
-    
+
     Logger.log(`✅ Server auto-update trigger: ${autoUpdateCount} installed`);
     Logger.log(`⏰ Check every ${AUTO_UPDATE_CHECK_INTERVAL} hours`);
-    
+
     // 3. Логируем в sheet
     serverLog_({
       action: 'SERVER_TRIGGERS_INSTALLED',
       triggers: autoUpdateCount,
       version: SERVER_VERSION,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-    
+
     return {success: true, triggers: autoUpdateCount};
-    
   } catch (e) {
     Logger.log('❌ Setup error: ' + e.message);
     return {success: false, error: e.message};
