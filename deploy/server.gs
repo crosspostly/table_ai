@@ -10,7 +10,7 @@ const LOG_SHEET_NAME = 'Логи';
 const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
 
 // ⭐ OTA UPDATES
-const SERVER_VERSION = '3.1.0';
+const SERVER_VERSION = '3.1.1'; //огонь
 
 // ===== Entry points =====
 function doGet(_e) {
