@@ -18,8 +18,8 @@ const BINDINGS_SHEET_NAME = 'Bindings';
  * @param {string} spreadsheetId - Spreadsheet ID (для работы)
  * @return {Object} Результат проверки
  */
- // eslint-disable-next-line no-unused-vars
- function checkLicense_(token, email, scriptId, spreadsheetId) {
+
+function checkLicense_(token, email, scriptId, spreadsheetId) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
@@ -36,12 +36,20 @@ const BINDINGS_SHEET_NAME = 'Bindings';
       Logger.log('❌ NO_EMAIL');
       return {ok: false, error: 'NO_EMAIL'};
     }
+    
+    // ⭐ НОВОЕ: Если scriptId не передан - пытаемся получить из Bindings
     if (!scriptId) {
-      Logger.log('❌ NO_SCRIPT_ID');
-      return {ok: false, error: 'NO_SCRIPT_ID'};
+      Logger.log('📚 scriptId not provided, fetching from Bindings');
+      scriptId = getScriptIdFromBindingsForOTA_(email);
+      
+      if (!scriptId) {
+        Logger.log(`⚠️ Warning: Cannot find scriptId for ${email} in Bindings`);
+        // Не блокируем проверку лицензии - просто логируем
+        // (scriptId может быть опциональным для некоторых операций)
+      }
     }
 
-    Logger.log('📋 License check: email=' + email + ', scriptId=' + scriptId.substring(0, 12) + '...');
+    Logger.log('📋 License check: email=' + email + ', scriptId=' + (scriptId ? scriptId.substring(0, 12) + '...' : 'not provided'));
 
     // ═══════════════════════════════════════════════════════════════
     // ⭐ ОТКРЫТИЕ ТАБЛИЦЫ ЛИЦЕНЗИЙ
