@@ -4,9 +4,13 @@
 // ===== Constants =====
 const S_GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
+// eslint-disable-next-line no-unused-vars
 const LICENSE_SHEET_NAME = 'Tokens';
 const LOG_SHEET_NAME = 'Логи';
 const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
+
+// ⭐ OTA UPDATES
+const SERVER_VERSION = '3.1.0';
 
 // ===== Entry points =====
 function doGet(_e) {
@@ -21,23 +25,23 @@ function doPost(_e) {
     const action = (data.action || '').toString();
     const token = (data.token || '').toString();
     const email = (data.email || '').toString();
-    
+
     // ⭐ ОБА ID для разных целей
-    const scriptId = (data.scriptId || '').toString();      // ⭐ Для привязки
+    const scriptId = (data.scriptId || '').toString(); // ⭐ Для привязки
     const spreadsheetId = (data.spreadsheetId || '').toString(); // ⭐ Для работы
     const apiKey = (data.apiKey || '').toString();
 
     Logger.log('action: ' + action);
     Logger.log('email: ' + (email ? 'SET' : 'NOT SET'));
     Logger.log('token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
-    Logger.log('scriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET'));  // ⭐
-    Logger.log('spreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET'));  // ⭐
+    Logger.log('scriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET')); // ⭐
+    Logger.log('spreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET')); // ⭐
     Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
 
     // License gate for all actions except 'status' and 'validate'
     if (action !== 'status' && action !== 'validate') {
       Logger.log('Checking license...');
-      const lic = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅ Оба ID
+      const lic = checkLicense_(token, email, scriptId, spreadsheetId); // ✅ Оба ID
       Logger.log('License check result: ' + JSON.stringify(lic));
 
       if (!lic.ok) {
@@ -195,7 +199,7 @@ function doPost(_e) {
     }
     case 'status': {
       Logger.log('Processing status action');
-      const status = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅
+      const status = checkLicense_(token, email, scriptId, spreadsheetId); // ✅
       Logger.log('License check result: ' + JSON.stringify(status));
 
       try {
@@ -223,7 +227,7 @@ function doPost(_e) {
     }
     case 'validate': {
       Logger.log('Processing validate action');
-      const status = checkLicense_(token, email, scriptId, spreadsheetId);  // ✅
+      const status = checkLicense_(token, email, scriptId, spreadsheetId); // ✅
       Logger.log('License check result: ' + JSON.stringify(status));
 
       try {
@@ -384,6 +388,91 @@ function doPost(_e) {
       Logger.log('Returning successful response');
       return json_({ok: true, data: result, logs: logs});
     }
+
+    // ⭐ OTA UPDATES
+    case 'ota': {
+      Logger.log('Processing OTA action');
+      const subaction = (data.subaction || '').toString();
+
+      // ════════════════════════════════════════════════════════
+      // SUBACTION: CHECK UPDATES
+      // ════════════════════════════════════════════════════════
+      if (subaction === 'checkUpdates') {
+        const clientVersion = data.clientVersion || '0.0.0';
+        const updateAvailable = SERVER_VERSION !== clientVersion;
+
+        Logger.log(`OTA check: client=${clientVersion}, server=${SERVER_VERSION}, update=${updateAvailable}`);
+
+        return json_({
+          ok: true,
+          updateAvailable: updateAvailable,
+          clientVersion: clientVersion,
+          serverVersion: SERVER_VERSION,
+        });
+      }
+
+      // ════════════════════════════════════════════════════════
+      // SUBACTION: GET UPDATED FILES
+      // ════════════════════════════════════════════════════════
+      if (subaction === 'getUpdatedFiles') {
+        // Список всех клиентских файлов
+        const clientFiles = [
+          'Main.gs',
+          'CollectConfig.gs',
+          'TemplateService.gs',
+          'UnpackingViewer.gs',
+          'VK.gs',
+          'ocrRunV2_client.gs',
+          'reniewcell.gs',
+          'CollectConfigUi.html',
+          'SettingsUI.html',
+          'UnpackingViewerUI.html',
+          'logging_system.html',
+          'appsscript.json',
+        ];
+
+        const files = [];
+
+        // Скачиваем каждый файл с GitHub
+        for (let i = 0; i < clientFiles.length; i++) {
+          const fileName = clientFiles[i];
+          const content = fetchFileContent_(fileName);
+
+          if (!content) {
+            return json_({
+              ok: false,
+              error: `Failed to fetch: ${fileName}`,
+            });
+          }
+
+          // Определяем тип файла для Apps Script API
+          let type = 'SERVER_JS'; // .gs файлы
+          if (fileName.endsWith('.html')) {
+            type = 'HTML';
+          } else if (fileName === 'appsscript.json') {
+            type = 'JSON';
+          }
+
+          files.push({
+            name: fileName,
+            type: type,
+            source: content,
+          });
+        }
+
+        Logger.log(`OTA: prepared ${files.length} files`);
+
+        return json_({
+          ok: true,
+          files: files,
+          count: files.length,
+          version: SERVER_VERSION,
+        });
+      }
+
+      return json_({ok: false, error: 'Unknown OTA subaction'}, 400);
+    }
+
     default:
       Logger.log('ERROR: Unknown action - ' + action);
       return json_({ok: false, error: 'UNKNOWN_ACTION'}, 400);
@@ -625,6 +714,45 @@ function maskToken_(t) {
   const s = String(t || '');
   if (s.length <= 4) return '****';
   return s.substring(0, 4) + '****';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ⭐ OTA UPDATES
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Скачать файл с GitHub (raw.githubusercontent.com)
+ */
+function fetchFileContent_(fileName) {
+  const REPO = 'crosspostly/table_ai';
+  const BRANCH = 'main';
+  const PATH = 'deploy/';
+
+  try {
+    const url = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${PATH}${fileName}`;
+
+    Logger.log('Fetching: ' + url);
+
+    const resp = UrlFetchApp.fetch(url, {
+      method: 'get',
+      muteHttpExceptions: true,
+    });
+
+    const code = resp.getResponseCode();
+
+    if (code !== 200) {
+      Logger.log(`GitHub fetch failed: HTTP ${code} for ${fileName}`);
+      return null;
+    }
+
+    const content = resp.getContentText();
+    Logger.log(`Fetched ${fileName}: ${content.length} bytes`);
+
+    return content;
+  } catch (e) {
+    Logger.log(`Error fetching ${fileName}: ${e.message}`);
+    return null;
+  }
 }
 
 // ===== CollectConfig Server Functions =====

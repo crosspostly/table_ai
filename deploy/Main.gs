@@ -15,6 +15,7 @@
  */
 
 // VK Parser URL: используется в VK.gs
+// eslint-disable-next-line no-unused-vars
 const VK_PARSER_URL = 'https://script.google.com/macros/s/AKfycbzttbqz16EmmcXbEYCuYhNlXkCxAnCG77phspFL1_rTCi4xVqoorByJAPa4dI4iwT8/exec';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 // Фиксированный сервер (веб‑приложение) для лицензий/логов
@@ -41,6 +42,9 @@ const RETRY_DELAY_INCREMENT = 10000;
 const DEV_MODE = true; // DEV: показывать DEV-меню/логи
 // eslint-disable-next-line no-unused-vars
 const DEVMODE = DEV_MODE;
+
+// ⭐ OTA UPDATES
+const CLIENT_VERSION = '3.1.0';
 
 // В твоем мастер-листе добавь кнопку:
 // eslint-disable-next-line no-unused-vars
@@ -590,6 +594,9 @@ function applyUniformFormatting(sheet) {
 // ====== Меню ======
 function onOpen() {
   try {
+    // ⭐ УСТАНАВЛИВАЕМ ТРИГГЕР (быстро - просто проверка)
+    installUpdateTrigger_();
+
     const ui = SpreadsheetApp.getUi();
     const aiMenu = ui.createMenu('🎯 AI Конструктор')
       .addItem('🎯 Настроить запрос', 'openCollectConfigUI')
@@ -620,6 +627,7 @@ function onOpen() {
         .addItem('🗑 Очистить логи', 'clearLogs')
         .addItem('🔍 Тест сервера', 'testServerConnection')
         .addItem('🧪 Dev Self Test', 'runDevSelfTest')
+        .addItem('🔄 Обновить вручную', 'checkForUpdatesManual_')
         .addToUi();
     }
 
@@ -638,9 +646,9 @@ function onOpen() {
 function listExposedFunctions() {
   try {
     addLog('📱 Запрос списка функций от мобильного приложения', 'INFO');
-    
+
     const functions = [];
-    
+
     // AI Constructor меню
     functions.push(
       {
@@ -651,7 +659,7 @@ function listExposedFunctions() {
         menuPath: '🎯 AI Конструктор',
         order: 1,
         returnsHtml: false,
-        parameters: []
+        parameters: [],
       },
       {
         name: 'refreshCellWithConfig',
@@ -666,12 +674,12 @@ function listExposedFunctions() {
             name: 'targetCell',
             type: 'string',
             description: 'Адрес ячейки для обновления (опционально)',
-            required: false
-          }
-        ]
-      }
+            required: false,
+          },
+        ],
+      },
     );
-    
+
     // Batch операции из BATCH_OPERATIONS
     if (typeof BATCH_OPERATIONS !== 'undefined') {
       let batchOrder = 10;
@@ -690,13 +698,13 @@ function listExposedFunctions() {
               name: 'sheetName',
               type: 'string',
               description: 'Имя листа для обработки',
-              required: false
-            }
-          ]
+              required: false,
+            },
+          ],
         });
       }
     }
-    
+
     // Основное меню Table AI
     functions.push(
       {
@@ -707,7 +715,7 @@ function listExposedFunctions() {
         menuPath: '🤖 Table AI',
         order: 100,
         returnsHtml: true,
-        parameters: []
+        parameters: [],
       },
       {
         name: 'importVkPosts',
@@ -722,9 +730,9 @@ function listExposedFunctions() {
             name: 'sourceUrl',
             type: 'string',
             description: 'URL источника VK постов',
-            required: false
-          }
-        ]
+            required: false,
+          },
+        ],
       },
       {
         name: 'ocrRun',
@@ -739,9 +747,9 @@ function listExposedFunctions() {
             name: 'range',
             type: 'string',
             description: 'Диапазон ячеек с изображениями',
-            required: false
-          }
-        ]
+            required: false,
+          },
+        ],
       },
       {
         name: 'openSettingsUI',
@@ -751,7 +759,7 @@ function listExposedFunctions() {
         menuPath: '🤖 Table AI',
         order: 103,
         returnsHtml: true,
-        parameters: []
+        parameters: [],
       },
       {
         name: 'checkLicenseStatusUI',
@@ -761,10 +769,10 @@ function listExposedFunctions() {
         menuPath: '🤖 Table AI',
         order: 104,
         returnsHtml: false,
-        parameters: []
-      }
+        parameters: [],
+      },
     );
-    
+
     // Dev функции (если в DEV_MODE)
     if (DEV_MODE) {
       functions.push(
@@ -776,7 +784,7 @@ function listExposedFunctions() {
           menuPath: '🧰 DEV',
           order: 200,
           returnsHtml: false,
-          parameters: []
+          parameters: [],
         },
         {
           name: 'exportLogsToSheet',
@@ -786,7 +794,7 @@ function listExposedFunctions() {
           menuPath: '🧰 DEV',
           order: 201,
           returnsHtml: false,
-          parameters: []
+          parameters: [],
         },
         {
           name: 'clearLogs',
@@ -796,7 +804,7 @@ function listExposedFunctions() {
           menuPath: '🧰 DEV',
           order: 202,
           returnsHtml: false,
-          parameters: []
+          parameters: [],
         },
         {
           name: 'testServerConnection',
@@ -806,7 +814,7 @@ function listExposedFunctions() {
           menuPath: '🧰 DEV',
           order: 203,
           returnsHtml: false,
-          parameters: []
+          parameters: [],
         },
         {
           name: 'runDevSelfTest',
@@ -816,11 +824,11 @@ function listExposedFunctions() {
           menuPath: '🧰 DEV',
           order: 204,
           returnsHtml: false,
-          parameters: []
-        }
+          parameters: [],
+        },
       );
     }
-    
+
     const result = {
       success: true,
       functions: functions.sort((a, b) => a.order - b.order),
@@ -828,20 +836,19 @@ function listExposedFunctions() {
         version: '3.0.0',
         devMode: DEV_MODE,
         totalFunctions: functions.length,
-        timestamp: new Date().toISOString()
-      }
+        timestamp: new Date().toISOString(),
+      },
     };
-    
+
     addLog(`✅ Список функций сформирован: ${functions.length} функций`, 'INFO');
     return result;
-    
   } catch (e) {
     const errorMsg = `Ошибка формирования списка функций: ${e.message}`;
     addLog(`❌ ${errorMsg}`, 'ERROR');
     return {
       success: false,
       error: errorMsg,
-      functions: []
+      functions: [],
     };
   }
 }
@@ -852,19 +859,20 @@ function listExposedFunctions() {
  * @param {Object} parameters - Параметры функции
  * @return {Object} - Результат выполнения
  */
+// eslint-disable-next-line no-unused-vars
 function executeFunction(functionName, parameters = {}) {
   try {
     addLog(`📱 Запуск функции "${functionName}" из мобильного приложения`, 'INFO');
-    
+
     // Проверяем существование функции
     if (typeof this[functionName] !== 'function') {
       throw new Error(`Функция "${functionName}" не найдена`);
     }
-    
+
     // Выполняем функцию с параметрами
     const startTime = Date.now();
     let result;
-    
+
     try {
       if (Object.keys(parameters).length > 0) {
         result = this[functionName](parameters);
@@ -874,29 +882,28 @@ function executeFunction(functionName, parameters = {}) {
     } catch (funcError) {
       throw funcError;
     }
-    
+
     const executionTime = Date.now() - startTime;
-    
+
     const response = {
       success: true,
       functionName: functionName,
       result: result,
       executionTime: executionTime,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
-    
+
     addLog(`✅ Функция "${functionName}" выполнена за ${executionTime}мс`, 'INFO');
     return response;
-    
   } catch (e) {
     const errorMsg = `Ошибка выполнения функции "${functionName}": ${e.message}`;
     addLog(`❌ ${errorMsg}`, 'ERROR');
-    
+
     return {
       success: false,
       functionName: functionName,
       error: errorMsg,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 }
@@ -904,6 +911,7 @@ function executeFunction(functionName, parameters = {}) {
 /**
  * Получает статус скрипта для мобильного приложения
  */
+// eslint-disable-next-line no-unused-vars
 function getScriptStatus() {
   try {
     const ss = SpreadsheetApp.getActive();
@@ -916,19 +924,18 @@ function getScriptStatus() {
       version: '3.0.0',
       lastUpdated: new Date().toISOString(),
       user: Session.getEffectiveUser().getEmail(),
-      functions: listExposedFunctions()
+      functions: listExposedFunctions(),
     };
-    
+
     addLog('📱 Запрос статуса скрипта от мобильного приложения', 'INFO');
     return status;
-    
   } catch (e) {
     const errorMsg = `Ошибка получения статуса скрипта: ${e.message}`;
     addLog(`❌ ${errorMsg}`, 'ERROR');
-    
+
     return {
       success: false,
-      error: errorMsg
+      error: errorMsg,
     };
   }
 }
@@ -1171,17 +1178,17 @@ function runDevSelfTest() {
 function migrateLicenseKeysIfNeeded_() {
   try {
     const props = PropertiesService.getScriptProperties();
-    
+
     // Проверяем наличие СТАРЫХ ключей
     const oldEmail = props.getProperty('LICENSEEMAIL');
     const oldToken = props.getProperty('LICENSETOKEN');
-    
+
     // Проверяем наличие НОВЫХ ключей
     const newEmail = props.getProperty('LICENSE_EMAIL');
     const newToken = props.getProperty('LICENSE_TOKEN');
-    
+
     let migrated = false;
-    
+
     // Если есть старый email, но нет нового - мигрируем
     if (oldEmail && !newEmail) {
       props.setProperty('LICENSE_EMAIL', oldEmail);
@@ -1189,7 +1196,7 @@ function migrateLicenseKeysIfNeeded_() {
       Logger.log('✅ Migrated LICENSEEMAIL → LICENSE_EMAIL');
       migrated = true;
     }
-    
+
     // Если есть старый token, но нет нового - мигрируем
     if (oldToken && !newToken) {
       props.setProperty('LICENSE_TOKEN', oldToken);
@@ -1197,11 +1204,11 @@ function migrateLicenseKeysIfNeeded_() {
       Logger.log('✅ Migrated LICENSETOKEN → LICENSE_TOKEN');
       migrated = true;
     }
-    
+
     if (migrated) {
       addLog('✅ Выполнена миграция лицензионных ключей в новый формат', 'INFO');
     }
-    
+
     return migrated;
   } catch (e) {
     Logger.log('⚠️ Migration error (non-critical): ' + e.message);
@@ -1212,19 +1219,19 @@ function migrateLicenseKeysIfNeeded_() {
 function getLicenseEmail() {
   // Автомиграция при первом обращении
   migrateLicenseKeysIfNeeded_();
-  
+
   return PropertiesService.getScriptProperties().getProperty('LICENSE_EMAIL') || '';
 }
 function getLicenseToken() {
   // Автомиграция при первом обращении
   migrateLicenseKeysIfNeeded_();
-  
+
   return PropertiesService.getScriptProperties().getProperty('LICENSE_TOKEN') || '';
 }
 function hasStoredLicense() {
   // Автомиграция перед проверкой
   migrateLicenseKeysIfNeeded_();
-  
+
   try {
     const email = getLicenseEmail();
     const token = getLicenseToken();
@@ -1276,7 +1283,7 @@ function seedLicenseCredentialsFromParametersSheet() {
     // Проверяем через функции-геттеры (они уже содержат миграцию)
     const curEmail = getLicenseEmail();
     const curToken = getLicenseToken();
-    
+
     // Если УЖЕ есть - НЕ перезаписываем
     if (curEmail && curToken) {
       Logger.log('DEBUG: License already exists, skipping seed');
@@ -1293,7 +1300,7 @@ function seedLicenseCredentialsFromParametersSheet() {
     // Читаем из G1 и H1
     const email = String(sheet.getRange('G1').getDisplayValue() || '').trim();
     const token = String(sheet.getRange('H1').getDisplayValue() || '').trim();
-    
+
     if (!email || !token) {
       Logger.log('DEBUG: G1 or H1 empty (G1="' + email + '", H1="' + (token ? '***' : '') + '")');
       return false;
@@ -1303,11 +1310,11 @@ function seedLicenseCredentialsFromParametersSheet() {
     const scriptProps = PropertiesService.getScriptProperties();
     scriptProps.setProperty('LICENSE_EMAIL', email);
     scriptProps.setProperty('LICENSE_TOKEN', token);
-    
+
     Logger.log('INFO: License credentials seeded from Параметры sheet');
     Logger.log('  - LICENSE_EMAIL: ' + email);
     Logger.log('  - LICENSE_TOKEN: ' + token.substring(0, 4) + '***');
-    
+
     addLog('✅ Лицензия загружена из листа "Параметры"', 'INFO');
     return true;
   } catch (e) {
@@ -1326,9 +1333,9 @@ function serverStatus() {
   // 1) Читаем значения из ScriptProperties (после возможного seed)
   const email = getLicenseEmail();
   const token = getLicenseToken();
-  
+
   // ⭐ ОБА ID
-  const scriptId = ScriptApp.getScriptId();             // ⭐ Для привязки лицензии
+  const scriptId = ScriptApp.getScriptId(); // ⭐ Для привязки лицензии
   const spreadsheetId = SpreadsheetApp.getActive().getId(); // ⭐ Для работы и названия
 
   if (DEV_MODE) {
@@ -1339,7 +1346,7 @@ function serverStatus() {
     action: 'status',
     email: email,
     token: token,
-    scriptId: scriptId,        // ⭐ Для привязки
+    scriptId: scriptId, // ⭐ Для привязки
     spreadsheetId: spreadsheetId, // ⭐ Для названия
   };
 
@@ -1382,7 +1389,7 @@ function serverStatus() {
 /**
  * ✅ ВАЛИДАЦИЯ ЛИЦЕНЗИИ (без привязки)
  * Используется в saveSettingsData для проверки перед сохранением
- * 
+ *
  * @param {string} email - Email пользователя
  * @param {string} token - Токен лицензии
  * @return {Object} Результат проверки лицензии
@@ -1394,14 +1401,14 @@ function validateLicense(email, token) {
     Logger.log('token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
 
     // ⭐ ОБА ID
-    const scriptId = ScriptApp.getScriptId();             // ⭐ Для привязки
+    const scriptId = ScriptApp.getScriptId(); // ⭐ Для привязки
     const spreadsheetId = SpreadsheetApp.getActive().getId(); // ⭐ Для работы и названия
 
     const payload = {
-      action: 'validate',  // ⭐ ВАЛИДАЦИЯ БЕЗ ПРИВЯЗКИ
+      action: 'validate', // ⭐ ВАЛИДАЦИЯ БЕЗ ПРИВЯЗКИ
       email: email,
       token: token,
-      scriptId: scriptId,        // ⭐ Для привязки
+      scriptId: scriptId, // ⭐ Для привязки
       spreadsheetId: spreadsheetId, // ⭐ Для названия
     };
 
@@ -1470,7 +1477,7 @@ function openSettingsUI() {
 function getSettingsData() {
   try {
     Logger.log('=== getSettingsData START ===');
-    
+
     // Автомиграция перед чтением
     migrateLicenseKeysIfNeeded_();
 
@@ -1517,12 +1524,12 @@ function saveSettingsData(data) {
     // ⭐ ШАГ 1: ВАЛИДАЦИЯ ЛИЦЕНЗИИ (если email/token введены)
     // ═══════════════════════════════════════════════════════════════
 
-    const emailToSave = (data.email !== undefined && data.email && String(data.email).trim()) 
-      ? String(data.email).trim() 
-      : null;
-    const tokenToSave = (data.token !== undefined && data.token && String(data.token).trim()) 
-      ? String(data.token).trim() 
-      : null;
+    const emailToSave = (data.email !== undefined && data.email && String(data.email).trim()) ?
+      String(data.email).trim() :
+      null;
+    const tokenToSave = (data.token !== undefined && data.token && String(data.token).trim()) ?
+      String(data.token).trim() :
+      null;
 
     // Если пользователь ввёл email ИЛИ token - проверяем лицензию
     if (emailToSave || tokenToSave) {
@@ -1573,7 +1580,7 @@ function saveSettingsData(data) {
       logs.push('📋 Информация о лицензии:');
       logs.push('  • Статус: ' + (licenseStatus.message || 'активна'));
       logs.push('  • Действует до: ' + (licenseStatus.until ? new Date(licenseStatus.until).toLocaleDateString('ru-RU') : '—'));
-      
+
       if (licenseStatus.quota) {
         logs.push('  • Доступно копий: ' + licenseStatus.quota.remaining + ' из ' + licenseStatus.quota.total);
       }
@@ -1620,7 +1627,7 @@ function saveSettingsData(data) {
 
     logs.push('✅ Сохранено: ' + updated.join(', '));
     Logger.log('✅ Settings saved successfully: ' + updated.join(', '));
-    
+
     addLog('✅ Настройки сохранены и проверены: ' + updated.join(', '), 'INFO');
 
     return {
@@ -1671,7 +1678,7 @@ function serverGM(prompt, maxTokens, temperature) {
   const email = getLicenseEmail();
   const token = getLicenseToken();
   const apiKey = getGeminiApiKey();
-  
+
   // ⭐ ОБА ID
   const scriptId = ScriptApp.getScriptId();
   const spreadsheetId = SpreadsheetApp.getActive().getId();
@@ -1700,7 +1707,7 @@ function serverGM(prompt, maxTokens, temperature) {
     prompt: prompt,
     maxTokens: maxTokens,
     temperature: temperature,
-    scriptId: scriptId,        // ⭐ Для привязки
+    scriptId: scriptId, // ⭐ Для привязки
     spreadsheetId: spreadsheetId, // ⭐ Для работы
   };
 
@@ -1894,4 +1901,253 @@ function GM(prompt, maxTokens, temperature) {
   gmCachePut_(errKey, msg, 60);
   addLog('❌ GM финальная ошибка: ' + msg, 'ERROR');
   return msg;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ⭐ OTA UPDATES - TRIGGERS
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Установить триггер для фоновой проверки обновлений
+ * Вызывается из onOpen(), быстро (<1 сек)
+ */
+function installUpdateTrigger_() {
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    const exists = triggers.find((t) =>
+      t.getHandlerFunction() === 'checkForUpdatesBackground_',
+    );
+
+    if (exists) {
+      addLog('ℹ️ Триггер обновлений уже установлен', 'DEBUG');
+      return;
+    }
+
+    ScriptApp.newTrigger('checkForUpdatesBackground_')
+      .timeBased()
+      .atHour(3)
+      .everyDays(1)
+      .create();
+
+    addLog('✅ Триггер обновлений установлен (каждый день в 3:00)', 'INFO');
+  } catch (e) {
+    addLog(`❌ Ошибка установки триггера: ${e.message}`, 'ERROR');
+  }
+}
+
+/**
+ * Фоновая проверка обновлений (вызывается триггером в 3:00)
+ */
+function checkForUpdatesBackground_() {
+  addLog('🌙 Фоновая проверка обновлений запущена', 'INFO');
+
+  try {
+    // ═══════════════════════════════════════════════════════════
+    // ШАГ 1: Проверка версии
+    // ═══════════════════════════════════════════════════════════
+    const checkPayload = {
+      action: 'ota',
+      subaction: 'checkUpdates',
+      clientVersion: CLIENT_VERSION,
+      email: getLicenseEmail(),
+      token: getLicenseToken(),
+    };
+
+    const checkOptions = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(checkPayload),
+      muteHttpExceptions: true,
+    };
+
+    const checkResp = UrlFetchApp.fetch(SERVER_URL, checkOptions);
+    const updateInfo = JSON.parse(checkResp.getContentText());
+
+    if (!updateInfo.updateAvailable) {
+      addLog('✅ Версия актуальна: ' + updateInfo.serverVersion, 'INFO');
+      return;
+    }
+
+    addLog(`🚀 Обновление до версии ${updateInfo.serverVersion}`, 'INFO');
+
+    // ═══════════════════════════════════════════════════════════
+    // ШАГ 2: Получение файлов
+    // ═══════════════════════════════════════════════════════════
+    const filesPayload = {
+      action: 'ota',
+      subaction: 'getUpdatedFiles',
+      email: getLicenseEmail(),
+      token: getLicenseToken(),
+    };
+
+    const filesOptions = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(filesPayload),
+      muteHttpExceptions: true,
+    };
+
+    const filesResp = UrlFetchApp.fetch(SERVER_URL, filesOptions);
+    const filesData = JSON.parse(filesResp.getContentText());
+
+    if (!filesData.ok || !filesData.files) {
+      throw new Error('Failed to get files');
+    }
+
+    addLog(`📥 Получено ${filesData.count} файлов`, 'INFO');
+
+    // ═══════════════════════════════════════════════════════════
+    // ШАГ 3: Получение scriptId из лицензии
+    // ═══════════════════════════════════════════════════════════
+    const licenseInfo = serverStatus();
+
+    if (!licenseInfo.ok || !licenseInfo.scriptId) {
+      throw new Error('Script ID not found in license');
+    }
+
+    const scriptId = licenseInfo.scriptId;
+    addLog(`✅ Script ID: ${scriptId}`, 'INFO');
+
+    // ═══════════════════════════════════════════════════════════
+    // ШАГ 4: Обновление через API
+    // ═══════════════════════════════════════════════════════════
+    const apiUrl = `https://script.googleapis.com/v1/projects/${scriptId}/content`;
+    const oauthToken = ScriptApp.getOAuthToken();
+
+    addLog(`🔧 Обновление ${filesData.files.length} файлов через API...`, 'INFO');
+
+    const apiResp = UrlFetchApp.fetch(apiUrl, {
+      method: 'put',
+      headers: {
+        'Authorization': 'Bearer ' + oauthToken,
+        'Content-Type': 'application/json',
+      },
+      payload: JSON.stringify({
+        files: filesData.files,
+      }),
+      muteHttpExceptions: true,
+    });
+
+    const apiCode = apiResp.getResponseCode();
+
+    if (apiCode !== 200) {
+      const apiError = JSON.parse(apiResp.getContentText());
+      throw new Error(apiError.error.message || `HTTP ${apiCode}`);
+    }
+
+    addLog('✅ Файлы обновлены через API', 'INFO');
+
+    // ═══════════════════════════════════════════════════════════
+    // ШАГ 5: Email пользователю
+    // ═══════════════════════════════════════════════════════════
+    sendUpdateEmail_(updateInfo.serverVersion);
+
+    addLog('🎉 Обновление завершено!', 'INFO');
+  } catch (e) {
+    addLog(`❌ Ошибка обновления: ${e.message}`, 'ERROR');
+    sendErrorEmail_(e.message);
+  }
+}
+
+/**
+ * Отправить email об успешном обновлении
+ */
+function sendUpdateEmail_(newVersion) {
+  try {
+    const email = getLicenseEmail();
+    if (!email) return;
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    MailApp.sendEmail({
+      to: email,
+      subject: '✅ Table AI обновлён до версии ' + newVersion,
+      htmlBody: `
+        <h2>✅ Обновление завершено!</h2>
+        <p><strong>Новая версия:</strong> ${newVersion}</p>
+        <p><strong>Предыдущая версия:</strong> ${CLIENT_VERSION}</p>
+        <p><strong>Таблица:</strong> <a href="${ss.getUrl()}">${ss.getName()}</a></p>
+        <hr>
+        <p>✅ Все данные сохранены<br>✅ Готово к работе</p>
+      `,
+    });
+
+    addLog('✅ Email отправлен на ' + email, 'INFO');
+  } catch (e) {
+    addLog(`⚠️ Ошибка email: ${e.message}`, 'WARN');
+  }
+}
+
+/**
+ * Отправить email об ошибке
+ */
+function sendErrorEmail_(error) {
+  try {
+    const email = getLicenseEmail();
+    if (!email) return;
+
+    MailApp.sendEmail({
+      to: email,
+      subject: '❌ Ошибка обновления Table AI',
+      body: `Не удалось обновить таблицу.\n\nОшибка: ${error}`,
+    });
+
+    addLog('✅ Email об ошибке отправлен', 'INFO');
+  } catch (e) {
+    addLog(`⚠️ Ошибка email: ${e.message}`, 'WARN');
+  }
+}
+
+/**
+ * Ручная проверка обновлений (для тестирования)
+ */
+// eslint-disable-next-line no-unused-vars
+function checkForUpdatesManual_() {
+  addLog('🔍 Ручная проверка обновлений', 'INFO');
+
+  try {
+    const payload = {
+      action: 'ota',
+      subaction: 'checkUpdates',
+      clientVersion: CLIENT_VERSION,
+      email: getLicenseEmail(),
+      token: getLicenseToken(),
+    };
+
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+    };
+
+    const resp = UrlFetchApp.fetch(SERVER_URL, options);
+    const updateInfo = JSON.parse(resp.getContentText());
+
+    const ui = SpreadsheetApp.getUi();
+
+    if (!updateInfo.updateAvailable) {
+      ui.alert(
+        '✅ Версия актуальна',
+        `Текущая: ${updateInfo.clientVersion}\nСерверная: ${updateInfo.serverVersion}`,
+        ui.ButtonSet.OK,
+      );
+      return;
+    }
+
+    const response = ui.alert(
+      `Доступна версия ${updateInfo.serverVersion}!`,
+      'Обновить сейчас?',
+      ui.ButtonSet.YES_NO,
+    );
+
+    if (response !== ui.Button.YES) return;
+
+    ui.alert('⏳ Обновление запущено...');
+    checkForUpdatesBackground_();
+    ui.alert('✅ Готово! Проверьте email.');
+  } catch (e) {
+    addLog(`❌ Ошибка: ${e.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('❌ Ошибка: ' + e.message);
+  }
 }
