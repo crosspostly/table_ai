@@ -20,15 +20,39 @@
 /* eslint-disable indent, no-multiple-empty-lines, padded-blocks */
 
 // ====== DEV FLAG ======
-// eslint-disable-next-line no-unused-vars
-const DEV_MODE = true;
-// eslint-disable-next-line no-unused-vars
-const DEVMODE = DEV_MODE;
+// ⭐ DEV MODE is now stored in Script Properties
+// Access via getDevMode() function below
 
 // ====== DEV UTILITIES ======
 // eslint-disable-next-line no-unused-vars
+/**
+ * Get current dev mode status
+ * @return {boolean}
+ */
 function getDevMode() {
-  return typeof DEV_MODE !== 'undefined' ? DEV_MODE : false;
+  try {
+    const props = PropertiesService.getScriptProperties();
+    return props.getProperty('DEV_MODE') === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
+// eslint-disable-next-line no-unused-vars
+/**
+ * Set dev mode status
+ * @param {boolean} enabled
+ */
+function setDevMode(enabled) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    props.setProperty('DEV_MODE', enabled ? 'true' : 'false');
+    addLog('🔧 DEV_MODE set to: ' + enabled, 'INFO');
+    return true;
+  } catch (e) {
+    addLog('❌ Error setting DEV_MODE: ' + e.message, 'ERROR');
+    return false;
+  }
 }
 
 // ====== DEV MENU ======
@@ -53,7 +77,7 @@ function createDevMenu() {
  */
 // eslint-disable-next-line no-unused-vars
 function gmDevFallback_(prompt, maxTokens, temperature, serr) {
-  if (!DEV_MODE) return null;
+  if (!getDevMode()) return null;
 
   addLog('⚠️ DEV fallback → прямой Gemini. Причина: ' + (serr || 'UNKNOWN'), 'WARN');
   try {

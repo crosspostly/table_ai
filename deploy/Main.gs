@@ -45,11 +45,6 @@ const RETRY_DELAY_INCREMENT = 10000;
 
 // ⭐ OTA UPDATES
 const CLIENT_VERSION = '3.5.2';
-// eslint-disable-next-line no-var
-if (typeof DEV_MODE === 'undefined') {
-  // eslint-disable-next-line no-var
-  var DEV_MODE = false;
-}
 // ====== ЛОГИРОВАНИЕ ======
 function addLog(msg, level = 'INFO') {
   try {
@@ -403,27 +398,6 @@ function clearChainForA3() {
   }
   sheet.getRange(3, 2, 1, 6).clearContent(); // B3..G3
   SpreadsheetApp.getUi().alert('Информация', '🧹 Очищено: B3..G3', SpreadsheetApp.getUi().ButtonSet.OK);
-}
-
-function getGeminiApiKey() {
-  Logger.log('=== getGeminiApiKey START ===');
-
-  // Priority 1: Check for user-provided API key first
-  const userApiKey = PropertiesService.getUserProperties().getProperty('GEMINI_API_KEY');
-  if (userApiKey) {
-    Logger.log('Using USER API key, length: ' + userApiKey.length);
-    return userApiKey;
-  }
-
-  // Priority 2: Check for script-level API key (default)
-  const scriptApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-  if (scriptApiKey) {
-    Logger.log('Using DEFAULT API key, length: ' + scriptApiKey.length);
-    return scriptApiKey;
-  }
-
-  Logger.log('ERROR: No API key available (neither user nor default)');
-  throw new Error('API-ключ Gemini не установлен. Меню: 🤖 Table AI → Установить API ключ Gemini');
 }
 // ====== КЭШ ДЛЯ GM ======
 function gmCacheKey_(prompt, maxTokens, temperature) {
@@ -868,8 +842,8 @@ function listExposedFunctions() {
       success: true,
       functions: functions.sort((a, b) => a.order - b.order),
       metadata: {
-        version: '3.0.0',
-        devMode: DEV_MODE,
+        version: '3.5.2',
+        devMode: typeof getDevMode === 'function' ? getDevMode() : false,
         totalFunctions: functions.length,
         timestamp: new Date().toISOString(),
       },
@@ -955,8 +929,8 @@ function getScriptStatus() {
       scriptId: ScriptApp.getScriptId(),
       spreadsheetId: ss.getId(),
       spreadsheetName: ss.getName(),
-      devMode: DEV_MODE,
-      version: '3.0.0',
+      devMode: typeof getDevMode === 'function' ? getDevMode() : false,
+      version: '3.5.2',
       lastUpdated: new Date().toISOString(),
       user: Session.getEffectiveUser().getEmail(),
       functions: listExposedFunctions(),
@@ -1645,7 +1619,7 @@ function serverGM(prompt, maxTokens, temperature) {
   Logger.log('spreadsheetId: ' + spreadsheetId);
 
   // DEV логирование
-  if (DEV_MODE) {
+  if (typeof getDevMode === 'function' && getDevMode()) {
     addLog(`SERVER REQUEST: action=gm, email=${email}, token=${token ? token.substring(0, 4) + '****' : 'null'}`, 'DEBUG');
     addLog(`PAYLOAD: promptLen=${prompt ? prompt.length : 0}, maxTokens=${maxTokens}`, 'DEBUG');
 
@@ -1691,7 +1665,7 @@ function serverGM(prompt, maxTokens, temperature) {
     Logger.log('Response length: ' + responseText.length);
 
     // DEV логирование
-    if (DEV_MODE) {
+    if (typeof getDevMode === 'function' && getDevMode()) {
       addLog(`RAW RESPONSE: HTTP=${code}, length=${responseText.length}`, 'DEBUG');
       addLog(`RESPONSE START: ${responseText.substring(0, 200)}...`, 'DEBUG');
     }
@@ -1700,7 +1674,7 @@ function serverGM(prompt, maxTokens, temperature) {
     Logger.log('Response parsed successfully, ok=' + (data && data.ok ? 'true' : 'false'));
 
     // DEV логирование
-    if (DEV_MODE) {
+    if (typeof getDevMode === 'function' && getDevMode()) {
       addLog(`PARSED RESPONSE: ok=${data && data.ok ? 'true' : 'false'}`, 'DEBUG');
     }
 
@@ -1752,7 +1726,7 @@ function GM(prompt, maxTokens, temperature) {
       return 'Error: LICENSE_REQUIRED';
     }
 
-    if (DEV_MODE) {
+    if (typeof getDevMode === 'function' && getDevMode()) {
       addLog('🔍 LICENSE CHECK: email=' + _email + ', token=' + (_token ? _token.substring(0, 4) + '****' : 'отсутствует'), 'DEBUG');
     }
 
@@ -1762,7 +1736,7 @@ function GM(prompt, maxTokens, temperature) {
       return 'Error: LICENSE_OR_SERVER';
     }
 
-    if (DEV_MODE) {
+    if (typeof getDevMode === 'function' && getDevMode()) {
       addLog('✅ LICENSE OK: ' + (st0.message || 'активна') + (st0.quota ? ', квота: ' + JSON.stringify(st0.quota) : ''), 'DEBUG');
     }
   } catch (eLic) {

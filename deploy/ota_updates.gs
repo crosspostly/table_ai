@@ -225,7 +225,8 @@ function downloadAllClientFiles_(isPublicRepo) {
       const content = downloadFileFromGithub_(fileName, isPublicRepo);
 
       if (!content) {
-        Logger.log('      ❌ Download FAILED');
+        Logger.log('      ❌ Download FAILED for file: ' + fileName);
+        Logger.log('      💡 Check GitHub URL: https://raw.githubusercontent.com/' + OTA_CONFIG.REPO + '/' + OTA_CONFIG.BRANCH + '/' + OTA_CONFIG.DEPLOY_PATH + fileName);
         failCount++;
         return null;
       }
