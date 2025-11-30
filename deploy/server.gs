@@ -9,7 +9,7 @@ const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
 const AUTO_UPDATE_CHECK_INTERVAL = 6;
 
 // ⭐ OTA UPDATES
-const SERVER_VERSION = '3.2.0';
+const SERVER_VERSION = '3.3.0';
 
 
 // ===== Entry points =====
@@ -71,7 +71,7 @@ function doPost(_e) {
 
       if (!userApiKey) {
         // Try to get default API key from script properties
-        const defaultApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+        const defaultApiKey = getDefaultGeminiKey_();
         if (defaultApiKey) {
           finalApiKey = defaultApiKey;
           keySource = 'DEFAULT';
@@ -141,8 +141,9 @@ function doPost(_e) {
 
       if (!userApiKey) {
         // Try to get default API key from script properties
-        const defaultApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+        const defaultApiKey = getDefaultGeminiKey_();
         if (defaultApiKey) {
+          finalApiKey = defaultApiKey;
           keySource = 'DEFAULT';
           Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
         } else {
@@ -197,6 +198,72 @@ function doPost(_e) {
 
       Logger.log('Returning successful response');
       return json_({ok: true, data: text2});
+    }
+    // ════════════════════════════════════════════════════════
+    // ACTION: GEMINI CONFIG
+    // ════════════════════════════════════════════════════════
+    case 'geminiConfig': {
+      Logger.log('Processing geminiConfig action');
+      const subaction = (data.subaction || '').toString();
+
+      // ⭐ SUBACTION: GET DEFAULT KEY
+      if (subaction === 'getDefaultKey') {
+        Logger.log('📌 Getting default Gemini key');
+
+        // Проверяем лицензию
+        const lic = checkLicense_(token, email, scriptId, spreadsheetId);
+
+        if (!lic.ok) {
+          Logger.log(`❌ License check failed: ${lic.error}`);
+          return json_(lic, 403);
+        }
+
+        const defaultKey = getDefaultGeminiKey_();
+
+        if (!defaultKey) {
+          Logger.log('❌ No default key configured');
+          return json_({
+            ok: false,
+            error: 'NO_DEFAULT_KEY',
+            message: 'No default Gemini API key configured on server',
+          }, 500);
+        }
+
+        Logger.log('✅ Returning default Gemini key');
+        return json_({
+          ok: true,
+          apiKey: defaultKey,
+          source: 'server_default',
+        });
+      }
+
+      // ⭐ SUBACTION: SET DEFAULT KEY (администратор)
+      if (subaction === 'setDefaultKey') {
+        const adminEmail = data.adminEmail || '';
+        const newKey = data.apiKey || '';
+
+        // Проверяем что это администратор (жестко кодируем или берём из конфига)
+        const ADMIN_EMAIL = 'sheepoff@gmail.com'; // ← Измени на свой!
+
+        if (adminEmail !== ADMIN_EMAIL) {
+          Logger.log(`❌ Unauthorized: ${adminEmail}`);
+          return json_({ok: false, error: 'UNAUTHORIZED'}, 403);
+        }
+
+        const updated = setDefaultGeminiKey_(newKey);
+
+        if (!updated) {
+          return json_({ok: false, error: 'FAILED_TO_UPDATE'}, 500);
+        }
+
+        return json_({
+          ok: true,
+          message: 'Default Gemini key updated',
+        });
+      }
+
+      Logger.log(`❌ Unknown geminiConfig subaction: ${subaction}`);
+      return json_({ok: false, error: 'UNKNOWN_SUBACTION'}, 400);
     }
     case 'status': {
       Logger.log('Processing status action');
@@ -331,7 +398,7 @@ function doPost(_e) {
 
       if (!userApiKey) {
         // Try to get default API key from script properties
-        const defaultApiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+        const defaultApiKey = getDefaultGeminiKey_();
         if (defaultApiKey) {
           finalApiKey = defaultApiKey;
           keySource = 'DEFAULT';
@@ -954,6 +1021,52 @@ function fetchFileContent_(fileName) {
   } catch (e) {
     Logger.log(`Error fetching ${fileName}: ${e.message}`);
     return null;
+  }
+}
+
+// ===== Gemini API Key Management =====
+
+/**
+ * Получить Gemini API ключ по умолчанию (из свойств сервера)
+ * @return {string|null} API ключ или null
+ */
+function getDefaultGeminiKey_() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const key = props.getProperty('DEFAULT_GEMINI_API_KEY');
+
+    if (!key) {
+      Logger.log('⚠️ DEFAULT_GEMINI_API_KEY not set in server properties');
+      return null;
+    }
+
+    Logger.log('✅ Got default Gemini key from server: ' + key.substring(0, 10) + '...');
+    return key;
+  } catch (e) {
+    Logger.log('❌ Error getting default Gemini key: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * Установить Gemini API ключ по умолчанию (администратор)
+ * @param {string} apiKey - Новый API ключ
+ */
+function setDefaultGeminiKey_(apiKey) {
+  try {
+    if (!apiKey) {
+      Logger.log('❌ Cannot set empty API key');
+      return false;
+    }
+
+    const props = PropertiesService.getScriptProperties();
+    props.setProperty('DEFAULT_GEMINI_API_KEY', apiKey);
+
+    Logger.log('✅ Default Gemini key updated: ' + apiKey.substring(0, 10) + '...');
+    return true;
+  } catch (e) {
+    Logger.log('❌ Error setting default Gemini key: ' + e.message);
+    return false;
   }
 }
 
