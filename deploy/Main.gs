@@ -16,12 +16,13 @@
  * SERVER: Отдельный веб-сервис (SERVER_URL)
  */
 /* exported onOpen, optimizedOTASetup, checkForUpdatesManual_, checkForUpdatesBackground_ */
-/* exported setClientGeminiKey, removeClientGeminiKey, debugGeminiKeys */
+/* exported setClientGeminiKey, removeClientGeminiKey */
 /* eslint-disable indent, no-multiple-empty-lines, padded-blocks */
 
 // VK Parser URL: используется в VK.gs
 // eslint-disable-next-line no-unused-vars
 const VK_PARSER_URL = 'https://script.google.com/macros/s/AKfycbzttbqz16EmmcXbEYCuYhNlXkCxAnCG77phspFL1_rTCi4xVqoorByJAPa4dI4iwT8/exec';
+// eslint-disable-next-line no-unused-vars
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 // Фиксированный сервер (веб‑приложение) для лицензий/логов
 const SERVER_URL = 'https://script.google.com/macros/s/AKfycbyyUlB5YWP4bwv3gHHniTv_12cAHlqjYfra7fQ3m3Vri5XvZTQ_uUZZovCYeTo2_u6gQw/exec';
@@ -42,11 +43,6 @@ const LOGS_TTL = 86400; // 24ч
 const MAX_RETRY_ATTEMPTS = 5;
 // eslint-disable-next-line no-unused-vars
 const RETRY_DELAY_INCREMENT = 10000;
-
-// ====== DEV ФЛАГ ======
-const DEV_MODE = true; // DEV: показывать DEV-меню/логи
-// eslint-disable-next-line no-unused-vars
-const DEVMODE = DEV_MODE;
 
 // ⭐ OTA UPDATES
 const CLIENT_VERSION = '3.5.0';
@@ -305,6 +301,7 @@ function parseTargetA1(a1) {
   return {sheetName: sheetName, row: row, col: col, a1: (colLetters.toUpperCase() + row)};
 }
 
+// eslint-disable-next-line no-unused-vars
 function prepareChainSmart() {
   const ss = SpreadsheetApp.getActive();
   const prompt = ss.getSheetByName('Prompt_box');
@@ -405,6 +402,7 @@ function prepareChainForA3() {
   }
   SpreadsheetApp.getUi().alert('Готово', '✅ Готово: формулы B3..G3 проставлены.\nЗаполните A3 — шаги пойдут по очереди.', SpreadsheetApp.getUi().ButtonSet.OK);
 }
+// eslint-disable-next-line no-unused-vars
 function clearChainForA3() {
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName('Распаковка');
@@ -626,17 +624,13 @@ function onOpen() {
       // ⭐ Убрали отдельную кнопку - проверка теперь в Settings при сохранении
       .addToUi();
 
-    if (DEV_MODE) {
-      ui.createMenu('🧰 DEV')
-        .addItem('📝 Показать логи', 'showLogsDialog')
-        .addItem('⬇️ Экспорт логов', 'exportLogsToSheet')
-        .addItem('🗑 Очистить логи', 'clearLogs')
-        .addItem('🔍 Тест сервера', 'testServerConnection')
-        .addItem('🧪 Dev Self Test', 'runDevSelfTest')
-        .addItem('🔄 Обновить вручную', 'checkForUpdatesManual_')
-        .addSeparator()
-        .addItem('🔑 Debug Gemini Keys', 'debugGeminiKeys')
-        .addToUi();
+    // DEV MENU - только если файл DevTools.gs присутствует
+    try {
+      if (typeof createDevMenu === 'function') {
+        createDevMenu().addToUi();
+      }
+    } catch (e) {
+      // DevTools.gs not found - production mode
     }
 
     addLog('✅ Меню загружено', 'INFO');
@@ -838,8 +832,8 @@ function listExposedFunctions() {
       },
     );
 
-    // Dev функции (если в DEV_MODE)
-    if (DEV_MODE) {
+    // Dev функции (если присутствует DevTools.gs)
+    if (typeof showLogsDialog === 'function') {
       functions.push(
         {
           name: 'showLogsDialog',
@@ -1081,6 +1075,7 @@ function refreshCurrentGMCell() {
     SpreadsheetApp.getUi().alert('Ошибка: ' + e.message);
   }
 }
+// eslint-disable-next-line no-unused-vars
 function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
   try {
     let condVal = false;
@@ -1103,7 +1098,7 @@ function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
     }
 
     if (!condVal) {
-      if (DEV_MODE) {
+      if (typeof getDevMode === 'function' && getDevMode()) {
         addLog('GM_IF: условие false, пропускаем', 'DEBUG');
       }
       return '';
@@ -1114,7 +1109,7 @@ function GM_IF(condition, prompt, maxTokens, temperature, _tick) {
     if (maxTokens == null) maxTokens = 25000;
     if (temperature == null) temperature = 0.7;
 
-    if (DEV_MODE) {
+    if (typeof getDevMode === 'function' && getDevMode()) {
       addLog('GM_IF: условие true, вызываем GM', 'DEBUG');
     }
 
@@ -1149,90 +1144,8 @@ function onEdit(e) {
 
 // Горячая кнопка теперь через рисунок с назначенной функцией ocrReviews
 
-// ====== DEV: Автотесты (не включать в продукт: DEV_MODE=false) ======
-// eslint-disable-next-line no-unused-vars
-function runDevSelfTest() {
-  const failures = [];
-  try {
-    // 1) columnToLetter
-    const map = {1: 'A', 2: 'B', 7: 'G', 26: 'Z', 27: 'AA', 28: 'AB'};
-    Object.keys(map).forEach((k) => {
-      const got = columnToLetter(parseInt(k, 10));
-      if (got !== map[k]) failures.push('columnToLetter(' + k + ') → ' + got + ' (ожидалось ' + map[k] + ')');
-    });
-
-    // 2) Markdown detection & conversion
-    const md = '**bold**\n- a\n- b\n';
-    if (!isMarkdownText(md)) failures.push('isMarkdownText не распознал MD');
-    const conv = convertMarkdownToReadableText(md);
-    if (!conv || conv.indexOf('BOLD') === -1) failures.push('convertMarkdownToReadableText не преобразовал **bold** → BOLD');
-
-    // 3) GM_IF sleep behavior
-    const r = GM_IF(false, 'no-call');
-    if (r !== '') failures.push('GM_IF при false условии должен возвращать пусто');
-
-    // 4) Формулы для A3 (не трогаем содержимое, только проверяем, что ставятся корректно)
-    const ss = SpreadsheetApp.getActive();
-    const existed = !!ss.getSheetByName('Распаковка');
-    const rSheet = existed ? ss.getSheetByName('Распаковка') : ss.insertSheet('Распаковка');
-    const snapshot = [];
-    for (let c=2; c<=7; c++) {
-      snapshot.push(rSheet.getRange(3, c).getFormula());
-    }
-    prepareChainForA3();
-    const expectedB3 = '=GM_IF($A3<>"", Prompt_box!$F$2, 25000, 0.7)';
-    const gotB3 = rSheet.getRange(3, 2).getFormula();
-    if (gotB3 !== expectedB3) failures.push('B3 формула некорректна: '+gotB3);
-    clearChainForA3();
-    // Восстановление прежних формул
-    for (let c2=2; c2<=7; c2++) {
-      if (snapshot[c2-2]) rSheet.getRange(3, c2).setFormula(snapshot[c2-2]);
-    }
-    if (!existed) ss.deleteSheet(rSheet);
-
-    // 5) Умный режим: Prompt_box!B2:B3 → B3,C3 с якорем от A3
-    const pbExisted = !!ss.getSheetByName('Prompt_box');
-    const pb = pbExisted ? ss.getSheetByName('Prompt_box') : ss.insertSheet('Prompt_box');
-    const bSnap = pb.getRange(2, 2, 2, 1).getDisplayValues(); // B2:B3
-    const fSnap = pb.getRange(2, 6, 2, 1).getFormulas(); // F2:F3
-    pb.getRange(2, 2).setValue('B3');
-    pb.getRange(3, 2).setValue('C3');
-    pb.getRange(2, 6).setFormula('="P1"');
-    pb.getRange(3, 6).setFormula('="P2"');
-
-    const rSheet2 = ss.getSheetByName('Распаковка') || ss.insertSheet('Распаковка');
-    const b3Before = rSheet2.getRange(3, 2).getFormula();
-    const c3Before = rSheet2.getRange(3, 3).getFormula();
-
-    prepareChainSmart();
-
-    const phrase2 = getCompletionPhrase() || COMPLETION_PHRASE;
-    const phraseEsc2 = phrase2.replace(/"/g, '""');
-    const expB3 = '=GM_IF($A3<>"", Prompt_box!$F$2, 25000, 0.7)';
-    const expC3 = '=GM_IF(LEFT(B3, LEN("' + phraseEsc2 + '"))="' + phraseEsc2 + '", Prompt_box!$F$3, 25000, 0.7)';
-    const gotB3_2 = rSheet2.getRange(3, 2).getFormula();
-    const gotC3_2 = rSheet2.getRange(3, 3).getFormula();
-    if (gotB3_2 !== expB3) failures.push('Smart-режим: формула B3 некорректна: ' + gotB3_2);
-    if (gotC3_2 !== expC3) failures.push('Smart-режим: формула C3 некорректна: ' + gotC3_2);
-
-    // Восстановление
-    if (b3Before) rSheet2.getRange(3, 2).setFormula(b3Before); else rSheet2.getRange(3, 2).clearContent();
-    if (c3Before) rSheet2.getRange(3, 3).setFormula(c3Before); else rSheet2.getRange(3, 3).clearContent();
-    pb.getRange(2, 2, 2, 1).setValues(bSnap);
-    pb.getRange(2, 6, 2, 1).setFormulas(fSnap);
-    if (!pbExisted) ss.deleteSheet(pb);
-  } catch (e) {
-    failures.push('Исключение автотестов: '+e.message);
-  }
-
-  if (failures.length) {
-    addLog('❌ DEV-тесты: провалено '+failures.length+' пункт(ов)\n'+failures.join('\n'), 'ERROR');
-    SpreadsheetApp.getUi().alert('❌ DEV-тесты: есть проблемы', failures.join('\n'));
-  } else {
-    addLog('✅ DEV-тесты: всё зелёное', 'INFO');
-    SpreadsheetApp.getUi().alert('Готово', '✅ DEV-тесты пройдены', SpreadsheetApp.getUi().ButtonSet.OK);
-  }
-}
+// DEV: Автотесты удалены в DevTools.gs - не включать в production
+// Функция runDevSelfTest() доступна только если DevTools.gs присутствует
 
 // ===== LICENSE & SERVER PROXY (patch) =====
 /**
@@ -1403,7 +1316,7 @@ function serverStatus() {
   const scriptId = ScriptApp.getScriptId(); // ⭐ Для привязки лицензии
   const spreadsheetId = SpreadsheetApp.getActive().getId(); // ⭐ Для работы и названия
 
-  if (DEV_MODE) {
+  if (typeof getDevMode === 'function' && getDevMode()) {
     addLog(`STATUS REQUEST: email=${email}, token=${token ? token.substring(0, 4) : null}`, 'DEBUG');
   }
 
@@ -1428,14 +1341,14 @@ function serverStatus() {
     const code = resp.getResponseCode();
     const responseText = resp.getContentText();
 
-    if (DEV_MODE) {
+    if (typeof getDevMode === 'function' && getDevMode()) {
       addLog(`STATUS RAW: HTTP ${code}`, 'DEBUG');
       addLog(`STATUS CONTENT: ${responseText.substring(0, 200)}...`, 'DEBUG');
     }
 
     const data = JSON.parse(responseText);
 
-    if (DEV_MODE) {
+    if (typeof getDevMode === 'function' && getDevMode()) {
       addLog(`STATUS RESULT ok=${data.ok ? true : false}`, 'DEBUG');
       if (data && data.message) addLog(`STATUS MESSAGE: ${data.message}`, 'DEBUG');
       if (data && data.quota) addLog(`STATUS QUOTA: ${JSON.stringify(data.quota)}`, 'DEBUG');
@@ -1489,14 +1402,14 @@ function validateLicense(email, token) {
     const code = resp.getResponseCode();
     const responseText = resp.getContentText();
 
-    if (DEV_MODE) {
+    if (typeof getDevMode === 'function' && getDevMode()) {
       addLog(`VALIDATE RAW: HTTP ${code}`, 'DEBUG');
       addLog(`VALIDATE CONTENT: ${responseText.substring(0, 200)}...`, 'DEBUG');
     }
 
     const data = JSON.parse(responseText);
 
-    if (DEV_MODE) {
+    if (typeof getDevMode === 'function' && getDevMode()) {
       addLog(`VALIDATE RESULT ok=${data.ok ? true : false}`, 'DEBUG');
       if (data && data.message) addLog(`VALIDATE MESSAGE: ${data.message}`, 'DEBUG');
       if (data && data.quota) addLog(`VALIDATE QUOTA: ${JSON.stringify(data.quota)}`, 'DEBUG');
@@ -1928,39 +1841,11 @@ function GM(prompt, maxTokens, temperature) {
     return processed;
   }
 
-  if (DEV_MODE) {
-    addLog('⚠️ DEV fallback → прямой Gemini. Причина: ' + (serr || 'UNKNOWN'), 'WARN');
-    try {
-      const apiKey = getGeminiApiKey();
-      const body = {
-        contents: [{parts: [{text: prompt}]}],
-        generationConfig: {maxOutputTokens: maxTokens, temperature: temperature},
-      };
-      const options = {method: 'POST', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true};
-      const resp = UrlFetchApp.fetch(GEMINI_API_URL + '?key=' + apiKey, options);
-      const code = resp.getResponseCode();
-      const data = JSON.parse(resp.getContentText());
-      addLog('← GM (direct): HTTP ' + code, 'DEBUG');
-      if (code !== 200) {
-        const message = data && data.error && data.error.message ? data.error.message : 'Unknown error';
-        const msg = 'Error: ' + message;
-        gmCachePut_(errKey, msg, 60);
-        addLog('❌ Прямой Gemini: ' + message, 'ERROR');
-        return msg;
-      }
-      const candidate = data.candidates && data.candidates[0];
-      const content = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
-      const txt = content && content.text ? content.text : '';
-      const processed2 = processGeminiResponse(txt);
-      gmCachePut_(key, processed2, 21600);
-      addLog('✅ Прямой Gemini успешно: ' + txt.length + ' символов', 'DEBUG');
-      return processed2;
-    } catch (e2) {
-      const em = 'Error: ' + e2.message;
-      gmCachePut_(errKey, em, 60);
-      addLog('❌ Прямой Gemini упал: ' + e2.message, 'ERROR');
-      return em;
-    }
+  // DEV fallback removed in production
+  // Use server-side GM only
+  if (typeof gmDevFallback_ === 'function') {
+    const fallbackResult = gmDevFallback_(prompt, maxTokens, temperature, serr);
+    if (fallbackResult) return fallbackResult;
   }
 
   const msg = 'Error: ' + (serr || 'LICENSE_OR_SERVER');
@@ -2273,6 +2158,7 @@ function checkForUpdatesManual_() {
      * Получить информацию о текущем ключе (для отладки)
      * @return {Object} Информация о ключе
      */
+    // eslint-disable-next-line no-unused-vars
     function getGeminiKeyInfo() {
       const props = PropertiesService.getUserProperties();
       const clientKey = props.getProperty('GEMINI_API_KEY');
@@ -2284,49 +2170,5 @@ function checkForUpdatesManual_() {
       };
     }
 
-    /**
-     * Отладка Gemini ключей
-     */
-    function debugGeminiKeys() {
-      Logger.log('=== DEBUG GEMINI KEYS ===');
-
-      try {
-        // 1. Информация о ключах
-        const info = getGeminiKeyInfo();
-        Logger.log('Client key configured: ' + info.hasClientKey);
-        Logger.log('Current key preview: ' + (info.clientKeyPreview || 'using server default'));
-        Logger.log('Source: ' + info.source);
-
-        // 2. Попытка получить ключ
-        Logger.log('Attempting to get Gemini key...');
-        const apiKey = getGeminiApiKey();
-        Logger.log('API Key obtained: ' + (apiKey ? '✅ YES' : '❌ NO'));
-
-        if (apiKey) {
-          Logger.log('Key preview: ' + apiKey.substring(0, 10) + '...');
-        }
-
-      } catch (e) {
-        Logger.log('❌ Error: ' + e.message);
-      }
-    }
-
-    /**
-     * Отладочная функция для проверки полного OTA-потока
-     */
-    // eslint-disable-next-line no-unused-vars
-    function debugOTAFlow() {
-      Logger.log('=== DEBUG OTA FLOW ===');
-
-      Logger.log('1️⃣ Calling serverStatus()...');
-      const status = serverStatus();
-      Logger.log('   Result: ' + JSON.stringify(status));
-      Logger.log('   scriptId: ' + ((status && status.scriptId) ? status.scriptId : 'UNDEFINED'));
-
-      Logger.log('2️⃣ CLIENT_VERSION: ' + (typeof CLIENT_VERSION !== 'undefined' ? CLIENT_VERSION : 'UNDEFINED'));
-      Logger.log('3️⃣ SERVER_URL: ' + SERVER_URL);
-      Logger.log('4️⃣ ScriptApp.getScriptId(): ' + ScriptApp.getScriptId());
-      Logger.log('5️⃣ getLicenseEmail(): ' + getLicenseEmail());
-      const token = getLicenseToken();
-      Logger.log('6️⃣ getLicenseToken(): ' + (token ? 'SET' : 'NOT SET'));
-    }
+    // Debug functions removed to DevTools.gs
+    // debugGeminiKeys() and debugOTAFlow() available only if DevTools.gs is present

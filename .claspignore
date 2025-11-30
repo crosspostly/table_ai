@@ -1,6 +1,9 @@
 # CLASP ignore file for deploy/ directory
 # Ignore non-Apps Script files
 
+# Development tools (exclude from production)
+DevTools.gs
+
 # Documentation and guides
 *.md
 DEPLOYMENT_GUIDE.md
