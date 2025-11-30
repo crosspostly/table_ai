@@ -1,7 +1,7 @@
-# Table AI - AI-Powered Google Sheets Constructor v3.2
+# Table AI - AI-Powered Google Sheets Constructor v3.5
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-3.2.0-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-3.5.0-brightgreen.svg)]()
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)]()
 
 ## 📌 О проекте
@@ -281,7 +281,8 @@ clasp deploy --server
 
 ### Гайды
 
-- 📖 [OTA_UPDATES.md](docs/OTA_UPDATES.md) - Подробно об обновлениях
+- 📖 [OTA_UPDATES.md](docs/OTA_UPDATES.md) - Подробно об обновлениях (v3.5)
+- 🔐 [GITHUB_PRIVATE_REPO.md](docs/GITHUB_PRIVATE_REPO.md) - Приватные GitHub репо (NEW!)
 - 🔑 [GEMINI_API_CONFIG.md](docs/GEMINI_API_CONFIG.md) - Управление API ключами
 - 🏗️ [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Архитектура системы
 - 📦 [LICENSE_SYSTEM.md](docs/LICENSE_SYSTEM.md) - Система лицензирования
@@ -358,4 +359,4 @@ MIT License - смотри [LICENSE](LICENSE)
 
 ---
 
-**Последнее обновление:** 30.11.2025 | v3.2
+**Последнее обновление:** 30.11.2025 | v3.5
