@@ -375,6 +375,33 @@
       color: #c5221f;
       border-left: 3px solid #ea4335;
     }
+
+    /* prompt_table Fields */
+    .prompt-table-fields {
+      background: rgba(76, 175, 80, 0.05);
+      border-radius: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .prompt-table-fields input {
+      background: rgba(76, 175, 80, 0.1);
+      border: 1px solid rgba(76, 175, 80, 0.3);
+    }
+
+    .prompt-table-fields input:focus {
+      border-color: #4CAF50;
+      box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+    }
+
+    .form-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .form-row .input-group {
+      flex: 1;
+    }
   </style>
 </head>
 <body>
@@ -397,6 +424,26 @@
       <div class="checkbox-group">
         <input type="checkbox" id="systemWholeColumn" onchange="handleColumnCheckbox('system')" />
         <label for="systemWholeColumn">📊 Весь столбец</label>
+      </div>
+      <div class="checkbox-group" style="margin-top: 12px;">
+        <input type="checkbox" id="usePromptTable" onchange="togglePromptTableFields()" />
+        <label for="usePromptTable" title="Чтение системного промпта из удалённой таблицы. Укажите ID таблицы, лист и ячейку.">📡 prompt_table (удалённый сервер)</label>
+      </div>
+      <div id="promptTableFields" class="prompt-table-fields" style="display: none; margin-left: 24px; padding: 12px; border-left: 3px solid #4CAF50;">
+        <div class="form-row">
+          <div class="input-group">
+            <label>📋 ID таблицы:</label>
+            <input type="text" id="promptSpreadsheetId" placeholder="1abc123def456..." maxlength="100" />
+          </div>
+          <div class="input-group">
+            <label>📄 Лист:</label>
+            <input type="text" id="promptSheetName" placeholder="Промты" maxlength="50" />
+          </div>
+        </div>
+        <div class="input-group">
+          <label>📍 Ячейка:</label>
+          <input type="text" id="promptCellAddress" placeholder="A1, B2, C5" maxlength="10" />
+        </div>
       </div>
       <div id="systemPreview" class="cell-preview" style="display:none;"></div>
     </div>
@@ -485,6 +532,45 @@
       if (entries) entries.innerHTML = '';
     }
 
+    // ⭐ НОВАЯ ФУНКЦИЯ: Переключение полей prompt_table
+    function togglePromptTableFields() {
+      const checkbox = document.getElementById('usePromptTable');
+      const promptFields = document.getElementById('promptTableFields');
+      const systemSheet = document.getElementById('systemSheet');
+      const systemCell = document.getElementById('systemCell');
+      const systemWholeColumn = document.getElementById('systemWholeColumn');
+      const systemPromptSection = document.querySelector('.system-prompt');
+      
+      if (checkbox.checked) {
+        // ✅ Активировать prompt_table
+        promptFields.style.display = 'block';
+        
+        // ❌ Отключить локальные поля
+        systemSheet.disabled = true;
+        systemCell.disabled = true;
+        systemWholeColumn.disabled = true;
+        
+        systemPromptSection.style.opacity = '0.4';
+        systemPromptSection.style.pointerEvents = 'none';
+        
+        addLogEntry('📡 Режим prompt_table активирован', 'success');
+        showStatus('📡 Будет прочитан промпт из удалённой таблицы', 'info');
+        
+      } else {
+        // ✅ Вернуть локальные поля
+        promptFields.style.display = 'none';
+        
+        systemSheet.disabled = false;
+        systemCell.disabled = false;
+        systemWholeColumn.disabled = false;
+        
+        systemPromptSection.style.opacity = '1';
+        systemPromptSection.style.pointerEvents = 'auto';
+        
+        addLogEntry('📄 Возврат к локальным промптам', 'info');
+        showStatus('', 'clear');
+      }
+    }
 
     let sheetName = '';
     let cellAddress = '';
@@ -519,7 +605,14 @@
       google.script.run
         .withSuccessHandler(function(config) {
           if (config) {
-            if (config.systemPrompt) {
+            if (config.prompt_table) {
+              // ✅ Загрузить prompt_table конфигурацию
+              document.getElementById('usePromptTable').checked = true;
+              document.getElementById('promptSpreadsheetId').value = config.prompt_table.spreadsheetId || '';
+              document.getElementById('promptSheetName').value = config.prompt_table.sheetName || '';
+              document.getElementById('promptCellAddress').value = config.prompt_table.cellAddress || '';
+              togglePromptTableFields();
+            } else if (config.systemPrompt) {
               document.getElementById('systemSheet').value = config.systemPrompt.sheet;
               document.getElementById('systemCell').value = config.systemPrompt.cell;
             }
@@ -697,16 +790,42 @@
     }
     
     function collectConfig() {
-      const systemSheet = document.getElementById('systemSheet').value;
-      const systemCell = document.getElementById('systemCell').value;
+      const usePromptTable = document.getElementById('usePromptTable').checked;
       
-      const config = {
-        systemPrompt: systemSheet && systemCell ? {
-          sheet: systemSheet,
-          cell: systemCell
-        } : null,
+      let config = {
+        systemPrompt: null,
+        prompt_table: null,
         userData: []
       };
+      
+      if (usePromptTable) {
+        // ✅ Формируем объект для серверной функции
+        config.prompt_table = {
+          spreadsheetId: document.getElementById('promptSpreadsheetId').value.trim(),
+          sheetName: document.getElementById('promptSheetName').value.trim() || 'Промты',
+          cellAddress: document.getElementById('promptCellAddress').value.trim() || 'A1'
+        };
+        
+        // Валидация
+        if (!config.prompt_table.spreadsheetId) {
+          showStatus('❌ Укажите ID удалённой таблицы', 'error');
+          return null;
+        }
+        
+        addLogEntry(`📡 prompt_table: ${config.prompt_table.sheetName}!${config.prompt_table.cellAddress}`, 'info');
+        
+      } else {
+        // Обычная логика локальных промптов
+        const systemSheet = document.getElementById('systemSheet').value;
+        const systemCell = document.getElementById('systemCell').value;
+        
+        if (systemSheet && systemCell) {
+          config.systemPrompt = {
+            sheet: systemSheet,
+            cell: systemCell
+          };
+        }
+      }
       
       const dataBlocks = document.querySelectorAll('.user-data-block');
       dataBlocks.forEach(function(block) {
@@ -725,9 +844,15 @@
       addLogEntry('🚀 Начало выполнения конфигурации', 'info');
       
       const config = collectConfig();
+      
+      // Проверка null означает ошибку в collectConfig
+      if (!config) {
+        return;
+      }
+      
       addLogEntry('Конфигурация собрана: ' + JSON.stringify(config).substring(0, 100) + '...', 'info');
       
-      if (!config.systemPrompt && config.userData.length === 0) {
+      if (!config.systemPrompt && !config.prompt_table && config.userData.length === 0) {
         showStatus('⚠️ Заполните хотя бы одно поле!', 'error');
         addLogEntry('❌ Валидация не прошла: нет данных', 'error');
         return;
@@ -735,7 +860,9 @@
       
       addLogEntry('Целевая ячейка: ' + sheetName + '!' + cellAddress, 'info');
       
-      if (config.systemPrompt) {
+      if (config.prompt_table) {
+        addLogEntry('📡 prompt_table: ' + config.prompt_table.sheetName + '!' + config.prompt_table.cellAddress, 'info');
+      } else if (config.systemPrompt) {
         addLogEntry('System Prompt: ' + config.systemPrompt.sheet + '!' + config.systemPrompt.cell, 'info');
       } else {
         addLogEntry('System Prompt: не указан', 'warn');
@@ -830,8 +957,20 @@
             return;
           }
           
-          document.getElementById('systemSheet').value = config.systemPrompt ? config.systemPrompt.sheet : '';
-          document.getElementById('systemCell').value = config.systemPrompt ? config.systemPrompt.cell : '';
+          // ✅ Загрузить prompt_table если присутствует
+          if (config.prompt_table) {
+            document.getElementById('usePromptTable').checked = true;
+            document.getElementById('promptSpreadsheetId').value = config.prompt_table.spreadsheetId || '';
+            document.getElementById('promptSheetName').value = config.prompt_table.sheetName || '';
+            document.getElementById('promptCellAddress').value = config.prompt_table.cellAddress || '';
+            togglePromptTableFields();
+          } else {
+            // Использовать systemPrompt если prompt_table не определён
+            document.getElementById('usePromptTable').checked = false;
+            document.getElementById('systemSheet').value = config.systemPrompt ? config.systemPrompt.sheet : '';
+            document.getElementById('systemCell').value = config.systemPrompt ? config.systemPrompt.cell : '';
+            togglePromptTableFields();
+          }
           
           const userDataList = document.getElementById('userDataList');
           userDataList.innerHTML = '';
@@ -860,7 +999,12 @@
       
       const config = collectConfig();
       
-      if (!config.systemPrompt || !config.systemPrompt.sheet || !config.systemPrompt.cell) {
+      if (!config || (!config.systemPrompt && !config.prompt_table)) {
+        showError('Укажите System Prompt или prompt_table');
+        return;
+      }
+      
+      if (config.systemPrompt && (!config.systemPrompt.sheet || !config.systemPrompt.cell)) {
         showError('Укажите System Prompt (лист и ячейку)');
         return;
       }

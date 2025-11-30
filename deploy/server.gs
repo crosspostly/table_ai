@@ -1022,6 +1022,28 @@ function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddre
  * @return {string} System prompt text
  */
 function serverGetSystemPrompt_(config, defaultSpreadsheetId, logs) {
+  // ⭐ НОВЫЙ ПОДХОД: Сначала проверяем prompt_table
+  if (config.prompt_table && config.prompt_table.spreadsheetId) {
+    const spreadsheetId = config.prompt_table.spreadsheetId;
+    const sheetName = config.prompt_table.sheetName || 'Промты';
+    const cellAddress = config.prompt_table.cellAddress || 'A1';
+
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📡 Использование prompt_table (новый формат)'});
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Удалённая таблица: ' + spreadsheetId});
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 Лист: ' + sheetName});
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📍 Ячейка: ' + cellAddress});
+
+    try {
+      const prompt = serverReadData_(spreadsheetId, sheetName, cellAddress, logs);
+      logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ Промпт прочитан, ' + prompt.length + ' символов'});
+      return prompt;
+    } catch (error) {
+      logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: '❌ Ошибка чтения prompt_table: ' + error.message});
+      throw new Error('Не удалось прочитать prompt_table: ' + error.message);
+    }
+  }
+
+  // СТАРЫЙ ПОДХОД: Использовать systemPrompt (обратная совместимость)
   if (!config.systemPrompt || !config.systemPrompt.sheet || !config.systemPrompt.cell) {
     return '';
   }
