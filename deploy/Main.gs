@@ -15,6 +15,7 @@
  * VK_PARSER: Отдельный веб-сервис (VK_PARSER_URL)
  * SERVER: Отдельный веб-сервис (SERVER_URL)
  */
+/* eslint-disable indent, no-multiple-empty-lines, padded-blocks */
 
 // VK Parser URL: используется в VK.gs
 // eslint-disable-next-line no-unused-vars
@@ -643,67 +644,59 @@ function onOpen() {
  * Установить триггеры OTA (кнопка в меню)
  * Создаёт/обновляет триггер для проверки обновлений
  */
+// eslint-disable-next-line no-unused-vars
 function setupOTATriggers() {
   try {
     Logger.log('=== УСТАНОВКА ТРИГГЕРОВ OTA ===');
-    
+
     const ui = SpreadsheetApp.getUi();
-    
-    // Проверяем текущие триггеры
+
     const triggers = ScriptApp.getProjectTriggers();
     let hasOTA = false;
-    let oldCount = triggers.length;
-    
+    const oldCount = triggers.length;
     Logger.log('Найдено триггеров: ' + oldCount);
-    
-    // Удаляем старые OTA триггеры (если есть)
+
     for (let i = 0; i < triggers.length; i++) {
       if (triggers[i].getHandlerFunction() === 'checkForUpdatesBackground_') {
         try {
           ScriptApp.deleteTrigger(triggers[i]);
           Logger.log('✅ Удалён старый OTA триггер #' + i);
           hasOTA = true;
-        } catch (e) {
-          Logger.log('⚠️ Не удалось удалить старый триггер: ' + e.message);
+        } catch (error) {
+          Logger.log('⚠️ Не удалось удалить старый триггер: ' + error.message);
         }
       }
     }
-    
-    // Если был старый триггер - пересчитываем
+
     if (hasOTA) {
       const newTriggers = ScriptApp.getProjectTriggers();
       Logger.log('Триггеров после очистки: ' + newTriggers.length);
     }
-    
-    // Создаём новый триггер
+
     Logger.log('Создаю новый OTA триггер...');
-    
     const newTrigger = ScriptApp.newTrigger('checkForUpdatesBackground_')
       .timeBased()
       .atHour(3)
       .everyDays(1)
       .create();
-    
+
     Logger.log('✅ Новый триггер создан!');
     Logger.log('ID: ' + newTrigger.getUniqueId());
     Logger.log('Расписание: Каждый день в 3:00 AM');
-    
-    // Показываем пользователю результат
+
     ui.alert(
       '✅ Автообновление установлено!',
-      `Создан автоматическая проверка обновлений приложения.\n\n`,
-      ui.ButtonSet.OK
+      'Создан автоматическая проверка обновлений приложения.\n\n',
+      ui.ButtonSet.OK,
     );
-    
+
     addLog('✅ Триггеры OTA установлены пользователем', 'INFO');
-    
-    // Автоматически запускаем проверку обновлений
+
     checkForUpdatesManual_();
-    
   } catch (e) {
     Logger.log('❌ ОШИБКА УСТАНОВКИ: ' + e.message);
     Logger.log('Stack: ' + e.stack);
-    
+
     SpreadsheetApp.getUi().alert(
       '❌ Ошибка установки триггеров',
       'Не удалось установить триггеры OTA:\n\n' + e.message + '\n\n' +
@@ -712,9 +705,9 @@ function setupOTATriggers() {
       '• Ошибка в коде\n' +
       '• Проблемы с Google Apps Script\n\n' +
       'Проверьте логи: DEV → Показать логи',
-      ui.ButtonSet.OK
+      ui.ButtonSet.OK,
     );
-    
+
     addLog(`❌ Ошибка установки триггеров: ${e.message}`, 'ERROR');
   }
 }
@@ -1998,17 +1991,17 @@ function GM(prompt, maxTokens, temperature) {
  */
 function installUpdateTrigger_() {
   try {
-    Logger.log('DEBUG: installUpdateTrigger_() called');  // ← ОТЛАДКА
-    
+    Logger.log('DEBUG: installUpdateTrigger_() called'); // ← ОТЛАДКА
+
     const triggers = ScriptApp.getProjectTriggers();
-    Logger.log('DEBUG: Found ' + triggers.length + ' triggers');  // ← ОТЛАДКА
-    
+    Logger.log('DEBUG: Found ' + triggers.length + ' triggers'); // ← ОТЛАДКА
+
     // ⭐ Измени find() на обычный цикл (более совместимо)
     let exists = false;
     for (let i = 0; i < triggers.length; i++) {
       const handler = triggers[i].getHandlerFunction();
-      Logger.log('DEBUG: Trigger ' + i + ': ' + handler);  // ← ОТЛАДКА
-      
+      Logger.log('DEBUG: Trigger ' + i + ': ' + handler); // ← ОТЛАДКА
+
       if (handler === 'checkForUpdatesBackground_') {
         exists = true;
         break;
@@ -2017,24 +2010,24 @@ function installUpdateTrigger_() {
 
     if (exists) {
       addLog('ℹ️ Триггер обновлений уже установлен', 'DEBUG');
-      Logger.log('DEBUG: Trigger already exists');  // ← ОТЛАДКА
+      Logger.log('DEBUG: Trigger already exists'); // ← ОТЛАДКА
       return;
     }
 
-    Logger.log('DEBUG: Creating new trigger...');  // ← ОТЛАДКА
-    
+    Logger.log('DEBUG: Creating new trigger...'); // ← ОТЛАДКА
+
     const trigger = ScriptApp.newTrigger('checkForUpdatesBackground_')
       .timeBased()
       .atHour(3)
       .everyDays(1)
       .create();
 
-    Logger.log('DEBUG: Trigger created with ID: ' + trigger.getUniqueId());  // ← ОТЛАДКА
-    
+    Logger.log('DEBUG: Trigger created with ID: ' + trigger.getUniqueId()); // ← ОТЛАДКА
+
     addLog('✅ Триггер обновлений установлен (каждый день в 3:00)', 'INFO');
   } catch (e) {
-    Logger.log('❌ EXCEPTION in installUpdateTrigger_: ' + e.message);  // ← ОТЛАДКА
-    Logger.log('Stack: ' + e.stack);  // ← ОТЛАДКА
+    Logger.log('❌ EXCEPTION in installUpdateTrigger_: ' + e.message); // ← ОТЛАДКА
+    Logger.log('Stack: ' + e.stack); // ← ОТЛАДКА
     addLog(`❌ Ошибка установки триггера: ${e.message}`, 'ERROR');
   }
 }
@@ -2054,13 +2047,13 @@ function checkForUpdatesBackground_() {
     // ШАГ 1: Проверка версии
     // ═══════════════════════════════════════════════════════════
     const checkPayload = {
-      action: 'ota',
-      subaction: 'checkUpdates',
-      clientVersion: CLIENT_VERSION,
-      email: getLicenseEmail(),
-      token: getLicenseToken(),
-      scriptId: ScriptApp.getScriptId(),
-      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId()
+    action: 'ota',
+    subaction: 'checkUpdates',
+    clientVersion: CLIENT_VERSION,
+    email: getLicenseEmail(),
+    token: getLicenseToken(),
+    scriptId: ScriptApp.getScriptId(),
+    spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
     };
 
     const checkOptions = {
@@ -2089,12 +2082,12 @@ function checkForUpdatesBackground_() {
     // ШАГ 2: Получение файлов
     // ═══════════════════════════════════════════════════════════
     const filesPayload = {
-      action: 'ota',
-      subaction: 'getUpdatedFiles',
-      email: getLicenseEmail(),
-      token: getLicenseToken(),
-      scriptId: ScriptApp.getScriptId(),
-      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId()
+    action: 'ota',
+    subaction: 'getUpdatedFiles',
+    email: getLicenseEmail(),
+    token: getLicenseToken(),
+    scriptId: ScriptApp.getScriptId(),
+    spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
     };
 
     const filesOptions = {
@@ -2154,7 +2147,7 @@ function checkForUpdatesBackground_() {
 
     addLog('✅ Файлы обновлены через API', 'INFO');
     addLog('🎉 Обновление завершено!', 'INFO');
-    
+
   } catch (e) {
     addLog(`❌ Ошибка обновления: ${e.message}`, 'ERROR');
   }
@@ -2175,9 +2168,9 @@ function checkForUpdatesManual_() {
       clientVersion: CLIENT_VERSION,
       email: getLicenseEmail(),
       token: getLicenseToken(),
-      scriptId: ScriptApp.getScriptId(),        // ← ДОБАВИЛ
-      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId()  // ← ДОБАВИЛ
-    };
+      scriptId: ScriptApp.getScriptId(), // ← ДОБАВИЛ
+      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(), // ← ДОБАВИЛ
+      };
 
     const options = {
       method: 'post',
@@ -2221,5 +2214,25 @@ function checkForUpdatesManual_() {
   } catch (e) {
     addLog(`❌ Ошибка: ${e.message}`, 'ERROR');
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + e.message);
-  }
-}
+    }
+    }
+
+    /**
+     * Отладочная функция для проверки полного OTA-потока
+     */
+    // eslint-disable-next-line no-unused-vars
+    function debugOTAFlow() {
+      Logger.log('=== DEBUG OTA FLOW ===');
+
+      Logger.log('1️⃣ Calling serverStatus()...');
+      const status = serverStatus();
+      Logger.log('   Result: ' + JSON.stringify(status));
+      Logger.log('   scriptId: ' + ((status && status.scriptId) ? status.scriptId : 'UNDEFINED'));
+
+      Logger.log('2️⃣ CLIENT_VERSION: ' + (typeof CLIENT_VERSION !== 'undefined' ? CLIENT_VERSION : 'UNDEFINED'));
+      Logger.log('3️⃣ SERVER_URL: ' + SERVER_URL);
+      Logger.log('4️⃣ ScriptApp.getScriptId(): ' + ScriptApp.getScriptId());
+      Logger.log('5️⃣ getLicenseEmail(): ' + getLicenseEmail());
+      const token = getLicenseToken();
+      Logger.log('6️⃣ getLicenseToken(): ' + (token ? 'SET' : 'NOT SET'));
+    }
