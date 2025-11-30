@@ -3,6 +3,7 @@
 // Вся логика лицензий в отдельном модуле
 // Используется только на сервере через server.gs
 // ═══════════════════════════════════════════════════════════════
+/* exported checkLicense_ */
 
 // ===== Constants =====
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
@@ -19,6 +20,7 @@ const BINDINGS_SHEET_NAME = 'Bindings';
  * @return {Object} Результат проверки
  */
 
+// eslint-disable-next-line no-unused-vars
 function checkLicense_(token, email, scriptId, spreadsheetId) {
   const lock = LockService.getScriptLock();
   try {
@@ -36,12 +38,12 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
       Logger.log('❌ NO_EMAIL');
       return {ok: false, error: 'NO_EMAIL'};
     }
-    
+
     // ⭐ НОВОЕ: Если scriptId не передан - пытаемся получить из Bindings
     if (!scriptId) {
       Logger.log('📚 scriptId not provided, fetching from Bindings');
       scriptId = getScriptIdFromBindingsForOTA_(email);
-      
+
       if (!scriptId) {
         Logger.log(`⚠️ Warning: Cannot find scriptId for ${email} in Bindings`);
         // Не блокируем проверку лицензии - просто логируем
@@ -139,6 +141,7 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
           total: totalCopies,
           used: usedCopies,
         },
+        scriptId: scriptId || null,
       };
     }
 
@@ -219,6 +222,7 @@ function checkLicense_(token, email, scriptId, spreadsheetId) {
           total: totalCopies,
           used: usedCopies,
         },
+        scriptId: scriptId || null,
       };
     } catch (e) {
       Logger.log('❌ Ошибка привязки: ' + e.message);
