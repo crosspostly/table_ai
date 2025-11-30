@@ -542,10 +542,12 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
     throw new Error('Лицензионные данные не настроены. Откройте Settings и укажите LICENSE_EMAIL и LICENSE_TOKEN.');
   }
 
-  // Get Gemini API key using the new priority system (client → server)
+  // Get Gemini API key using the priority system (personal → shared → server default)
   const geminiApiKey = getGeminiApiKey();
-  if (!geminiApiKey) {
-    throw new Error('Gemini API ключ не настроен. Установите личный ключ в Settings или свяжитесь с администратором.');
+  if (geminiApiKey) {
+    addCollectLog('🔑 Найден локальный Gemini ключ (будет отправлен на сервер)', 'INFO');
+  } else {
+    addCollectLog('🟡 Локальный Gemini ключ не найден — сервер использует свой ключ по умолчанию', 'INFO');
   }
 
   const scriptId = ScriptApp.getScriptId(); // ⭐ Добавить
