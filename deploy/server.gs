@@ -149,7 +149,7 @@ function doPost(_e) {
       Logger.log('delimiter: ' + (delimiter || 'NONE'));
 
       // API key priority: use user key first, otherwise fallback to default
-      const finalApiKey = userApiKey;
+      let finalApiKey = userApiKey;
       let keySource = 'USER';
 
       if (!userApiKey) {
@@ -406,7 +406,7 @@ function doPost(_e) {
       Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
 
       // API key priority: use user key first, otherwise fallback to default
-      const finalApiKey = userApiKey;
+      let finalApiKey = userApiKey;
       let keySource = 'USER';
 
       if (!userApiKey) {
