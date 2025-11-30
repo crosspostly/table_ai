@@ -9,7 +9,20 @@ const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
 const AUTO_UPDATE_CHECK_INTERVAL = 6;
 
 // ⭐ OTA UPDATES
-const SERVER_VERSION = '3.3.0';
+const SERVER_VERSION = '3.5.0';
+
+// ═════════════════════════════════════════════════════════════════
+// ⭐ OTA CONFIGURATION (ТОЛЬКО НА СЕРВЕРЕ!)
+// ═════════════════════════════════════════════════════════════════
+
+// Публичный или приватный GitHub репо?
+// true = публичный (no authentication needed)
+// false = приватный (requires GitHub PAT)
+const REPO_IS_PUBLIC = true; // ← СЕРВЕР решает!
+
+// Если false, установить один раз:
+// Extensions → server.gs → Console
+// setGithubPAT_('ghp_...')
 
 
 // ===== Entry points =====
@@ -458,242 +471,39 @@ function doPost(_e) {
       return json_({ok: true, data: result, logs: logs});
     }
 
-    // ⭐ OTA UPDATES
+    // ⭐ OTA UPDATES (СЕРВЕР ОБНОВЛЯЕТ КЛИЕНТА)
     case 'ota': {
       Logger.log('Processing OTA action');
       const subaction = (data.subaction || '').toString();
 
-      // ════════════════════════════════════════════════════════
-      // ШАГ 1: Если scriptId не передан - получаем из Bindings
-      // ════════════════════════════════════════════════════════
-      if (!scriptId && email) {
-        Logger.log('📚 [OTA] scriptId not provided, fetching from Bindings');
-        scriptId = getScriptIdFromBindingsForOTA_(email);
-
-        if (!scriptId) {
-          Logger.log(`❌ [OTA] Cannot find scriptId for ${email}`);
-          return json_({ok: false, error: 'NO_SCRIPT_ID'}, 400);
-        }
-
-        Logger.log(`✅ [OTA] Got scriptId from Bindings: ${scriptId.substring(0, 12)}...`);
-      }
-
-      // ════════════════════════════════════════════════════════
-      // SUBACTION: CHECK UPDATES
-      // ════════════════════════════════════════════════════════
+      // КЛИЕНТ: "Проверь версию!"
       if (subaction === 'checkUpdates') {
         const clientVersion = data.clientVersion || '0.0.0';
-        const updateAvailable = SERVER_VERSION !== clientVersion;
-
-        Logger.log(`OTA check: client=${clientVersion}, server=${SERVER_VERSION}, update=${updateAvailable}`);
-
-        return json_({
-          ok: true,
-          updateAvailable: updateAvailable,
-          clientVersion: clientVersion,
-          serverVersion: SERVER_VERSION,
-        });
+        const check = checkForUpdates_(clientVersion, SERVER_VERSION);
+        return json_(check);
       }
 
-      // ════════════════════════════════════════════════════════
-      // SUBACTION: GET UPDATED FILES
-      // ════════════════════════════════════════════════════════
-      if (subaction === 'getUpdatedFiles') {
-        // Проверяем лицензию перед отправкой файлов
+      // КЛИЕНТ: "Обнови меня!"
+      // СЕРВЕР: "Окей, я сам всё сделаю!"
+      if (subaction === 'applyUpdates') {
         const lic = checkLicense_(token, email, scriptId, spreadsheetId);
-
         if (!lic.ok) {
-          Logger.log(`❌ [OTA] License check failed: ${lic.error}`);
           return json_(lic, 403);
         }
 
-        Logger.log('✅ [OTA] License check passed');
+        // ⭐ СЕРВЕР ВЫЗЫВАЕТ ФУНКЦИЮ ИЗ ota_updates.gs
+        // КЛИЕНТ ЗДЕСЬ НЕ УЧАСТВУЕТ!
+        const result = applyUpdatesToClient_(
+          token,
+          email,
+          scriptId,
+          spreadsheetId,
+          REPO_IS_PUBLIC,
+        );
 
-        // Список всех клиентских файлов
-        const clientFiles = [
-          'Main.gs',
-          'CollectConfig.gs',
-          'TemplateService.gs',
-          'UnpackingViewer.gs',
-          'VK.gs',
-          'ocrRunV2_client.gs',
-          'reniewcell.gs',
-          'CollectConfigUi.html',
-          'SettingsUI.html',
-          'UnpackingViewerUI.html',
-          'logging_system.html',
-          'appsscript.json',
-        ];
-
-        const files = [];
-        let successCount = 0;
-        let failCount = 0;
-
-        Logger.log(`📦 [OTA] Processing ${clientFiles.length} files`);
-
-        // Скачиваем каждый файл с GitHub
-        for (let i = 0; i < clientFiles.length; i++) {
-          const fileName = clientFiles[i];
-          Logger.log(`   📄 [${i+1}/${clientFiles.length}] Fetching ${fileName}...`);
-
-          const content = fetchFileContent_(fileName);
-
-          if (!content) {
-            failCount++;
-            Logger.log(`   ❌ FAILED: ${fileName} (fail #${failCount})`);
-            return json_({
-              ok: false,
-              error: `Failed to fetch: ${fileName}`,
-            }, 400);
-          }
-
-          successCount++;
-
-          // Определяем тип файла для Apps Script API
-          let type = 'SERVER_JS'; // .gs файлы
-          if (fileName.endsWith('.html')) {
-            type = 'HTML';
-          } else if (fileName === 'appsscript.json') {
-            type = 'JSON';
-          }
-
-          files.push({
-            name: fileName,
-            type: type,
-            source: content,
-          });
-
-          Logger.log(`   ✅ LOADED: ${fileName} (${content.length} bytes)`);
-        }
-
-        Logger.log(`🎉 [OTA] Prepared ${successCount} files, ${failCount} failed`);
-
-        return json_({
-          ok: true,
-          files: files,
-          count: files.length,
-          version: SERVER_VERSION,
-          email: email,
-          scriptId: scriptId,
-        });
+        return json_(result);
       }
 
-      // ════════════════════════════════════════════════════════
-      // SUBACTION: APPLY UPDATES (сервер обновляет клиента)
-      // ════════════════════════════════════════════════════════
-      if (subaction === 'applyUpdates') {
-        Logger.log('🔄 [OTA] applyUpdates started');
-        Logger.log('   scriptId: ' + scriptId.substring(0, 12) + '...');
-
-        try {
-          // Проверяем лицензию
-          const lic = checkLicense_(token, email, scriptId, spreadsheetId);
-
-          if (!lic.ok) {
-            Logger.log(`❌ [OTA] License check failed: ${lic.error}`);
-            return json_(lic, 403);
-          }
-
-          Logger.log('✅ [OTA] License check passed');
-
-          // Список файлов для обновления
-          const clientFiles = [
-            'Main.gs',
-            'CollectConfig.gs',
-            'TemplateService.gs',
-            'UnpackingViewer.gs',
-            'VK.gs',
-            'ocrRunV2_client.gs',
-            'reniewcell.gs',
-            'CollectConfigUi.html',
-            'SettingsUI.html',
-            'UnpackingViewerUI.html',
-            'logging_system.html',
-            'appsscript.json',
-          ];
-
-          const files = [];
-          let successCount = 0;
-
-          Logger.log(`📦 [OTA] Preparing ${clientFiles.length} files for client update`);
-
-          // Скачиваем файлы с GitHub
-          for (let i = 0; i < clientFiles.length; i++) {
-            const fileName = clientFiles[i];
-            const content = fetchFileContent_(fileName);
-
-            if (!content) {
-              Logger.log(`   ❌ Failed: ${fileName}`);
-              return json_({ok: false, error: `Failed to fetch: ${fileName}`}, 400);
-            }
-
-            successCount++;
-
-            let type = 'SERVER_JS';
-            if (fileName.endsWith('.html')) {
-              type = 'HTML';
-            } else if (fileName === 'appsscript.json') {
-              type = 'JSON';
-            }
-
-            files.push({
-              name: fileName,
-              type: type,
-              source: content,
-            });
-
-            Logger.log(`   ✅ Loaded: ${fileName}`);
-          }
-
-          Logger.log(`📦 [OTA] All ${successCount} files ready`);
-
-          // Обновляем клиентский скрипт через Apps Script API
-          Logger.log('🔧 [OTA] Updating client script via Apps Script API');
-          Logger.log('   URL: https://script.googleapis.com/v1/projects/' + scriptId.substring(0, 12) + '.../content');
-
-          const apiUrl = `https://script.googleapis.com/v1/projects/${scriptId}/content`;
-          const oauthToken = ScriptApp.getOAuthToken();
-
-          const apiResp = UrlFetchApp.fetch(apiUrl, {
-            method: 'put',
-            headers: {
-              'Authorization': 'Bearer ' + oauthToken,
-              'Content-Type': 'application/json',
-            },
-            payload: JSON.stringify({
-              files: files,
-            }),
-            muteHttpExceptions: true,
-          });
-
-          const apiCode = apiResp.getResponseCode();
-
-          if (apiCode !== 200) {
-            const apiError = JSON.parse(apiResp.getContentText());
-            const errorMsg = apiError.error?.message || `HTTP ${apiCode}`;
-            Logger.log(`❌ [OTA] API error: ${errorMsg}`);
-            return json_({ok: false, error: 'API_UPDATE_FAILED: ' + errorMsg}, 500);
-          }
-
-          Logger.log('✅ [OTA] Client script updated successfully!');
-          Logger.log('🎉 [OTA] Update completed for: ' + email);
-
-          return json_({
-            ok: true,
-            message: 'CLIENT_UPDATED',
-            filesCount: successCount,
-            version: SERVER_VERSION,
-          });
-        } catch (e) {
-          Logger.log('❌ [OTA] applyUpdates error: ' + e.message);
-          return json_({ok: false, error: 'UPDATE_ERROR: ' + e.message}, 500);
-        }
-      }
-
-      // ════════════════════════════════════════════════════════
-      // UNKNOWN SUBACTION
-      // ════════════════════════════════════════════════════════
-      Logger.log(`❌ [OTA] Unknown subaction: ${subaction}`);
       return json_({ok: false, error: 'Unknown OTA subaction'}, 400);
     }
 
@@ -715,6 +525,7 @@ function doPost(_e) {
  * @param {string} email - Email пользователя
  * @return {string|null} Script ID или null
  */
+// eslint-disable-next-line no-unused-vars
 function getScriptIdFromBindingsForOTA_(email) {
   try {
     const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
@@ -1454,5 +1265,43 @@ function setupServerTriggers() {
   } catch (e) {
     Logger.log('❌ Setup error: ' + e.message);
     return {success: false, error: e.message};
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════
+// GitHub PAT (АДМИНИСТРАТОР устанавливает один раз для приватного репо)
+// ═════════════════════════════════════════════════════════════════
+
+/**
+ * Установить GitHub PAT (администратор)
+ *
+ * ВЫЗЫВАЕТСЯ ОДИН РАЗ при настройке приватного репо!
+ *
+ * Extensions → server.gs → Console
+ * setGithubPAT('ghp_YOUR_TOKEN_HERE')
+ */
+// eslint-disable-next-line no-unused-vars
+function setGithubPAT(pat) {
+  return setGithubPAT_(pat);
+}
+
+/**
+ * Проверить что GitHub доступен
+ *
+ * Extensions → server.gs → Console
+ * testGithubAccess()
+ */
+// eslint-disable-next-line no-unused-vars
+function testGithubAccess() {
+  try {
+    const pat = getGithubPAT_();
+    if (!pat) {
+      return {ok: false, message: 'PAT not configured'};
+    }
+
+    const file = downloadFileFromGithub_('server.gs', REPO_IS_PUBLIC);
+    return {ok: true, working: !!file};
+  } catch (e) {
+    return {ok: false, error: e.message};
   }
 }
