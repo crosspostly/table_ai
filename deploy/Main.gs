@@ -638,21 +638,14 @@ function onOpen() {
   }
 }
 /**
- * Умная кнопка автообновления (вызывается из меню)
- *
- * АВТОМАТИЧЕСКИ:
- * 1. Проверяет и создаёт триггер (если нужно)
- * 2. Проверяет обновления на сервере
- * 3. Предлагает обновиться (если есть новая версия)
+ * Умная кнопка автообновления
+ * Проверяет триггер + запускает проверку обновлений
  */
 // eslint-disable-next-line no-unused-vars
 function smartOTASetup() {
   try {
-    addLog('🔄 Умная проверка автообновления запущена', 'INFO');
+    addLog('🔄 Умная проверка автообновления', 'INFO');
 
-    // ═══════════════════════════════════════════════════════════
-    // ШАГ 1: ТИХО проверяем и устанавливаем триггер (если нужно)
-    // ═══════════════════════════════════════════════════════════
     const triggers = ScriptApp.getProjectTriggers();
     let hasOTA = false;
 
@@ -664,7 +657,7 @@ function smartOTASetup() {
     }
 
     if (!hasOTA) {
-      addLog('📚 Триггер отсутствует, создаём...', 'DEBUG');
+      addLog('📚 Создание триггера...', 'DEBUG');
 
       try {
         ScriptApp.newTrigger('checkForUpdatesBackground_')
@@ -673,108 +666,18 @@ function smartOTASetup() {
           .everyDays(1)
           .create();
 
-        addLog('✅ Триггер автообновления создан (3:00 каждый день)', 'INFO');
+        addLog('✅ Триггер создан (3:00 каждый день)', 'INFO');
       } catch (triggerError) {
-        addLog(`❌ Не удалось создать триггер: ${triggerError.message}`, 'ERROR');
+        addLog(`❌ Ошибка триггера: ${triggerError.message}`, 'ERROR');
       }
-    } else {
-      addLog('✅ Триггер автообновления уже установлен', 'DEBUG');
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // ШАГ 2: Проверяем версию на сервере
-    // ═══════════════════════════════════════════════════════════
-    addLog('📡 Проверка версии на сервере...', 'DEBUG');
-
-    const payload = {
-      action: 'ota',
-      subaction: 'checkUpdates',
-      clientVersion: CLIENT_VERSION,
-      email: getLicenseEmail(),
-      token: getLicenseToken(),
-      scriptId: ScriptApp.getScriptId(),
-      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
-    };
-
-    const options = {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true,
-    };
-
-    const resp = UrlFetchApp.fetch(SERVER_URL, options);
-    const updateInfo = JSON.parse(resp.getContentText());
-
-    // ═══════════════════════════════════════════════════════════
-    // ШАГ 3: Обработка ответа сервера
-    // ═══════════════════════════════════════════════════════════
-    if (!updateInfo.ok) {
-      const errorMsg = updateInfo.error || 'Неизвестная ошибка';
-      addLog(`❌ Ошибка сервера: ${errorMsg}`, 'ERROR');
-
-      SpreadsheetApp.getUi().alert(
-        '❌ Ошибка проверки обновлений',
-        `Не удалось связаться с сервером.\n\nОшибка: ${errorMsg}`,
-        SpreadsheetApp.getUi().ButtonSet.OK,
-      );
-      return;
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // ШАГ 4: Если обновления НЕТ
-    // ═══════════════════════════════════════════════════════════
-    if (!updateInfo.updateAvailable) {
-      addLog(`✅ Версия актуальна: ${updateInfo.serverVersion}`, 'INFO');
-
-      SpreadsheetApp.getUi().alert(
-        '✅ Версия актуальна',
-        `Текущая версия: ${updateInfo.clientVersion}\n\nОбновление не требуется.`,
-        SpreadsheetApp.getUi().ButtonSet.OK,
-      );
-      return;
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // ШАГ 5: ЕСТЬ обновление - спрашиваем пользователя
-    // ═══════════════════════════════════════════════════════════
-    addLog(`🚀 Доступна новая версия: ${updateInfo.serverVersion}`, 'INFO');
-
-    const response = SpreadsheetApp.getUi().alert(
-      '🚀 Доступно обновление',
-      `Текущая: ${updateInfo.clientVersion}\nНовая: ${updateInfo.serverVersion}\n\nОбновить сейчас?`,
-      SpreadsheetApp.getUi().ButtonSet.YES_NO,
-    );
-
-    if (response !== SpreadsheetApp.getUi().Button.YES) {
-      addLog('⏭️ Пользователь отказался от обновления', 'DEBUG');
-      return;
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // ШАГ 6: Запускаем обновление
-    // ═══════════════════════════════════════════════════════════
-    addLog('⏳ Запуск обновления...', 'INFO');
-
+    addLog('🔍 Проверка обновлений...', 'INFO');
     checkForUpdatesBackground_();
-
-    SpreadsheetApp.getUi().alert(
-      '✅ Обновление запущено',
-      'Обновление выполняется.\n\nВы получите email о результате.',
-      SpreadsheetApp.getUi().ButtonSet.OK,
-    );
-
-    addLog('✅ Обновление успешно инициировано', 'INFO');
-
+    addLog('✅ Проверка завершена', 'INFO');
   } catch (e) {
-    const errorMsg = e.message || 'Неизвестная ошибка';
-    addLog(`❌ Ошибка: ${errorMsg}`, 'ERROR');
-
-    SpreadsheetApp.getUi().alert(
-      '❌ Ошибка',
-      `Не удалось выполнить операцию.\n\nОшибка: ${errorMsg}`,
-      SpreadsheetApp.getUi().ButtonSet.OK,
-    );
+    addLog(`❌ Ошибка: ${e.message}`, 'ERROR');
+    SpreadsheetApp.getUi().alert('❌ Ошибка: ' + e.message);
   }
 }
 
@@ -2057,12 +1960,10 @@ function checkForUpdatesBackground_() {
     } else {
       addLog(`❌ Update failed: ${update.error}`, 'ERROR');
     }
-
   } catch (e) {
     addLog(`❌ Error: ${e.message}`, 'ERROR');
   }
 }
-
 
 
 /**
@@ -2113,143 +2014,141 @@ function checkForUpdatesManual_() {
     if (response === SpreadsheetApp.getUi().Button.YES) {
       checkForUpdatesBackground_();
     }
-
   } catch (e) {
     SpreadsheetApp.getUi().alert('❌ ' + e.message);
   }
 }
 
-    // ===== GEMINI API KEY MANAGEMENT =====
+// ===== GEMINI API KEY MANAGEMENT =====
 
-    /**
-     * Получить Gemini API ключ (приоритет: клиент → сервер → null)
-     *
-     * ЛОГИКА:
-     * 1. Проверить свой ключ в свойствах клиента
-     * 2. Если нет → запросить сервера
-     * 3. Если сервер ошибка → вернуть null
-     *
-     * @return {string|null} API ключ или null
-     */
-    function getGeminiApiKey() {
-      try {
-        // ШАГ 1: Проверяем свой ключ в свойствах клиента
-        Logger.log('🔑 Getting Gemini API key...');
+/**
+ * Получить Gemini API ключ (приоритет: клиент → сервер → null)
+ *
+ * ЛОГИКА:
+ * 1. Проверить свой ключ в свойствах клиента
+ * 2. Если нет → запросить сервера
+ * 3. Если сервер ошибка → вернуть null
+ *
+ * @return {string|null} API ключ или null
+ */
+function getGeminiApiKey() {
+  try {
+    // ШАГ 1: Проверяем свой ключ в свойствах клиента
+    Logger.log('🔑 Getting Gemini API key...');
 
-        const props = PropertiesService.getUserProperties();
-        const clientKey = props.getProperty('GEMINI_API_KEY');
+    const props = PropertiesService.getUserProperties();
+    const clientKey = props.getProperty('GEMINI_API_KEY');
 
-        if (clientKey) {
-          Logger.log('✅ Using CLIENT Gemini key: ' + clientKey.substring(0, 10) + '...');
-          addLog('🔑 Используется личный Gemini API ключ', 'DEBUG');
-          return clientKey;
-        }
-
-        Logger.log('📌 Client key not found, requesting SERVER default key...');
-
-        // ШАГ 2: Запрашиваем ключ сервера
-        const payload = {
-          action: 'geminiConfig',
-          subaction: 'getDefaultKey',
-          email: getLicenseEmail(),
-          token: getLicenseToken(),
-          scriptId: ScriptApp.getScriptId(),
-          spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
-        };
-
-        const options = {
-          method: 'post',
-          contentType: 'application/json',
-          payload: JSON.stringify(payload),
-          muteHttpExceptions: true,
-        };
-
-        const resp = UrlFetchApp.fetch(SERVER_URL, options);
-        const result = JSON.parse(resp.getContentText());
-
-        if (!result.ok) {
-          Logger.log('❌ Failed to get server key: ' + result.error);
-          addLog('❌ Не удалось получить Gemini ключ: ' + result.error, 'ERROR');
-          return null;
-        }
-
-        const serverKey = result.apiKey;
-        Logger.log('✅ Using SERVER default Gemini key: ' + serverKey.substring(0, 10) + '...');
-        addLog('🔑 Используется серверный Gemini API ключ', 'DEBUG');
-
-        return serverKey;
-
-      } catch (e) {
-        Logger.log('❌ Error getting Gemini key: ' + e.message);
-        addLog('❌ Ошибка получения Gemini ключа: ' + e.message, 'ERROR');
-        return null;
-      }
+    if (clientKey) {
+      Logger.log('✅ Using CLIENT Gemini key: ' + clientKey.substring(0, 10) + '...');
+      addLog('🔑 Используется личный Gemini API ключ', 'DEBUG');
+      return clientKey;
     }
 
-    /**
-     * Установить личный Gemini API ключ (клиент)
-     * @param {string} apiKey - Новый API ключ
-     * @return {boolean} Успех операции
-     */
-    function setClientGeminiKey(apiKey) {
-      try {
-        if (!apiKey) {
-          Logger.log('❌ Cannot set empty API key');
-          return false;
-        }
+    Logger.log('📌 Client key not found, requesting SERVER default key...');
 
-        if (apiKey.length < 20) {
-          Logger.log('❌ API key too short (min 20 chars)');
-          return false;
-        }
+    // ШАГ 2: Запрашиваем ключ сервера
+    const payload = {
+      action: 'geminiConfig',
+      subaction: 'getDefaultKey',
+      email: getLicenseEmail(),
+      token: getLicenseToken(),
+      scriptId: ScriptApp.getScriptId(),
+      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
+    };
 
-        const props = PropertiesService.getUserProperties();
-        props.setProperty('GEMINI_API_KEY', apiKey);
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+    };
 
-        Logger.log('✅ Client Gemini key set: ' + apiKey.substring(0, 10) + '...');
-        addLog('✅ Личный Gemini API ключ установлен', 'INFO');
+    const resp = UrlFetchApp.fetch(SERVER_URL, options);
+    const result = JSON.parse(resp.getContentText());
 
-        return true;
-      } catch (e) {
-        Logger.log('❌ Error setting client Gemini key: ' + e.message);
-        addLog('❌ Ошибка установки ключа: ' + e.message, 'ERROR');
-        return false;
-      }
+    if (!result.ok) {
+      Logger.log('❌ Failed to get server key: ' + result.error);
+      addLog('❌ Не удалось получить Gemini ключ: ' + result.error, 'ERROR');
+      return null;
     }
 
-    /**
-     * Удалить личный Gemini API ключ (вернуться на серверный)
-     */
-    function removeClientGeminiKey() {
-      try {
-        const props = PropertiesService.getUserProperties();
-        props.deleteProperty('GEMINI_API_KEY');
+    const serverKey = result.apiKey;
+    Logger.log('✅ Using SERVER default Gemini key: ' + serverKey.substring(0, 10) + '...');
+    addLog('🔑 Используется серверный Gemini API ключ', 'DEBUG');
 
-        Logger.log('✅ Client Gemini key removed, will use server default');
-        addLog('✅ Личный ключ удалён, будет использован серверный', 'INFO');
+    return serverKey;
+  } catch (e) {
+    Logger.log('❌ Error getting Gemini key: ' + e.message);
+    addLog('❌ Ошибка получения Gemini ключа: ' + e.message, 'ERROR');
+    return null;
+  }
+}
 
-        return true;
-      } catch (e) {
-        Logger.log('❌ Error removing client Gemini key: ' + e.message);
-        return false;
-      }
+/**
+ * Установить личный Gemini API ключ (клиент)
+ * @param {string} apiKey - Новый API ключ
+ * @return {boolean} Успех операции
+ */
+function setClientGeminiKey(apiKey) {
+  try {
+    if (!apiKey) {
+      Logger.log('❌ Cannot set empty API key');
+      return false;
     }
 
-    /**
-     * Получить информацию о текущем ключе (для отладки)
-     * @return {Object} Информация о ключе
-     */
-    // eslint-disable-next-line no-unused-vars
-    function getGeminiKeyInfo() {
-      const props = PropertiesService.getUserProperties();
-      const clientKey = props.getProperty('GEMINI_API_KEY');
-
-      return {
-        hasClientKey: !!clientKey,
-        clientKeyPreview: clientKey ? clientKey.substring(0, 10) + '...' : null,
-        source: clientKey ? 'CLIENT (personal)' : 'SERVER (default)',
-      };
+    if (apiKey.length < 20) {
+      Logger.log('❌ API key too short (min 20 chars)');
+      return false;
     }
 
-    // Debug functions removed to DevTools.gs
-    // debugGeminiKeys() and debugOTAFlow() available only if DevTools.gs is present
+    const props = PropertiesService.getUserProperties();
+    props.setProperty('GEMINI_API_KEY', apiKey);
+
+    Logger.log('✅ Client Gemini key set: ' + apiKey.substring(0, 10) + '...');
+    addLog('✅ Личный Gemini API ключ установлен', 'INFO');
+
+    return true;
+  } catch (e) {
+    Logger.log('❌ Error setting client Gemini key: ' + e.message);
+    addLog('❌ Ошибка установки ключа: ' + e.message, 'ERROR');
+    return false;
+  }
+}
+
+/**
+ * Удалить личный Gemini API ключ (вернуться на серверный)
+ */
+function removeClientGeminiKey() {
+  try {
+    const props = PropertiesService.getUserProperties();
+    props.deleteProperty('GEMINI_API_KEY');
+
+    Logger.log('✅ Client Gemini key removed, will use server default');
+    addLog('✅ Личный ключ удалён, будет использован серверный', 'INFO');
+
+    return true;
+  } catch (e) {
+    Logger.log('❌ Error removing client Gemini key: ' + e.message);
+    return false;
+  }
+}
+
+/**
+ * Получить информацию о текущем ключе (для отладки)
+ * @return {Object} Информация о ключе
+ */
+// eslint-disable-next-line no-unused-vars
+function getGeminiKeyInfo() {
+  const props = PropertiesService.getUserProperties();
+  const clientKey = props.getProperty('GEMINI_API_KEY');
+
+  return {
+    hasClientKey: !!clientKey,
+    clientKeyPreview: clientKey ? clientKey.substring(0, 10) + '...' : null,
+    source: clientKey ? 'CLIENT (personal)' : 'SERVER (default)',
+  };
+}
+
+// Debug functions removed to DevTools.gs
+// debugGeminiKeys() and debugOTAFlow() available only if DevTools.gs is present
