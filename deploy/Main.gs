@@ -15,8 +15,8 @@
  * VK_PARSER: Отдельный веб-сервис (VK_PARSER_URL)
  * SERVER: Отдельный веб-сервис (SERVER_URL)
  */
-/* global setClientGeminiKey, removeClientGeminiKey, debugGeminiKeys */
 /* exported onOpen, optimizedOTASetup, checkForUpdatesManual_, checkForUpdatesBackground_ */
+/* exported setClientGeminiKey, removeClientGeminiKey, debugGeminiKeys */
 /* eslint-disable indent, no-multiple-empty-lines, padded-blocks */
 
 // VK Parser URL: используется в VK.gs
@@ -49,7 +49,7 @@ const DEV_MODE = true; // DEV: показывать DEV-меню/логи
 const DEVMODE = DEV_MODE;
 
 // ⭐ OTA UPDATES
-const CLIENT_VERSION = '3.3.0';
+const CLIENT_VERSION = '3.5.0';
 
 // В твоем мастер-листе добавь кнопку:
 // eslint-disable-next-line no-unused-vars
@@ -2026,131 +2026,87 @@ function installUpdateTrigger_() {
 
 
 /**
- * Фоновая проверка обновлений (оптимизированная - без диалогов)
+ * КЛИЕНТ: Фоновая проверка обновлений
+ *
+ * Что делает:
+ * 1. Проверяет версию (спрашивает сервер)
+ * 2. Если нужно обновиться - просит сервер
+ * 3. ВСЁ! Остальное делает СЕРВЕР!
+ *
+ * НЕ скачивает файлы!
+ * НЕ обновляет себя!
+ * НЕ знает про GitHub и приватные ключи!
  */
 function checkForUpdatesBackground_() {
-  addLog('🌙 Background update check started', 'INFO');
+  addLog('🌙 Background update check', 'INFO');
 
   try {
-    // ═══════════════════════════════════════════════════════════
-    // ШАГ 1: Проверка версии
-    // ═══════════════════════════════════════════════════════════
+    // ШАГ 1: Клиент спрашивает сервер
     const checkPayload = {
-    action: 'ota',
-    subaction: 'checkUpdates',
-    clientVersion: CLIENT_VERSION,
-    email: getLicenseEmail(),
-    token: getLicenseToken(),
-    scriptId: ScriptApp.getScriptId(),
-    spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
+      action: 'ota',
+      subaction: 'checkUpdates',
+      clientVersion: CLIENT_VERSION,
+      email: getLicenseEmail(),
+      token: getLicenseToken(),
+      scriptId: ScriptApp.getScriptId(),
+      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
     };
 
-    const checkOptions = {
+    const resp = UrlFetchApp.fetch(SERVER_URL, {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify(checkPayload),
       muteHttpExceptions: true,
-    };
+    });
 
-    const checkResp = UrlFetchApp.fetch(SERVER_URL, checkOptions);
-    const updateInfo = JSON.parse(checkResp.getContentText());
+    const check = JSON.parse(resp.getContentText());
 
-    if (!updateInfo.ok) {
-      addLog(`❌ Version check failed: ${updateInfo.error}`, 'ERROR');
+    if (!check.ok || !check.updateAvailable) {
+      addLog('✅ Up to date', 'DEBUG');
       return;
     }
 
-    if (!updateInfo.updateAvailable) {
-      addLog('✅ Already up to date: ' + updateInfo.serverVersion, 'DEBUG');
-      return;
-    }
+    addLog(`🚀 Update available: ${check.serverVersion}`, 'INFO');
 
-    addLog(`🚀 Updating to version ${updateInfo.serverVersion}`, 'INFO');
-
-    // ═══════════════════════════════════════════════════════════
-    // ШАГ 2: Получение файлов
-    // ═══════════════════════════════════════════════════════════
-    const filesPayload = {
-    action: 'ota',
-    subaction: 'getUpdatedFiles',
-    email: getLicenseEmail(),
-    token: getLicenseToken(),
-    scriptId: ScriptApp.getScriptId(),
-    spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
-    };
-
-    const filesOptions = {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify(filesPayload),
-      muteHttpExceptions: true,
-    };
-
-    const filesResp = UrlFetchApp.fetch(SERVER_URL, filesOptions);
-    const filesData = JSON.parse(filesResp.getContentText());
-
-    if (!filesData.ok || !filesData.files) {
-      throw new Error('Failed to get files: ' + (filesData.error || 'unknown'));
-    }
-
-    addLog(`📥 Downloaded ${filesData.count} files`, 'INFO');
-
-    // ═══════════════════════════════════════════════════════════
-    // ШАГ 3: Получение scriptId из лицензии
-    // ═══════════════════════════════════════════════════════════
-    const licenseInfo = serverStatus();
-
-    if (!licenseInfo.ok || !licenseInfo.scriptId) {
-      throw new Error('Script ID not found');
-    }
-
-    const scriptId = licenseInfo.scriptId;
-    addLog(`✅ Script ID: ${scriptId.substring(0, 12)}...`, 'DEBUG');
-
-    // ═══════════════════════════════════════════════════════════
-    // ШАГ 4: Запрос серверу обновить клиента
-    // ═══════════════════════════════════════════════════════════
-    addLog('🔄 Requesting server to apply updates...', 'INFO');
-
+    // ШАГ 2: Клиент просит сервер обновить
     const applyPayload = {
       action: 'ota',
       subaction: 'applyUpdates',
       email: getLicenseEmail(),
       token: getLicenseToken(),
-      scriptId: scriptId,
+      scriptId: ScriptApp.getScriptId(),
       spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
     };
 
-    const applyOptions = {
+    const updateResp = UrlFetchApp.fetch(SERVER_URL, {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify(applyPayload),
       muteHttpExceptions: true,
-    };
+    });
 
-    const applyResp = UrlFetchApp.fetch(SERVER_URL, applyOptions);
-    const applyData = JSON.parse(applyResp.getContentText());
+    const update = JSON.parse(updateResp.getContentText());
 
-    if (!applyData.ok) {
-      throw new Error('Server failed to update: ' + (applyData.error || 'unknown'));
+    if (update.ok) {
+      addLog(`✅ Updated to ${update.version}`, 'INFO');
+    } else {
+      addLog(`❌ Update failed: ${update.error}`, 'ERROR');
     }
 
-    addLog('✅ Update applied by server', 'INFO');
-    addLog('🎉 Update completed successfully!', 'INFO');
-
   } catch (e) {
-    addLog(`❌ Update error: ${e.message}`, 'ERROR');
+    addLog(`❌ Error: ${e.message}`, 'ERROR');
   }
 }
 
 
 
 /**
- * Ручная проверка обновлений (оптимизированная)
- * Минимум всплывающих окон - всё в логи
+ * КЛИЕНТ: Ручная проверка обновлений (из меню)
+ *
+ * Простая функция - только спрашивает сервер!
  */
 function checkForUpdatesManual_() {
-  addLog('🔍 Ручная проверка обновлений', 'INFO');
+  addLog('🔍 Manual update check', 'INFO');
 
   try {
     const payload = {
@@ -2163,54 +2119,37 @@ function checkForUpdatesManual_() {
       spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
     };
 
-    const options = {
+    const resp = UrlFetchApp.fetch(SERVER_URL, {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify(payload),
       muteHttpExceptions: true,
-    };
+    });
 
-    const resp = UrlFetchApp.fetch(SERVER_URL, options);
-    const updateInfo = JSON.parse(resp.getContentText());
+    const check = JSON.parse(resp.getContentText());
 
-    // Проверка ошибки
-    if (!updateInfo.ok) {
-      addLog(`❌ Server error: ${updateInfo.error}`, 'ERROR');
-      const ui = SpreadsheetApp.getUi();
-      ui.alert('❌ Ошибка: ' + updateInfo.error);
+    if (!check.ok) {
+      SpreadsheetApp.getUi().alert('❌ ' + check.error);
       return;
     }
 
-    // Если обновления нет
-    if (!updateInfo.updateAvailable) {
-      addLog('✅ Version is up to date: ' + updateInfo.serverVersion, 'INFO');
-      SpreadsheetApp.getUi().alert('✅ Версия актуальна\n\nТекущая: ' + updateInfo.clientVersion);
+    if (!check.updateAvailable) {
+      SpreadsheetApp.getUi().alert(`✅ Up to date: ${check.clientVersion}`);
       return;
     }
-
-    // Есть обновление - спрашиваем
-    addLog(`🚀 Update available: ${updateInfo.serverVersion}`, 'INFO');
 
     const response = SpreadsheetApp.getUi().alert(
-      `Доступна версия ${updateInfo.serverVersion}`,
-      'Обновить?',
+      `Update available: ${check.serverVersion}`,
+      `Current: ${check.clientVersion}\n\nUpdate now?`,
       SpreadsheetApp.getUi().ButtonSet.YES_NO,
     );
 
-    if (response !== SpreadsheetApp.getUi().Button.YES) {
-      addLog('⏭️ Update skipped by user', 'DEBUG');
-      return;
+    if (response === SpreadsheetApp.getUi().Button.YES) {
+      checkForUpdatesBackground_();
     }
 
-    // Запускаем фоновое обновление
-    addLog('⏳ Starting background update...', 'INFO');
-    checkForUpdatesBackground_();
-
-    addLog('✅ Update process completed', 'INFO');
-
   } catch (e) {
-    addLog(`❌ Error: ${e.message}`, 'ERROR');
-    SpreadsheetApp.getUi().alert('❌ Ошибка: ' + e.message);
+    SpreadsheetApp.getUi().alert('❌ ' + e.message);
   }
 }
 
