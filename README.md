@@ -1,8 +1,10 @@
 # Table AI - AI-Powered Google Sheets Constructor v3.5
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-3.5.0-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-3.5.2-brightgreen.svg)]()
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)]()
+
+> **🆕 v3.5.2**: Исправлена обратная совместимость OTA системы - старые клиенты теперь могут обновиться автоматически!
 
 ## 📌 О проекте
 
@@ -352,11 +354,18 @@ MIT License - смотри [LICENSE](LICENSE)
 
 ## 🎯 Дорожная карта
 
-- [ ] v3.3 - Batch operations optimization
-- [ ] v3.4 - Advanced Gemini prompting
-- [ ] v3.5 - Multi-language support
+- [x] v3.5.0 - Private GitHub OTA + Client/Server separation
+- [x] v3.5.1 - DEV tools extraction
+- [x] v3.5.2 - OTA backward compatibility fix
+- [ ] v3.6 - Multi-language support
 - [ ] v4.0 - Web dashboard
 
 ---
 
-**Последнее обновление:** 30.11.2025 | v3.5
+## 📋 История изменений
+
+См. [CHANGELOG.md](docs/CHANGELOG.md) для полной истории изменений.
+
+---
+
+**Последнее обновление:** 2025-01-XX | v3.5.2
