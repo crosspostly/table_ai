@@ -872,10 +872,10 @@ function fetchFileContent_(fileName) {
 function getDefaultGeminiKey_() {
   try {
     const props = PropertiesService.getScriptProperties();
-    const key = props.getProperty('DEFAULT_GEMINI_API_KEY');
+    const key = props.getProperty('GEMINI_API_KEY');
 
     if (!key) {
-      Logger.log('⚠️ DEFAULT_GEMINI_API_KEY not set in server properties');
+      Logger.log('⚠️ GEMINI_API_KEY not set in server properties');
       return null;
     }
 
@@ -899,7 +899,7 @@ function setDefaultGeminiKey_(apiKey) {
     }
 
     const props = PropertiesService.getScriptProperties();
-    props.setProperty('DEFAULT_GEMINI_API_KEY', apiKey);
+    props.setProperty('GEMINI_API_KEY', apiKey);
 
     Logger.log('✅ Default Gemini key updated: ' + apiKey.substring(0, 10) + '...');
     return true;
