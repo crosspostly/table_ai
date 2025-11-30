@@ -15,6 +15,7 @@
  * VK_PARSER: Отдельный веб-сервис (VK_PARSER_URL)
  * SERVER: Отдельный веб-сервис (SERVER_URL)
  */
+/* exported onOpen, optimizedOTASetup, checkForUpdatesManual_, checkForUpdatesBackground_ */
 /* eslint-disable indent, no-multiple-empty-lines, padded-blocks */
 
 // VK Parser URL: используется в VK.gs
@@ -47,7 +48,7 @@ const DEV_MODE = true; // DEV: показывать DEV-меню/логи
 const DEVMODE = DEV_MODE;
 
 // ⭐ OTA UPDATES
-const CLIENT_VERSION = '3.1.0';
+const CLIENT_VERSION = '3.2.0';
 
 // В твоем мастер-листе добавь кнопку:
 // eslint-disable-next-line no-unused-vars
@@ -620,7 +621,7 @@ function onOpen() {
       .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
       .addSeparator()
       .addItem('⚙️ Настройки', 'openSettingsUI')
-      .addItem('🔄 Автообновление', 'setupOTATriggers')
+      .addItem('🔄 Автообновление', 'optimizedOTASetup')
       // ⭐ Убрали отдельную кнопку - проверка теперь в Settings при сохранении
       .addToUi();
 
@@ -641,74 +642,62 @@ function onOpen() {
   }
 }
 /**
- * Установить триггеры OTA (кнопка в меню)
- * Создаёт/обновляет триггер для проверки обновлений
+ * Оптимизированная установка OTA триггеров
+ * - Проверяет если триггер уже есть
+ * - Если есть → пропускает установку
+ * - Переходит к проверке обновлений
+ * - Минимум всплывающих сообщений
  */
 // eslint-disable-next-line no-unused-vars
-function setupOTATriggers() {
+function optimizedOTASetup() {
   try {
-    Logger.log('=== УСТАНОВКА ТРИГГЕРОВ OTA ===');
+    addLog('⚙️ OTA Setup started', 'DEBUG');
 
-    const ui = SpreadsheetApp.getUi();
-
+    // ШАГ 1: Проверяем существующие триггеры
     const triggers = ScriptApp.getProjectTriggers();
     let hasOTA = false;
-    const oldCount = triggers.length;
-    Logger.log('Найдено триггеров: ' + oldCount);
 
     for (let i = 0; i < triggers.length; i++) {
       if (triggers[i].getHandlerFunction() === 'checkForUpdatesBackground_') {
-        try {
-          ScriptApp.deleteTrigger(triggers[i]);
-          Logger.log('✅ Удалён старый OTA триггер #' + i);
-          hasOTA = true;
-        } catch (error) {
-          Logger.log('⚠️ Не удалось удалить старый триггер: ' + error.message);
-        }
+        hasOTA = true;
+        break;
       }
     }
 
-    if (hasOTA) {
-      const newTriggers = ScriptApp.getProjectTriggers();
-      Logger.log('Триггеров после очистки: ' + newTriggers.length);
+    // ШАГ 2: Если триггера нет - создаём
+    if (!hasOTA) {
+      addLog('📚 Creating OTA trigger...', 'DEBUG');
+
+      try {
+        ScriptApp.newTrigger('checkForUpdatesBackground_')
+          .timeBased()
+          .atHour(3)
+          .everyDays(1)
+          .create();
+
+        addLog('✅ OTA trigger created', 'INFO');
+      } catch (triggerError) {
+        addLog(`❌ Failed to create trigger: ${triggerError.message}`, 'ERROR');
+        SpreadsheetApp.getUi().alert(
+          '❌ Ошибка\n\n' +
+          'Не удалось создать триггер автообновления.\n\n' +
+          'Причина: ' + triggerError.message,
+        );
+        return;
+      }
+    } else {
+      addLog('✅ OTA trigger already exists', 'DEBUG');
     }
 
-    Logger.log('Создаю новый OTA триггер...');
-    const newTrigger = ScriptApp.newTrigger('checkForUpdatesBackground_')
-      .timeBased()
-      .atHour(3)
-      .everyDays(1)
-      .create();
-
-    Logger.log('✅ Новый триггер создан!');
-    Logger.log('ID: ' + newTrigger.getUniqueId());
-    Logger.log('Расписание: Каждый день в 3:00 AM');
-
-    ui.alert(
-      '✅ Автообновление установлено!',
-      'Создан автоматическая проверка обновлений приложения.\n\n',
-      ui.ButtonSet.OK,
-    );
-
-    addLog('✅ Триггеры OTA установлены пользователем', 'INFO');
-
+    // ШАГ 3: Проверяем обновления (основной шаг)
+    addLog('🔍 Checking for updates...', 'DEBUG');
     checkForUpdatesManual_();
+
   } catch (e) {
-    Logger.log('❌ ОШИБКА УСТАНОВКИ: ' + e.message);
-    Logger.log('Stack: ' + e.stack);
-
+    addLog(`❌ OTA Setup error: ${e.message}`, 'ERROR');
     SpreadsheetApp.getUi().alert(
-      '❌ Ошибка установки триггеров',
-      'Не удалось установить триггеры OTA:\n\n' + e.message + '\n\n' +
-      'Возможные причины:\n' +
-      '• Недостаточно прав доступа\n' +
-      '• Ошибка в коде\n' +
-      '• Проблемы с Google Apps Script\n\n' +
-      'Проверьте логи: DEV → Показать логи',
-      ui.ButtonSet.OK,
+      '❌ Ошибка автообновления\n\n' + e.message,
     );
-
-    addLog(`❌ Ошибка установки триггеров: ${e.message}`, 'ERROR');
   }
 }
 
@@ -2034,13 +2023,10 @@ function installUpdateTrigger_() {
 
 
 /**
- * Фоновая проверка обновлений (вызывается триггером в 3:00)
- */
-/**
- * Фоновая проверка обновлений (вызывается триггером в 3:00)
+ * Фоновая проверка обновлений (оптимизированная - без диалогов)
  */
 function checkForUpdatesBackground_() {
-  addLog('🌙 Фоновая проверка обновлений запущена', 'INFO');
+  addLog('🌙 Background update check started', 'INFO');
 
   try {
     // ═══════════════════════════════════════════════════════════
@@ -2067,16 +2053,16 @@ function checkForUpdatesBackground_() {
     const updateInfo = JSON.parse(checkResp.getContentText());
 
     if (!updateInfo.ok) {
-      addLog(`❌ Ошибка проверки версии: ${updateInfo.error}`, 'ERROR');
+      addLog(`❌ Version check failed: ${updateInfo.error}`, 'ERROR');
       return;
     }
 
     if (!updateInfo.updateAvailable) {
-      addLog('✅ Версия актуальна: ' + updateInfo.serverVersion, 'INFO');
+      addLog('✅ Already up to date: ' + updateInfo.serverVersion, 'DEBUG');
       return;
     }
 
-    addLog(`🚀 Обновление до версии ${updateInfo.serverVersion}`, 'INFO');
+    addLog(`🚀 Updating to version ${updateInfo.serverVersion}`, 'INFO');
 
     // ═══════════════════════════════════════════════════════════
     // ШАГ 2: Получение файлов
@@ -2104,7 +2090,7 @@ function checkForUpdatesBackground_() {
       throw new Error('Failed to get files: ' + (filesData.error || 'unknown'));
     }
 
-    addLog(`📥 Получено ${filesData.count} файлов`, 'INFO');
+    addLog(`📥 Downloaded ${filesData.count} files`, 'INFO');
 
     // ═══════════════════════════════════════════════════════════
     // ШАГ 3: Получение scriptId из лицензии
@@ -2112,51 +2098,53 @@ function checkForUpdatesBackground_() {
     const licenseInfo = serverStatus();
 
     if (!licenseInfo.ok || !licenseInfo.scriptId) {
-      throw new Error('Script ID not found in license');
+      throw new Error('Script ID not found');
     }
 
     const scriptId = licenseInfo.scriptId;
-    addLog(`✅ Script ID: ${scriptId}`, 'INFO');
+    addLog(`✅ Script ID: ${scriptId.substring(0, 12)}...`, 'DEBUG');
 
     // ═══════════════════════════════════════════════════════════
-    // ШАГ 4: Обновление через API
+    // ШАГ 4: Запрос серверу обновить клиента
     // ═══════════════════════════════════════════════════════════
-    const apiUrl = `https://script.googleapis.com/v1/projects/${scriptId}/content`;
-    const oauthToken = ScriptApp.getOAuthToken();
+    addLog('🔄 Requesting server to apply updates...', 'INFO');
 
-    addLog(`🔧 Обновление ${filesData.files.length} файлов через API...`, 'INFO');
+    const applyPayload = {
+      action: 'ota',
+      subaction: 'applyUpdates',
+      email: getLicenseEmail(),
+      token: getLicenseToken(),
+      scriptId: scriptId,
+      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
+    };
 
-    const apiResp = UrlFetchApp.fetch(apiUrl, {
-      method: 'put',
-      headers: {
-        'Authorization': 'Bearer ' + oauthToken,
-        'Content-Type': 'application/json',
-      },
-      payload: JSON.stringify({
-        files: filesData.files,
-      }),
+    const applyOptions = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(applyPayload),
       muteHttpExceptions: true,
-    });
+    };
 
-    const apiCode = apiResp.getResponseCode();
+    const applyResp = UrlFetchApp.fetch(SERVER_URL, applyOptions);
+    const applyData = JSON.parse(applyResp.getContentText());
 
-    if (apiCode !== 200) {
-      const apiError = JSON.parse(apiResp.getContentText());
-      throw new Error(apiError.error.message || `HTTP ${apiCode}`);
+    if (!applyData.ok) {
+      throw new Error('Server failed to update: ' + (applyData.error || 'unknown'));
     }
 
-    addLog('✅ Файлы обновлены через API', 'INFO');
-    addLog('🎉 Обновление завершено!', 'INFO');
+    addLog('✅ Update applied by server', 'INFO');
+    addLog('🎉 Update completed successfully!', 'INFO');
 
   } catch (e) {
-    addLog(`❌ Ошибка обновления: ${e.message}`, 'ERROR');
+    addLog(`❌ Update error: ${e.message}`, 'ERROR');
   }
 }
 
 
 
 /**
- * Ручная проверка обновлений (для тестирования)
+ * Ручная проверка обновлений (оптимизированная)
+ * Минимум всплывающих окон - всё в логи
  */
 function checkForUpdatesManual_() {
   addLog('🔍 Ручная проверка обновлений', 'INFO');
@@ -2168,9 +2156,9 @@ function checkForUpdatesManual_() {
       clientVersion: CLIENT_VERSION,
       email: getLicenseEmail(),
       token: getLicenseToken(),
-      scriptId: ScriptApp.getScriptId(), // ← ДОБАВИЛ
-      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(), // ← ДОБАВИЛ
-      };
+      scriptId: ScriptApp.getScriptId(),
+      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
+    };
 
     const options = {
       method: 'post',
@@ -2182,40 +2170,46 @@ function checkForUpdatesManual_() {
     const resp = UrlFetchApp.fetch(SERVER_URL, options);
     const updateInfo = JSON.parse(resp.getContentText());
 
-    // ⭐ ПРОВЕРКА ОШИБКИ
+    // Проверка ошибки
     if (!updateInfo.ok) {
-      addLog(`❌ Ошибка сервера: ${updateInfo.error}`, 'ERROR');
-      SpreadsheetApp.getUi().alert('❌ Ошибка сервера: ' + updateInfo.error);
+      addLog(`❌ Server error: ${updateInfo.error}`, 'ERROR');
+      const ui = SpreadsheetApp.getUi();
+      ui.alert('❌ Ошибка: ' + updateInfo.error);
       return;
     }
 
-    const ui = SpreadsheetApp.getUi();
-
+    // Если обновления нет
     if (!updateInfo.updateAvailable) {
-      ui.alert(
-        '✅ Версия актуальна',
-        `Текущая: ${updateInfo.clientVersion}\nСерверная: ${updateInfo.serverVersion}`,
-        ui.ButtonSet.OK,
-      );
+      addLog('✅ Version is up to date: ' + updateInfo.serverVersion, 'INFO');
+      SpreadsheetApp.getUi().alert('✅ Версия актуальна\n\nТекущая: ' + updateInfo.clientVersion);
       return;
     }
 
-    const response = ui.alert(
-      `Доступна версия ${updateInfo.serverVersion}!`,
-      'Обновить сейчас?',
-      ui.ButtonSet.YES_NO,
+    // Есть обновление - спрашиваем
+    addLog(`🚀 Update available: ${updateInfo.serverVersion}`, 'INFO');
+
+    const response = SpreadsheetApp.getUi().alert(
+      `Доступна версия ${updateInfo.serverVersion}`,
+      'Обновить?',
+      SpreadsheetApp.getUi().ButtonSet.YES_NO,
     );
 
-    if (response !== ui.Button.YES) return;
+    if (response !== SpreadsheetApp.getUi().Button.YES) {
+      addLog('⏭️ Update skipped by user', 'DEBUG');
+      return;
+    }
 
-    ui.alert('⏳ Обновление запущено...');
+    // Запускаем фоновое обновление
+    addLog('⏳ Starting background update...', 'INFO');
     checkForUpdatesBackground_();
-    ui.alert('✅ Готово!');
+
+    addLog('✅ Update process completed', 'INFO');
+
   } catch (e) {
-    addLog(`❌ Ошибка: ${e.message}`, 'ERROR');
+    addLog(`❌ Error: ${e.message}`, 'ERROR');
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + e.message);
-    }
-    }
+  }
+}
 
     /**
      * Отладочная функция для проверки полного OTA-потока
