@@ -9,7 +9,7 @@ const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
 const AUTO_UPDATE_CHECK_INTERVAL = 6;
 
 // ⭐ OTA UPDATES
-const SERVER_VERSION = '3.5.0';
+const SERVER_VERSION = '3.5.1';
 
 // ═════════════════════════════════════════════════════════════════
 // ⭐ OTA CONFIGURATION (ТОЛЬКО НА СЕРВЕРЕ!)
