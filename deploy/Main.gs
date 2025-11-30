@@ -1899,19 +1899,35 @@ function installUpdateTrigger_() {
  * НЕ знает про GitHub и приватные ключи!
  */
 function checkForUpdatesBackground_() {
-  addLog('🌙 Background update check', 'INFO');
+  addLog('🌙 Background update check started', 'INFO');
+  addLog(`📱 CLIENT_VERSION: ${CLIENT_VERSION}`, 'DEBUG');
 
   try {
     // ШАГ 1: Клиент спрашивает сервер
+    addLog('📌 STEP 1: Sending checkUpdates request to server...', 'INFO');
+
+    const email = getLicenseEmail();
+    const token = getLicenseToken();
+    const scriptId = ScriptApp.getScriptId();
+    const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+
+    addLog(`   📧 Email: ${email ? '***' : 'NOT SET'}`, 'DEBUG');
+    addLog(`   🔑 Token: ${token ? `SET (${token.length} chars)` : 'NOT SET'}`, 'DEBUG');
+    addLog(`   📄 ScriptId: ${scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET'}`, 'DEBUG');
+    addLog(`   📊 SpreadsheetId: ${spreadsheetId ? '***' : 'NOT SET'}`, 'DEBUG');
+
     const checkPayload = {
       action: 'ota',
       subaction: 'checkUpdates',
       clientVersion: CLIENT_VERSION,
-      email: getLicenseEmail(),
-      token: getLicenseToken(),
-      scriptId: ScriptApp.getScriptId(),
-      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
+      email: email,
+      token: token,
+      scriptId: scriptId,
+      spreadsheetId: spreadsheetId,
     };
+
+    addLog(`   📨 Payload: ${JSON.stringify({...checkPayload, token: '***', email: '***', spreadsheetId: '***'})}`, 'DEBUG');
+    addLog(`   🌐 SERVER_URL: ${SERVER_URL}`, 'DEBUG');
 
     const resp = UrlFetchApp.fetch(SERVER_URL, {
       method: 'post',
@@ -1920,24 +1936,53 @@ function checkForUpdatesBackground_() {
       muteHttpExceptions: true,
     });
 
-    const check = JSON.parse(resp.getContentText());
+    const respCode = resp.getResponseCode();
+    addLog(`   ✉️ Response code: ${respCode}`, 'DEBUG');
 
-    if (!check.ok || !check.updateAvailable) {
-      addLog('✅ Up to date', 'DEBUG');
+    const respText = resp.getContentText();
+    addLog(`   📦 Response body: ${respText.substring(0, 200)}...`, 'DEBUG');
+
+    let check;
+    try {
+      check = JSON.parse(respText);
+    } catch (parseErr) {
+      addLog(`❌ Failed to parse server response: ${parseErr.message}`, 'ERROR');
+      addLog(`   Raw response: ${respText}`, 'DEBUG');
       return;
     }
 
-    addLog(`🚀 Update available: ${check.serverVersion}`, 'INFO');
+    addLog('   ✅ Parsed response:', 'DEBUG');
+    addLog(`      - ok: ${check.ok}`, 'DEBUG');
+    addLog(`      - updateAvailable: ${check.updateAvailable}`, 'DEBUG');
+    addLog(`      - clientVersion: ${check.clientVersion}`, 'DEBUG');
+    addLog(`      - serverVersion: ${check.serverVersion}`, 'DEBUG');
+    addLog(`      - error: ${check.error || 'none'}`, 'DEBUG');
+
+    if (!check.ok) {
+      addLog(`❌ Server returned error: ${check.error}`, 'ERROR');
+      return;
+    }
+
+    if (!check.updateAvailable) {
+      addLog('✅ Up to date (no update available)', 'DEBUG');
+      return;
+    }
+
+    addLog(`🚀 Update available: ${check.clientVersion} → ${check.serverVersion}`, 'INFO');
 
     // ШАГ 2: Клиент просит сервер обновить
+    addLog('📌 STEP 2: Sending applyUpdates request to server...', 'INFO');
+
     const applyPayload = {
       action: 'ota',
       subaction: 'applyUpdates',
-      email: getLicenseEmail(),
-      token: getLicenseToken(),
-      scriptId: ScriptApp.getScriptId(),
-      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
+      email: email,
+      token: token,
+      scriptId: scriptId,
+      spreadsheetId: spreadsheetId,
     };
+
+    addLog(`   📨 Payload: ${JSON.stringify({...applyPayload, token: '***', email: '***', spreadsheetId: '***'})}`, 'DEBUG');
 
     const updateResp = UrlFetchApp.fetch(SERVER_URL, {
       method: 'post',
@@ -1946,15 +1991,36 @@ function checkForUpdatesBackground_() {
       muteHttpExceptions: true,
     });
 
-    const update = JSON.parse(updateResp.getContentText());
+    const updateRespCode = updateResp.getResponseCode();
+    addLog(`   ✉️ Response code: ${updateRespCode}`, 'DEBUG');
+
+    const updateRespText = updateResp.getContentText();
+    addLog(`   📦 Response body: ${updateRespText.substring(0, 200)}...`, 'DEBUG');
+
+    let update;
+    try {
+      update = JSON.parse(updateRespText);
+    } catch (parseErr) {
+      addLog(`❌ Failed to parse update response: ${parseErr.message}`, 'ERROR');
+      addLog(`   Raw response: ${updateRespText}`, 'DEBUG');
+      return;
+    }
+
+    addLog('   ✅ Parsed response:', 'DEBUG');
+    addLog(`      - ok: ${update.ok}`, 'DEBUG');
+    addLog(`      - message: ${update.message}`, 'DEBUG');
+    addLog(`      - version: ${update.version}`, 'DEBUG');
+    addLog(`      - error: ${update.error || 'none'}`, 'DEBUG');
 
     if (update.ok) {
-      addLog(`✅ Updated to ${update.version}`, 'INFO');
+      addLog(`🎉 ✅ Successfully updated to ${update.version}!`, 'INFO');
+      addLog(`📝 Update message: ${update.message}`, 'INFO');
     } else {
       addLog(`❌ Update failed: ${update.error}`, 'ERROR');
     }
   } catch (e) {
-    addLog(`❌ Error: ${e.message}`, 'ERROR');
+    addLog(`❌ FATAL ERROR: ${e.message}`, 'ERROR');
+    addLog(`   Stack: ${e.stack || 'no stack available'}`, 'DEBUG');
   }
 }
 
@@ -1966,17 +2032,25 @@ function checkForUpdatesBackground_() {
  */
 // eslint-disable-next-line no-unused-vars
 function checkForUpdatesManual_() {
-  addLog('🔍 Manual update check', 'INFO');
+  addLog('🔍 Manual update check initiated by user', 'INFO');
+  addLog(`📱 CLIENT_VERSION: ${CLIENT_VERSION}`, 'DEBUG');
 
   try {
+    addLog('📌 Sending checkUpdates request...', 'DEBUG');
+
+    const email = getLicenseEmail();
+    const token = getLicenseToken();
+    const scriptId = ScriptApp.getScriptId();
+    const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+
     const payload = {
       action: 'ota',
       subaction: 'checkUpdates',
       clientVersion: CLIENT_VERSION,
-      email: getLicenseEmail(),
-      token: getLicenseToken(),
-      scriptId: ScriptApp.getScriptId(),
-      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
+      email: email,
+      token: token,
+      scriptId: scriptId,
+      spreadsheetId: spreadsheetId,
     };
 
     const resp = UrlFetchApp.fetch(SERVER_URL, {
@@ -1986,17 +2060,36 @@ function checkForUpdatesManual_() {
       muteHttpExceptions: true,
     });
 
-    const check = JSON.parse(resp.getContentText());
+    const respCode = resp.getResponseCode();
+    addLog(`   HTTP ${respCode}`, 'DEBUG');
+
+    const respText = resp.getContentText();
+    let check;
+    try {
+      check = JSON.parse(respText);
+    } catch (parseErr) {
+      const msg = `Failed to parse server response: ${parseErr.message}`;
+      addLog(`❌ ${msg}`, 'ERROR');
+      SpreadsheetApp.getUi().alert('❌ ' + msg);
+      return;
+    }
+
+    addLog(`   Server response: ok=${check.ok}, updateAvailable=${check.updateAvailable}`, 'DEBUG');
 
     if (!check.ok) {
-      SpreadsheetApp.getUi().alert('❌ ' + check.error);
+      const errorMsg = check.error || 'Unknown error';
+      addLog(`❌ Server error: ${errorMsg}`, 'ERROR');
+      SpreadsheetApp.getUi().alert('❌ ' + errorMsg);
       return;
     }
 
     if (!check.updateAvailable) {
+      addLog(`✅ No update available (already on ${check.clientVersion})`, 'INFO');
       SpreadsheetApp.getUi().alert(`✅ Up to date: ${check.clientVersion}`);
       return;
     }
+
+    addLog(`🚀 Update available: ${check.clientVersion} → ${check.serverVersion}`, 'INFO');
 
     const response = SpreadsheetApp.getUi().alert(
       `Update available: ${check.serverVersion}`,
@@ -2005,10 +2098,16 @@ function checkForUpdatesManual_() {
     );
 
     if (response === SpreadsheetApp.getUi().Button.YES) {
+      addLog('👤 User confirmed update - calling checkForUpdatesBackground_()...', 'INFO');
       checkForUpdatesBackground_();
+    } else {
+      addLog('👤 User declined update', 'INFO');
     }
   } catch (e) {
-    SpreadsheetApp.getUi().alert('❌ ' + e.message);
+    const msg = `❌ Error during manual update check: ${e.message}`;
+    addLog(msg, 'ERROR');
+    addLog(`   Stack: ${e.stack || 'no stack'}`, 'DEBUG');
+    SpreadsheetApp.getUi().alert(msg);
   }
 }
 
