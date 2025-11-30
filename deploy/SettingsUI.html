@@ -266,22 +266,37 @@
     </div>
     
     <div class="content">
-      <!-- Gemini API Key -->
+      <!-- GEMINI API KEY SECTION -->
       <div class="section">
         <div class="section-title">
-          <span class="icon">🔑</span>
-          <span>Gemini API Key</span>
+          <span class="icon">🤖</span>
+          <span>Gemini API Ключ</span>
         </div>
         
         <div class="input-group">
-          <label for="apiKey">API ключ Gemini:</label>
-          <input type="password" id="apiKey" placeholder="AIzaSy...">
-          <span class="toggle-password" onclick="togglePassword('apiKey')">👁️</span>
+          <label for="geminiKey">Личный API Ключ (опционально)</label>
+          <input 
+            type="password" 
+            id="geminiKey" 
+            placeholder="Оставь пустым чтобы использовать серверный ключ"
+          />
           <div class="help-text">
             💡 <a href="https://aistudio.google.com/app/apikey" target="_blank">Получить ключ</a> 
             (откроется Google AI Studio)
           </div>
-          <div class="current-value" id="currentApiKey"></div>
+          <small style="color: #666; margin-top: 5px; display: block;">
+            💡 Если оставишь пустым - будет использован серверный ключ по умолчанию
+          </small>
+          <div class="current-value" id="geminiKeyStatus"></div>
+        </div>
+
+        <div class="button-group" style="margin-top: 10px; display: flex; gap: 10px;">
+          <button id="saveGeminiKey" style="background: #4CAF50; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+            ✅ Сохранить ключ
+          </button>
+          <button id="clearGeminiKey" style="background: #f44336; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+            🗑️ Удалить ключ
+          </button>
         </div>
       </div>
       
@@ -325,13 +340,7 @@
     // Загрузка текущих значений
     google.script.run
       .withSuccessHandler(function(data) {
-        if (data.apiKey) {
-          const sourceText = data.keySource === 'USER' ? ' (пользовательский)' : ' (по умолчанию)';
-          document.getElementById('currentApiKey').textContent = '✅ Установлен' + sourceText + ': ' + data.apiKey.substring(0, 8) + '****';
-        } else {
-          document.getElementById('currentApiKey').textContent = '⚠️ Не установлен';
-        }
-        
+        // Load license data
         if (data.email) {
           document.getElementById('currentEmail').textContent = '📧 Текущий: ' + data.email;
           document.getElementById('email').value = data.email;
@@ -346,6 +355,51 @@
         }
       })
       .getSettingsData();
+
+    // Загрузить текущий статус Gemini ключа при открытии
+    google.script.run.withSuccessHandler(function(info) {
+      const status = document.getElementById('geminiKeyStatus');
+      
+      if (info.hasClientKey) {
+        status.textContent = '🟢 Личный ключ установлен (' + info.clientKeyPreview + ')';
+        status.style.color = '#4CAF50';
+      } else {
+        status.textContent = '🟡 Используется серверный ключ';
+        status.style.color = '#ff9800';
+      }
+    }).getGeminiKeyInfo();
+    
+    // Сохранить ключ
+    document.getElementById('saveGeminiKey').addEventListener('click', function() {
+      const key = document.getElementById('geminiKey').value;
+      
+      if (!key) {
+        alert('❌ Ключ не может быть пустым');
+        return;
+      }
+
+      google.script.run.withSuccessHandler(function(success) {
+        if (success) {
+          alert('✅ Ключ сохранён!');
+          document.getElementById('geminiKey').value = '';
+          location.reload();
+        } else {
+          alert('❌ Ошибка сохранения');
+        }
+      }).setClientGeminiKey(key);
+    });
+
+    // Удалить ключ
+    document.getElementById('clearGeminiKey').addEventListener('click', function() {
+      if (confirm('❌ Удалить личный ключ? Будет использоваться серверный.')) {
+        google.script.run.withSuccessHandler(function(success) {
+          if (success) {
+            alert('✅ Ключ удалён');
+            location.reload();
+          }
+        }).removeClientGeminiKey();
+      }
+    });
     
     function togglePassword(fieldId) {
       const field = document.getElementById(fieldId);
@@ -379,14 +433,13 @@
         statusDiv.textContent = '🔍 Проверка лицензии на сервере...';
       }
 
-      const apiKey = document.getElementById('apiKey').value.trim();
       const email = document.getElementById('email').value.trim();
       const token = document.getElementById('token').value.trim();
       
-      if (!apiKey && !email && !token) {
+      if (!email && !token) {
         if (statusDiv) {
           statusDiv.className = 'status-message error';
-          statusDiv.textContent = '❌ Заполните хотя бы одно поле';
+          statusDiv.textContent = '❌ Заполните хотя бы одно поле лицензии';
         }
         saveBtn.disabled = false;
         saveBtn.textContent = '💾 Сохранить всё';
@@ -421,10 +474,7 @@
 
           // Обновляем отображение текущих значений только при успехе
           if (result.success) {
-            if (apiKey) {
-              document.getElementById('currentApiKey').textContent = '✅ Установлен: ' + apiKey.substring(0, 8) + '****';
-              document.getElementById('apiKey').value = '';
-            }
+            // Gemini ключ управляется отдельными кнопками, не обновляем здесь
             if (email) {
               document.getElementById('currentEmail').textContent = '📧 Текущий: ' + email;
             }
@@ -450,7 +500,6 @@
           }
         })
         .saveSettingsData({
-          apiKey: apiKey || null,
           email: email || null,
           token: token || null
         });
