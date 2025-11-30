@@ -44,7 +44,7 @@ const MAX_RETRY_ATTEMPTS = 5;
 const RETRY_DELAY_INCREMENT = 10000;
 
 // ⭐ OTA UPDATES
-const CLIENT_VERSION = '3.4.5';
+const CLIENT_VERSION = '3.4.6';
 if (typeof DEV_MODE === 'undefined') {
   var DEV_MODE = false;
   var DEVMODE = false;
