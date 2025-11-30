@@ -15,7 +15,7 @@
  * 3. Run: clasp push --force
  */
 
-/* exported runDevSelfTest, debugGeminiKeys, debugOTAFlow */
+/* exported runDevSelfTest, debugGeminiKeys, debugOTAFlow, debugOTAStatus */
 /* exported createDevMenu */
 /* eslint-disable indent, no-multiple-empty-lines, padded-blocks */
 
@@ -226,4 +226,103 @@ function debugOTAFlow() {
   Logger.log('5️⃣ getLicenseEmail(): ' + getLicenseEmail());
   const token = getLicenseToken();
   Logger.log('6️⃣ getLicenseToken(): ' + (token ? 'SET' : 'NOT SET'));
+}
+
+/**
+ * Полная диагностика OTA системы
+ * Проверяет:
+ * - Версии клиента и сервера
+ * - Доступность лицензии
+ * - Доступность сервера
+ * - Логи OTA операций
+ */
+// eslint-disable-next-line no-unused-vars
+function debugOTAStatus() {
+  Logger.log('═══════════════════════════════════════════════════════════════');
+  Logger.log('🔍 OTA SYSTEM DIAGNOSTIC');
+  Logger.log('═══════════════════════════════════════════════════════════════');
+  Logger.log('⏱️  Time: ' + new Date().toISOString());
+
+  // 1. CLIENT INFORMATION
+  Logger.log('\n📱 CLIENT INFORMATION:');
+  Logger.log('   Client version: ' + CLIENT_VERSION);
+  Logger.log('   Script ID: ' + ScriptApp.getScriptId().substring(0, 12) + '...');
+  Logger.log('   Spreadsheet ID: ' + SpreadsheetApp.getActiveSpreadsheet().getId().substring(0, 12) + '...');
+
+  // 2. LICENSE INFORMATION
+  Logger.log('\n🔑 LICENSE INFORMATION:');
+  const email = getLicenseEmail();
+  const token = getLicenseToken();
+  Logger.log('   Email: ' + (email ? email : 'NOT SET'));
+  Logger.log('   Token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
+
+  // 3. SERVER INFORMATION
+  Logger.log('\n🖥️  SERVER INFORMATION:');
+  Logger.log('   Server URL: ' + SERVER_URL);
+  Logger.log('   Server endpoint is reachable: testing...');
+
+  try {
+    const testPayload = {
+      action: 'ota',
+      subaction: 'checkUpdates',
+      clientVersion: CLIENT_VERSION,
+      email: email,
+      token: token,
+      scriptId: ScriptApp.getScriptId(),
+      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
+    };
+
+    const resp = UrlFetchApp.fetch(SERVER_URL, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(testPayload),
+      muteHttpExceptions: true,
+    });
+
+    const respCode = resp.getResponseCode();
+    Logger.log('   ✉️ Server response code: ' + respCode);
+
+    if (respCode === 200) {
+      Logger.log('   ✅ Server is reachable and responding');
+      const respBody = resp.getContentText();
+      try {
+        const data = JSON.parse(respBody);
+        Logger.log('   📋 Response: ' + JSON.stringify(data));
+      } catch (e) {
+        Logger.log('   ⚠️ Cannot parse response: ' + e.message);
+      }
+    } else if (respCode === 403) {
+      Logger.log('   ❌ Server returned 403 (License issue?)');
+      const respBody = resp.getContentText();
+      Logger.log('   Response: ' + respBody.substring(0, 200));
+    } else {
+      Logger.log('   ⚠️ Server returned ' + respCode);
+      const respBody = resp.getContentText();
+      Logger.log('   Response: ' + respBody.substring(0, 200));
+    }
+  } catch (e) {
+    Logger.log('   ❌ Cannot reach server: ' + e.message);
+  }
+
+  // 4. OTA LOGS
+  Logger.log('\n📝 OTA LOGS (recent 20):');
+  const allLogs = getLogs(50);
+  const lines = allLogs.split('\n');
+  const otaLogs = lines.filter((l) => l.includes('UPDATE') || l.includes('OTA') || l.includes('checkUpdates') || l.includes('applyUpdates'));
+  otaLogs.slice(-20).forEach((log) => {
+    Logger.log('   ' + log);
+  });
+
+  if (otaLogs.length === 0) {
+    Logger.log('   (no OTA logs found)');
+  }
+
+  Logger.log('\n═══════════════════════════════════════════════════════════════');
+  Logger.log('📊 DIAGNOSTIC COMPLETE');
+  Logger.log('═══════════════════════════════════════════════════════════════');
+  Logger.log('\n💡 NEXT STEPS:');
+  Logger.log('   1. Check SERVER logs: server.gs Execution log');
+  Logger.log('   2. Check CLIENT logs: View → Logs (in this script)');
+  Logger.log('   3. Manual test: Extensions → DEV → Обновить вручную');
+  Logger.log('   4. Show logs: Extensions → DEV → Показать логи');
 }
