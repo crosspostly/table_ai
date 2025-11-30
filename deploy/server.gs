@@ -11,6 +11,9 @@ const AUTO_UPDATE_CHECK_INTERVAL = 6;
 // ⭐ OTA UPDATES
 const SERVER_VERSION = '3.5.2';
 
+// ⭐ LICENSE SHEET ID (для prompt_table)
+const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
+
 // ═════════════════════════════════════════════════════════════════
 // ⭐ OTA CONFIGURATION (ТОЛЬКО НА СЕРВЕРЕ!)
 // ═════════════════════════════════════════════════════════════════
@@ -1022,26 +1025,35 @@ function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddre
  * @return {string} System prompt text
  */
 function serverGetSystemPrompt_(config, defaultSpreadsheetId, logs) {
-  // ⭐ НОВЫЙ ПОДХОД: Сначала проверяем prompt_table
-  if (config.prompt_table && config.prompt_table.cellAddress) {
-    // Берём ID таблицы и лист из ScriptProperties
-    const props = PropertiesService.getScriptProperties();
-    const promptTableId = props.getProperty('PROMPT_TABLE_ID') || LICENSE_SHEET_ID;
-    const promptSheetName = props.getProperty('PROMPT_SHEET_NAME') || 'Промты';
+  // 1. Если включен prompt_table → читаем только с удалённой таблицы
+  if (config && config.prompt_table && config.prompt_table.cellAddress) {
+    logs.push({
+      timestamp: new Date().toISOString(),
+      level: 'INFO',
+      message: '📡 prompt_table активен: системный промпт читается с удалённого сервера',
+    });
+
     const cellAddress = config.prompt_table.cellAddress;
 
-    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📡 Использование prompt_table'});
-    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Таблица: ' + promptTableId});
-    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 Лист: ' + promptSheetName});
-    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📍 Ячейка: ' + cellAddress});
-
     try {
-      const prompt = serverReadData_(promptTableId, promptSheetName, cellAddress, logs);
-      logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ Промпт прочитан, ' + prompt.length + ' символов'});
-      return prompt;
-    } catch (error) {
-      logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: '❌ Ошибка чтения prompt_table: ' + error.message});
-      throw new Error('Не удалось прочитать prompt_table: ' + error.message);
+      // Используем существующую логику чтения с сервера,
+      // которая сама знает ID таблицы и лист.
+      const prompt = readPromptFromServerTable_(cellAddress, logs);
+
+      logs.push({
+        timestamp: new Date().toISOString(),
+        level: 'INFO',
+        message: '✅ prompt_table прочитан с сервера: ' + cellAddress,
+      });
+
+      return prompt || '';
+    } catch (e) {
+      logs.push({
+        timestamp: new Date().toISOString(),
+        level: 'ERROR',
+        message: '❌ Не удалось прочитать prompt_table с сервера: ' + e.message,
+      });
+      throw new Error('Не удалось прочитать prompt_table: ' + e.message);
     }
   }
 
@@ -1090,6 +1102,41 @@ function serverGetSystemPrompt_(config, defaultSpreadsheetId, logs) {
   } catch (error) {
     logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: '❌ Ошибка чтения System Prompt: ' + error.message});
     throw new Error('Не удалось прочитать System Prompt: ' + error.message);
+  }
+}
+
+/**
+ * Read prompt from server table (LICENSE_SHEET_ID)
+ * @param {string} cellAddress - Cell address to read from
+ * @param {Array} logs - Array to collect log entries
+ * @return {string} Prompt text
+ */
+function readPromptFromServerTable_(cellAddress, logs) {
+  // Используем константы напрямую - сервер сам знает ID таблицы и лист
+  const promptTableId = LICENSE_SHEET_ID;
+  const promptSheetName = 'Промты';
+
+  logs.push({
+    timestamp: new Date().toISOString(),
+    level: 'INFO',
+    message: '📂 Чтение prompt_table: ' + promptTableId + ' / ' + promptSheetName + '!' + cellAddress,
+  });
+
+  try {
+    const prompt = serverReadData_(promptTableId, promptSheetName, cellAddress, logs);
+    logs.push({
+      timestamp: new Date().toISOString(),
+      level: 'SUCCESS',
+      message: '✅ Промпт прочитан с серверной таблицы, ' + prompt.length + ' символов',
+    });
+    return prompt;
+  } catch (error) {
+    logs.push({
+      timestamp: new Date().toISOString(),
+      level: 'ERROR',
+      message: '❌ Ошибка чтения с серверной таблицы: ' + error.message,
+    });
+    throw error;
   }
 }
 

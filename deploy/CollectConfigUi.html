@@ -529,39 +529,33 @@
     function togglePromptTableFields() {
       const checkbox = document.getElementById('usePromptTable');
       const promptFields = document.getElementById('promptTableFields');
-      const systemSheet = document.getElementById('systemSheet');
-      const systemCell = document.getElementById('systemCell');
-      const systemWholeColumn = document.getElementById('systemWholeColumn');
       const systemPromptSection = document.querySelector('.system-prompt');
       
+      // Локальные элементы System Prompt
+      const systemLocalControls = systemPromptSection.querySelectorAll(
+        '#systemSheet, #systemCell, #systemWholeColumn, label[for="systemWholeColumn"]'
+      );
+      
       if (checkbox.checked) {
-        // ✅ Активировать prompt_table
+        // Показать поле ячейки для удалённой таблицы
         promptFields.style.display = 'block';
-        
-        // ❌ Отключить локальные поля
-        systemSheet.disabled = true;
-        systemCell.disabled = true;
-        systemWholeColumn.disabled = true;
-        
-        systemPromptSection.style.opacity = '0.4';
-        systemPromptSection.style.pointerEvents = 'none';
-        
-        addLogEntry('📡 Режим prompt_table активирован', 'success');
-        showStatus('📡 Будет прочитан промпт из удалённой таблицы', 'info');
-        
+
+        // Скрыть локальные элементы System Prompt
+        systemLocalControls.forEach(function (el) {
+          el.style.display = 'none';
+        });
+
+        addLogEntry('📡 prompt_table (удалённый сервер) включен', 'success');
       } else {
-        // ✅ Вернуть локальные поля
+        // Скрыть поле prompt_table
         promptFields.style.display = 'none';
-        
-        systemSheet.disabled = false;
-        systemCell.disabled = false;
-        systemWholeColumn.disabled = false;
-        
-        systemPromptSection.style.opacity = '1';
-        systemPromptSection.style.pointerEvents = 'auto';
-        
-        addLogEntry('📄 Возврат к локальным промптам', 'info');
-        showStatus('', 'clear');
+
+        // Показать локальные элементы назад
+        systemLocalControls.forEach(function (el) {
+          el.style.display = '';
+        });
+
+        addLogEntry('📄 prompt_table выключен, используются локальные промпты', 'info');
       }
     }
 
@@ -790,20 +784,19 @@
       };
       
       if (usePromptTable) {
-        // ✅ Формируем объект для серверной функции
         const cellAddress = document.getElementById('promptCellAddress').value.trim();
-        
+
         if (!cellAddress) {
-          showStatus('❌ Укажите ячейку', 'error');
+          showStatus('❌ Укажите ячейку для prompt_table (например, A2)', 'error');
           return null;
         }
-        
+
+        // ВАЖНО: только cellAddress, без листов и без ID таблицы
         config.prompt_table = {
           cellAddress: cellAddress
-          // ID таблицы и лист берутся из настроек (ScriptProperties)
         };
-        
-        addLogEntry(`📡 prompt_table: ${cellAddress}`, 'info');
+
+        addLogEntry('📡 prompt_table: ' + cellAddress, 'info');
         
       } else {
         // Обычная логика локальных промптов
