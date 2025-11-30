@@ -427,23 +427,16 @@
       </div>
       <div class="checkbox-group" style="margin-top: 12px;">
         <input type="checkbox" id="usePromptTable" onchange="togglePromptTableFields()" />
-        <label for="usePromptTable" title="Чтение системного промпта из удалённой таблицы. Укажите ID таблицы, лист и ячейку.">📡 prompt_table (удалённый сервер)</label>
+        <label for="usePromptTable" title="Чтение системного промпта из удалённой таблицы. Укажите только ячейку.">📡 prompt_table (удалённый сервер)</label>
       </div>
-      <div id="promptTableFields" class="prompt-table-fields" style="display: none; margin-left: 24px; padding: 12px; border-left: 3px solid #4CAF50;">
-        <div class="form-row">
-          <div class="input-group">
-            <label>📋 ID таблицы:</label>
-            <input type="text" id="promptSpreadsheetId" placeholder="1abc123def456..." maxlength="100" />
-          </div>
-          <div class="input-group">
-            <label>📄 Лист:</label>
-            <input type="text" id="promptSheetName" placeholder="Промты" maxlength="50" />
-          </div>
-        </div>
-        <div class="input-group">
-          <label>📍 Ячейка:</label>
-          <input type="text" id="promptCellAddress" placeholder="A1, B2, C5" maxlength="10" />
-        </div>
+      <div id="promptTableFields" class="prompt-table-fields" style="display: none; margin-left: 24px; padding: 8px;">
+        <input 
+          type="text" 
+          id="promptCellAddress" 
+          placeholder="Ячейка"
+          title="Адрес ячейки"
+          style="width: 100%; padding: 6px 8px; border: 1px solid #dadce0; border-radius: 3px; font-size: 12px;"
+        />
       </div>
       <div id="systemPreview" class="cell-preview" style="display:none;"></div>
     </div>
@@ -608,8 +601,6 @@
             if (config.prompt_table) {
               // ✅ Загрузить prompt_table конфигурацию
               document.getElementById('usePromptTable').checked = true;
-              document.getElementById('promptSpreadsheetId').value = config.prompt_table.spreadsheetId || '';
-              document.getElementById('promptSheetName').value = config.prompt_table.sheetName || '';
               document.getElementById('promptCellAddress').value = config.prompt_table.cellAddress || '';
               togglePromptTableFields();
             } else if (config.systemPrompt) {
@@ -800,19 +791,19 @@
       
       if (usePromptTable) {
         // ✅ Формируем объект для серверной функции
-        config.prompt_table = {
-          spreadsheetId: document.getElementById('promptSpreadsheetId').value.trim(),
-          sheetName: document.getElementById('promptSheetName').value.trim() || 'Промты',
-          cellAddress: document.getElementById('promptCellAddress').value.trim() || 'A1'
-        };
+        const cellAddress = document.getElementById('promptCellAddress').value.trim();
         
-        // Валидация
-        if (!config.prompt_table.spreadsheetId) {
-          showStatus('❌ Укажите ID удалённой таблицы', 'error');
+        if (!cellAddress) {
+          showStatus('❌ Укажите ячейку', 'error');
           return null;
         }
         
-        addLogEntry(`📡 prompt_table: ${config.prompt_table.sheetName}!${config.prompt_table.cellAddress}`, 'info');
+        config.prompt_table = {
+          cellAddress: cellAddress
+          // ID таблицы и лист берутся из настроек (ScriptProperties)
+        };
+        
+        addLogEntry(`📡 prompt_table: ${cellAddress}`, 'info');
         
       } else {
         // Обычная логика локальных промптов
@@ -861,7 +852,7 @@
       addLogEntry('Целевая ячейка: ' + sheetName + '!' + cellAddress, 'info');
       
       if (config.prompt_table) {
-        addLogEntry('📡 prompt_table: ' + config.prompt_table.sheetName + '!' + config.prompt_table.cellAddress, 'info');
+        addLogEntry('📡 prompt_table: ' + config.prompt_table.cellAddress, 'info');
       } else if (config.systemPrompt) {
         addLogEntry('System Prompt: ' + config.systemPrompt.sheet + '!' + config.systemPrompt.cell, 'info');
       } else {
@@ -960,8 +951,6 @@
           // ✅ Загрузить prompt_table если присутствует
           if (config.prompt_table) {
             document.getElementById('usePromptTable').checked = true;
-            document.getElementById('promptSpreadsheetId').value = config.prompt_table.spreadsheetId || '';
-            document.getElementById('promptSheetName').value = config.prompt_table.sheetName || '';
             document.getElementById('promptCellAddress').value = config.prompt_table.cellAddress || '';
             togglePromptTableFields();
           } else {
@@ -1006,6 +995,11 @@
       
       if (config.systemPrompt && (!config.systemPrompt.sheet || !config.systemPrompt.cell)) {
         showError('Укажите System Prompt (лист и ячейку)');
+        return;
+      }
+      
+      if (config.prompt_table && (!config.prompt_table.cellAddress)) {
+        showError('Укажите ячейку для prompt_table');
         return;
       }
       
