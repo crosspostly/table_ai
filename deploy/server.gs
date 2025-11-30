@@ -473,23 +473,47 @@ function doPost(_e) {
 
     // ⭐ OTA UPDATES (СЕРВЕР ОБНОВЛЯЕТ КЛИЕНТА)
     case 'ota': {
-      Logger.log('Processing OTA action');
+      Logger.log('═══════════════════════════════════════════════════════════════');
+      Logger.log('⭐ OTA REQUEST RECEIVED');
+      Logger.log('═══════════════════════════════════════════════════════════════');
+
       const subaction = (data.subaction || '').toString();
+      Logger.log('📌 Subaction: ' + subaction);
+      Logger.log('📧 Email: ' + (email ? 'SET' : 'NOT SET'));
+      Logger.log('🔑 Token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
+      Logger.log('📄 ScriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET'));
+      Logger.log('📊 SpreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET'));
 
       // КЛИЕНТ: "Проверь версию!"
       if (subaction === 'checkUpdates') {
+        Logger.log('\n📌 STEP: checkUpdates');
         const clientVersion = data.clientVersion || '0.0.0';
+        Logger.log('📱 Client version: ' + clientVersion);
+        Logger.log('🖥️ Server version: ' + SERVER_VERSION);
+
         const check = checkForUpdates_(clientVersion, SERVER_VERSION);
+        Logger.log('✅ Version check result: ' + JSON.stringify(check));
+        Logger.log('═══════════════════════════════════════════════════════════════\n');
         return json_(check);
       }
 
       // КЛИЕНТ: "Обнови меня!"
       // СЕРВЕР: "Окей, я сам всё сделаю!"
       if (subaction === 'applyUpdates') {
+        Logger.log('\n📌 STEP: applyUpdates');
+        Logger.log('🔐 Checking license...');
+
         const lic = checkLicense_(token, email, scriptId, spreadsheetId);
+        Logger.log('   License check result: ' + JSON.stringify(lic));
+
         if (!lic.ok) {
+          Logger.log('❌ License FAILED: ' + lic.error);
+          Logger.log('═══════════════════════════════════════════════════════════════\n');
           return json_(lic, 403);
         }
+
+        Logger.log('✅ License OK');
+        Logger.log('🌐 Starting OTA update for client...');
 
         // ⭐ СЕРВЕР ВЫЗЫВАЕТ ФУНКЦИЮ ИЗ ota_updates.gs
         // КЛИЕНТ ЗДЕСЬ НЕ УЧАСТВУЕТ!
@@ -501,9 +525,13 @@ function doPost(_e) {
           REPO_IS_PUBLIC,
         );
 
+        Logger.log('\n📋 OTA result: ' + JSON.stringify(result));
+        Logger.log('═══════════════════════════════════════════════════════════════\n');
         return json_(result);
       }
 
+      Logger.log('❌ Unknown OTA subaction: ' + subaction);
+      Logger.log('═══════════════════════════════════════════════════════════════\n');
       return json_({ok: false, error: 'Unknown OTA subaction'}, 400);
     }
 
