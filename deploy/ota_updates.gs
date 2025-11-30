@@ -270,7 +270,7 @@ function downloadAllClientFiles_(isPublicRepo) {
  *
  * @param {string} clientScriptId
  * @param {Array} files
- * @return {boolean}
+ * @return {Object} {success: boolean, error: string|null}
  */
 function updateClientScript_(clientScriptId, files) {
   try {
@@ -288,18 +288,32 @@ function updateClientScript_(clientScriptId, files) {
     const oauthToken = ScriptApp.getOAuthToken();
     Logger.log('   🔐 OAuth token: ' + (oauthToken ? 'SET (length: ' + oauthToken.length + ')' : 'NOT SET'));
 
+    if (!oauthToken) {
+      Logger.log('❌ CRITICAL: OAuth token is NULL - cannot authenticate to Google API');
+      Logger.log('   This usually means the Apps Script service account has no permissions');
+      return {success: false, error: 'NO_OAUTH_TOKEN'};
+    }
+
     const payload = JSON.stringify({files: files});
     Logger.log('   📨 Payload size: ' + payload.length + ' bytes');
 
-    const resp = UrlFetchApp.fetch(apiUrl, {
-      method: 'put',
-      headers: {
-        'Authorization': 'Bearer ' + oauthToken,
-        'Content-Type': 'application/json',
-      },
-      payload: payload,
-      muteHttpExceptions: true,
-    });
+    let resp;
+    try {
+      resp = UrlFetchApp.fetch(apiUrl, {
+        method: 'put',
+        headers: {
+          'Authorization': 'Bearer ' + oauthToken,
+          'Content-Type': 'application/json',
+        },
+        payload: payload,
+        muteHttpExceptions: true,
+      });
+    } catch (fetchError) {
+      Logger.log('❌ UrlFetchApp.fetch() threw exception: ' + fetchError.message);
+      Logger.log('   This might indicate network issues or GCP quota problems');
+      Logger.log('   Stack: ' + (fetchError.stack || 'no stack'));
+      return {success: false, error: 'FETCH_EXCEPTION: ' + fetchError.message};
+    }
 
     const respCode = resp.getResponseCode();
     Logger.log('   ✉️ Response code: ' + respCode);
@@ -308,20 +322,44 @@ function updateClientScript_(clientScriptId, files) {
     Logger.log('   📦 Response body length: ' + respBody.length);
     if (respBody.length < 500) {
       Logger.log('   📋 Response body: ' + respBody);
+    } else {
+      Logger.log('   📋 Response body (first 500 chars): ' + respBody.substring(0, 500));
+    }
+
+    if (respCode === 401 || respCode === 403) {
+      Logger.log('❌ AUTHENTICATION ERROR ' + respCode);
+      Logger.log('   OAuth token may be invalid or expired');
+      Logger.log('   Or service account lacks permission to update client scripts');
+      const errorDetail = 'AUTH_ERROR_' + respCode;
+      return {success: false, error: errorDetail};
+    }
+
+    if (respCode === 404) {
+      Logger.log('❌ NOT FOUND ERROR 404');
+      Logger.log('   Client script ID may be invalid or script may have been deleted');
+      Logger.log('   Script ID provided: ' + clientScriptId);
+      return {success: false, error: 'SCRIPT_NOT_FOUND_404'};
+    }
+
+    if (respCode === 400) {
+      Logger.log('❌ BAD REQUEST ERROR 400');
+      Logger.log('   The payload format or file structure may be invalid');
+      Logger.log('   Response: ' + respBody.substring(0, 300));
+      return {success: false, error: 'BAD_REQUEST_400'};
     }
 
     if (respCode !== 200) {
       Logger.log('❌ HTTP ERROR ' + respCode);
       Logger.log('   Response: ' + respBody.substring(0, 300));
-      return false;
+      return {success: false, error: 'HTTP_ERROR_' + respCode};
     }
 
     Logger.log('✅ Client script updated successfully!');
-    return true;
+    return {success: true, error: null};
   } catch (e) {
-    Logger.log('❌ updateClientScript_ ERROR: ' + e.message);
+    Logger.log('❌ updateClientScript_ UNCAUGHT ERROR: ' + e.message);
     Logger.log('   Stack: ' + (e.stack || 'no stack'));
-    return false;
+    return {success: false, error: 'EXCEPTION: ' + e.message};
   }
 }
 
@@ -397,6 +435,9 @@ function applyUpdatesToClient_(token, email, clientScriptId, spreadsheetId, isPu
     if (!lic.ok) {
       Logger.log('❌ License validation FAILED');
       Logger.log('   Error: ' + lic.error);
+      Logger.log('   🔍 DIAGNOSTIC: Check that token and email are valid');
+      Logger.log('   🔍 DIAGNOSTIC: Verify license has not expired');
+      Logger.log('   🔍 DIAGNOSTIC: Check that script is properly bound to license');
       return {ok: false, error: 'LICENSE_FAILED: ' + lic.error};
     }
 
@@ -411,6 +452,11 @@ function applyUpdatesToClient_(token, email, clientScriptId, spreadsheetId, isPu
 
     if (!files) {
       Logger.log('❌ Download FAILED (no files returned)');
+      Logger.log('   Time spent attempting download: ' + downloadTime + 'ms');
+      Logger.log('   🔍 DIAGNOSTIC: Check server logs above for which file failed');
+      Logger.log('   🔍 DIAGNOSTIC: If repo is PRIVATE, verify GitHub PAT is set');
+      Logger.log('   🔍 DIAGNOSTIC: Verify GitHub repository URL is correct and accessible');
+      Logger.log('   🔍 DIAGNOSTIC: Check GitHub API rate limits (60 req/hour public, 5000/hour with PAT)');
       return {ok: false, error: 'DOWNLOAD_FAILED'};
     }
 
@@ -421,12 +467,30 @@ function applyUpdatesToClient_(token, email, clientScriptId, spreadsheetId, isPu
     Logger.log('\n📌 STEP 3: Updating client script...');
     const updateStartTime = new Date().getTime();
 
-    const updated = updateClientScript_(clientScriptId, files);
+    const updateResult = updateClientScript_(clientScriptId, files);
     const updateTime = new Date().getTime() - updateStartTime;
 
-    if (!updated) {
-      Logger.log('❌ Update FAILED (script not updated)');
-      return {ok: false, error: 'UPDATE_FAILED'};
+    if (!updateResult.success) {
+      Logger.log('❌ Update FAILED with error: ' + updateResult.error);
+      Logger.log('   Time spent on update attempt: ' + updateTime + 'ms');
+      Logger.log('   Debug hint: Check error code - ' + updateResult.error);
+
+      // Log detailed diagnostics for each error type
+      if (updateResult.error === 'NO_OAUTH_TOKEN') {
+        Logger.log('   🔍 DIAGNOSTIC: Service account not authenticated');
+      } else if (updateResult.error.indexOf('AUTH_ERROR') === 0) {
+        Logger.log('   🔍 DIAGNOSTIC: Permission denied for Apps Script Content API');
+      } else if (updateResult.error === 'SCRIPT_NOT_FOUND_404') {
+        Logger.log('   🔍 DIAGNOSTIC: Client script ID is invalid or script was deleted');
+      } else if (updateResult.error === 'BAD_REQUEST_400') {
+        Logger.log('   🔍 DIAGNOSTIC: File format or payload structure is invalid');
+      } else if (updateResult.error.indexOf('HTTP_ERROR') === 0) {
+        Logger.log('   🔍 DIAGNOSTIC: Unexpected HTTP error from Google APIs');
+      } else if (updateResult.error.indexOf('FETCH_EXCEPTION') === 0) {
+        Logger.log('   🔍 DIAGNOSTIC: Network error or GCP quota exhaustion');
+      }
+
+      return {ok: false, error: 'UPDATE_FAILED', details: updateResult.error};
     }
 
     Logger.log('✅ Update completed in ' + updateTime + 'ms');
