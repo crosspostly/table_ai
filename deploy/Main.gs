@@ -2114,54 +2114,34 @@ function checkForUpdates_() {
  */
 function getGeminiApiKey() {
   try {
-    // ШАГ 1: Проверяем свой ключ в свойствах клиента
-    Logger.log('🔑 Getting Gemini API key...');
+    Logger.log('🔑 Resolving Gemini API key...');
 
-    const props = PropertiesService.getUserProperties();
-    const clientKey = props.getProperty('GEMINI_API_KEY');
-
-    if (clientKey) {
-      Logger.log('✅ Using CLIENT Gemini key: ' + clientKey.substring(0, 10) + '...');
-      addLog('🔑 Используется личный Gemini API ключ', 'DEBUG');
-      return clientKey;
+    // 1) Персональный ключ в UserProperties
+    const userProps = PropertiesService.getUserProperties();
+    const personalKey = userProps.getProperty('GEMINI_API_KEY');
+    if (personalKey) {
+      Logger.log('✅ Using PERSONAL Gemini key: ' + personalKey.substring(0, 10) + '...');
+      addLog('🔑 Используется личный Gemini API ключ', 'INFO');
+      return personalKey;
     }
 
-    Logger.log('📌 Client key not found, requesting SERVER default key...');
-
-    // ШАГ 2: Запрашиваем ключ сервера
-    const payload = {
-      action: 'geminiConfig',
-      subaction: 'getDefaultKey',
-      email: getLicenseEmail(),
-      token: getLicenseToken(),
-      scriptId: ScriptApp.getScriptId(),
-      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
-    };
-
-    const options = {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true,
-    };
-
-    const resp = UrlFetchApp.fetch(SERVER_URL, options);
-    const result = JSON.parse(resp.getContentText());
-
-    if (!result.ok) {
-      Logger.log('❌ Failed to get server key: ' + result.error);
-      addLog('❌ Не удалось получить Gemini ключ: ' + result.error, 'ERROR');
-      return null;
+    // 2) Общий ключ в ScriptProperties (старый режим через меню "🔑 Установить API ключ")
+    const scriptProps = PropertiesService.getScriptProperties();
+    const sharedKey = scriptProps.getProperty('GEMINI_API_KEY');
+    if (sharedKey) {
+      Logger.log('✅ Using SHARED (script) Gemini key: ' + sharedKey.substring(0, 10) + '...');
+      addLog('🔑 Используется общий Gemini API ключ из Script Properties', 'INFO');
+      return sharedKey;
     }
 
-    const serverKey = result.apiKey;
-    Logger.log('✅ Using SERVER default Gemini key: ' + serverKey.substring(0, 10) + '...');
-    addLog('🔑 Используется серверный Gemini API ключ', 'DEBUG');
+    // 3) Ключ не настроен на клиенте → сервер выполнит запрос со своим ключом
+    Logger.log('ℹ️ No local Gemini key configured. Will rely on SERVER default key.');
+    addLog('🟡 Личный Gemini ключ не найден — будет использоваться серверный по умолчанию', 'INFO');
 
-    return serverKey;
+    return null;
   } catch (e) {
-    Logger.log('❌ Error getting Gemini key: ' + e.message);
-    addLog('❌ Ошибка получения Gemini ключа: ' + e.message, 'ERROR');
+    Logger.log('❌ Error resolving Gemini key: ' + e.message);
+    addLog('❌ Ошибка доступа к локальному Gemini ключу: ' + e.message, 'ERROR');
     return null;
   }
 }
