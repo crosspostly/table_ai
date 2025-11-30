@@ -44,7 +44,7 @@ const MAX_RETRY_ATTEMPTS = 5;
 const RETRY_DELAY_INCREMENT = 10000;
 
 // ⭐ OTA UPDATES
-const CLIENT_VERSION = '3.5.2';
+const CLIENT_VERSION = '3.4.5';
 if (typeof DEV_MODE === 'undefined') {
   var DEV_MODE = false;
   var DEVMODE = false;
@@ -649,83 +649,35 @@ function smartOTASetup() {
   try {
     addLog('🔄 Умная проверка автообновления', 'INFO');
 
-    // ШАГ 1: Триггер (тихо)
     const triggers = ScriptApp.getProjectTriggers();
     let hasOTA = false;
+
     for (let i = 0; i < triggers.length; i++) {
       if (triggers[i].getHandlerFunction() === 'checkForUpdatesBackground_') {
         hasOTA = true;
         break;
       }
     }
+
     if (!hasOTA) {
-      ScriptApp.newTrigger('checkForUpdatesBackground_')
-        .timeBased().atHour(3).everyDays(1).create();
-      addLog('✅ Триггер создан', 'INFO');
+      addLog('📚 Создание триггера...', 'DEBUG');
+
+      try {
+        ScriptApp.newTrigger('checkForUpdatesBackground_')
+          .timeBased()
+          .atHour(3)
+          .everyDays(1)
+          .create();
+
+        addLog('✅ Триггер создан (3:00 каждый день)', 'INFO');
+      } catch (triggerError) {
+        addLog(`❌ Ошибка триггера: ${triggerError.message}`, 'ERROR');
+      }
     }
 
-    // ШАГ 2: ПРОВЕРЯЕМ ВЕРСИЮ (ДО вызова checkForUpdatesBackground_!!!)
-    const payload = {
-      action: 'ota',
-      subaction: 'checkUpdates',
-      clientVersion: CLIENT_VERSION,
-      email: getLicenseEmail(),
-      token: getLicenseToken(),
-      scriptId: ScriptApp.getScriptId(),
-      spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId()
-    };
-
-    const options = {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true,
-    };
-
-    addLog('📡 Запрос checkUpdates на сервер...', 'DEBUG');
-    const resp = UrlFetchApp.fetch(SERVER_URL, options);
-    const updateInfo = JSON.parse(resp.getContentText());
-
-    addLog(`📊 updateInfo: ${JSON.stringify(updateInfo)}`, 'DEBUG');
-
-    // ШАГ 3: Если ошибка сервера
-    if (!updateInfo.ok) {
-      SpreadsheetApp.getUi().alert('❌ Ошибка: ' + updateInfo.error);
-      return;
-    }
-
-    // ШАГ 4: Если обновлений НЕТ
-    if (!updateInfo.updateAvailable) {
-      SpreadsheetApp.getUi().alert(
-        '✅ Версия актуальна',
-        `Текущая: ${updateInfo.clientVersion}`,
-        SpreadsheetApp.getUi().ButtonSet.OK
-      );
-      return;
-    }
-
-    // ШАГ 5: ЕСТЬ обновление - спрашиваем!
-    const uiResponse = SpreadsheetApp.getUi().alert(
-      `🚀 Обновление доступно!`,
-      `Текущая: ${updateInfo.clientVersion}\nНовая:   ${updateInfo.serverVersion}\n\nОбновить?`,
-      SpreadsheetApp.getUi().ButtonSet.YES_NO
-    );
-
-    if (uiResponse !== SpreadsheetApp.getUi().Button.YES) {
-      addLog('⏭️ Обновление отклонено', 'INFO');
-      return;
-    }
-
-    // ШАГ 6: ТОЛЬКО ТУТ запускаем обновление!
-    addLog('🚀 Запуск обновления...', 'INFO');
+    addLog('🔍 Проверка обновлений...', 'INFO');
     checkForUpdatesBackground_();
-
-    SpreadsheetApp.getUi().alert(
-      '✅ Обновление запущено!',
-      'Проверьте email через несколько минут.',
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-
+    addLog('✅ Проверка завершена', 'INFO');
   } catch (e) {
     addLog(`❌ Ошибка: ${e.message}`, 'ERROR');
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + e.message);
