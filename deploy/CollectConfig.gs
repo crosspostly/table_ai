@@ -533,7 +533,6 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
   const serverUrl = props.getProperty('SERVER_URL') || (typeof SERVER_URL !== 'undefined' ? SERVER_URL : '');
   const licenseEmail = props.getProperty('LICENSE_EMAIL') || '';
   const licenseToken = props.getProperty('LICENSE_TOKEN') || '';
-  const geminiApiKey = props.getProperty('GEMINI_API_KEY') || '';
 
   if (!serverUrl) {
     throw new Error('SERVER_URL не настроен. Откройте Settings и настройте URL сервера.');
@@ -543,8 +542,10 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
     throw new Error('Лицензионные данные не настроены. Откройте Settings и укажите LICENSE_EMAIL и LICENSE_TOKEN.');
   }
 
+  // Get Gemini API key using the new priority system (client → server)
+  const geminiApiKey = getGeminiApiKey();
   if (!geminiApiKey) {
-    throw new Error('GEMINI_API_KEY не настроен. Откройте Settings и укажите API ключ Gemini.');
+    throw new Error('Gemini API ключ не настроен. Установите личный ключ в Settings или свяжитесь с администратором.');
   }
 
   const scriptId = ScriptApp.getScriptId(); // ⭐ Добавить

@@ -15,6 +15,7 @@
  * VK_PARSER: Отдельный веб-сервис (VK_PARSER_URL)
  * SERVER: Отдельный веб-сервис (SERVER_URL)
  */
+/* global setClientGeminiKey, removeClientGeminiKey, debugGeminiKeys */
 /* exported onOpen, optimizedOTASetup, checkForUpdatesManual_, checkForUpdatesBackground_ */
 /* eslint-disable indent, no-multiple-empty-lines, padded-blocks */
 
@@ -48,7 +49,7 @@ const DEV_MODE = true; // DEV: показывать DEV-меню/логи
 const DEVMODE = DEV_MODE;
 
 // ⭐ OTA UPDATES
-const CLIENT_VERSION = '3.2.0';
+const CLIENT_VERSION = '3.3.0';
 
 // В твоем мастер-листе добавь кнопку:
 // eslint-disable-next-line no-unused-vars
@@ -633,6 +634,8 @@ function onOpen() {
         .addItem('🔍 Тест сервера', 'testServerConnection')
         .addItem('🧪 Dev Self Test', 'runDevSelfTest')
         .addItem('🔄 Обновить вручную', 'checkForUpdatesManual_')
+        .addSeparator()
+        .addItem('🔑 Debug Gemini Keys', 'debugGeminiKeys')
         .addToUi();
     }
 
@@ -2210,6 +2213,164 @@ function checkForUpdatesManual_() {
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + e.message);
   }
 }
+
+    // ===== GEMINI API KEY MANAGEMENT =====
+
+    /**
+     * Получить Gemini API ключ (приоритет: клиент → сервер → null)
+     *
+     * ЛОГИКА:
+     * 1. Проверить свой ключ в свойствах клиента
+     * 2. Если нет → запросить сервера
+     * 3. Если сервер ошибка → вернуть null
+     *
+     * @return {string|null} API ключ или null
+     */
+    function getGeminiApiKey() {
+      try {
+        // ШАГ 1: Проверяем свой ключ в свойствах клиента
+        Logger.log('🔑 Getting Gemini API key...');
+
+        const props = PropertiesService.getUserProperties();
+        const clientKey = props.getProperty('GEMINI_API_KEY');
+
+        if (clientKey) {
+          Logger.log('✅ Using CLIENT Gemini key: ' + clientKey.substring(0, 10) + '...');
+          addLog('🔑 Используется личный Gemini API ключ', 'DEBUG');
+          return clientKey;
+        }
+
+        Logger.log('📌 Client key not found, requesting SERVER default key...');
+
+        // ШАГ 2: Запрашиваем ключ сервера
+        const payload = {
+          action: 'geminiConfig',
+          subaction: 'getDefaultKey',
+          email: getLicenseEmail(),
+          token: getLicenseToken(),
+          scriptId: ScriptApp.getScriptId(),
+          spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
+        };
+
+        const options = {
+          method: 'post',
+          contentType: 'application/json',
+          payload: JSON.stringify(payload),
+          muteHttpExceptions: true,
+        };
+
+        const resp = UrlFetchApp.fetch(SERVER_URL, options);
+        const result = JSON.parse(resp.getContentText());
+
+        if (!result.ok) {
+          Logger.log('❌ Failed to get server key: ' + result.error);
+          addLog('❌ Не удалось получить Gemini ключ: ' + result.error, 'ERROR');
+          return null;
+        }
+
+        const serverKey = result.apiKey;
+        Logger.log('✅ Using SERVER default Gemini key: ' + serverKey.substring(0, 10) + '...');
+        addLog('🔑 Используется серверный Gemini API ключ', 'DEBUG');
+
+        return serverKey;
+
+      } catch (e) {
+        Logger.log('❌ Error getting Gemini key: ' + e.message);
+        addLog('❌ Ошибка получения Gemini ключа: ' + e.message, 'ERROR');
+        return null;
+      }
+    }
+
+    /**
+     * Установить личный Gemini API ключ (клиент)
+     * @param {string} apiKey - Новый API ключ
+     * @return {boolean} Успех операции
+     */
+    function setClientGeminiKey(apiKey) {
+      try {
+        if (!apiKey) {
+          Logger.log('❌ Cannot set empty API key');
+          return false;
+        }
+
+        if (apiKey.length < 20) {
+          Logger.log('❌ API key too short (min 20 chars)');
+          return false;
+        }
+
+        const props = PropertiesService.getUserProperties();
+        props.setProperty('GEMINI_API_KEY', apiKey);
+
+        Logger.log('✅ Client Gemini key set: ' + apiKey.substring(0, 10) + '...');
+        addLog('✅ Личный Gemini API ключ установлен', 'INFO');
+
+        return true;
+      } catch (e) {
+        Logger.log('❌ Error setting client Gemini key: ' + e.message);
+        addLog('❌ Ошибка установки ключа: ' + e.message, 'ERROR');
+        return false;
+      }
+    }
+
+    /**
+     * Удалить личный Gemini API ключ (вернуться на серверный)
+     */
+    function removeClientGeminiKey() {
+      try {
+        const props = PropertiesService.getUserProperties();
+        props.deleteProperty('GEMINI_API_KEY');
+
+        Logger.log('✅ Client Gemini key removed, will use server default');
+        addLog('✅ Личный ключ удалён, будет использован серверный', 'INFO');
+
+        return true;
+      } catch (e) {
+        Logger.log('❌ Error removing client Gemini key: ' + e.message);
+        return false;
+      }
+    }
+
+    /**
+     * Получить информацию о текущем ключе (для отладки)
+     * @return {Object} Информация о ключе
+     */
+    function getGeminiKeyInfo() {
+      const props = PropertiesService.getUserProperties();
+      const clientKey = props.getProperty('GEMINI_API_KEY');
+
+      return {
+        hasClientKey: !!clientKey,
+        clientKeyPreview: clientKey ? clientKey.substring(0, 10) + '...' : null,
+        source: clientKey ? 'CLIENT (personal)' : 'SERVER (default)',
+      };
+    }
+
+    /**
+     * Отладка Gemini ключей
+     */
+    function debugGeminiKeys() {
+      Logger.log('=== DEBUG GEMINI KEYS ===');
+
+      try {
+        // 1. Информация о ключах
+        const info = getGeminiKeyInfo();
+        Logger.log('Client key configured: ' + info.hasClientKey);
+        Logger.log('Current key preview: ' + (info.clientKeyPreview || 'using server default'));
+        Logger.log('Source: ' + info.source);
+
+        // 2. Попытка получить ключ
+        Logger.log('Attempting to get Gemini key...');
+        const apiKey = getGeminiApiKey();
+        Logger.log('API Key obtained: ' + (apiKey ? '✅ YES' : '❌ NO'));
+
+        if (apiKey) {
+          Logger.log('Key preview: ' + apiKey.substring(0, 10) + '...');
+        }
+
+      } catch (e) {
+        Logger.log('❌ Error: ' + e.message);
+      }
+    }
 
     /**
      * Отладочная функция для проверки полного OTA-потока
