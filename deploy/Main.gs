@@ -16,7 +16,7 @@
  * SERVER: Отдельный веб-сервис (SERVER_URL)
  */
 
-/* exported onOpen, smartOTASetup, checkForUpdatesManual_, checkForUpdatesBackground_ */
+/* exported onOpen, smartOTASetup, checkForUpdatesManual_, checkForUpdatesBackground_, checkForUpdates_ */
 /* exported setClientGeminiKey, removeClientGeminiKey, debugGeminiKeys */
 // VK Parser URL: используется в VK.gs
 // eslint-disable-next-line no-unused-vars
@@ -44,21 +44,11 @@ const MAX_RETRY_ATTEMPTS = 5;
 const RETRY_DELAY_INCREMENT = 10000;
 
 // ⭐ OTA UPDATES
-const CLIENT_VERSION = '3.4.5';
+const CLIENT_VERSION = '3.5.2';
+// eslint-disable-next-line no-var
 if (typeof DEV_MODE === 'undefined') {
+  // eslint-disable-next-line no-var
   var DEV_MODE = false;
-  var DEVMODE = false;
-}
-
-// В твоем мастер-листе добавь кнопку:
-function shareAsTemplate() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  // Создать копию с очищенными данными, но с кодом
-  const copy = ss.copy('VK→Telegram Crossposter Template');
-
-  // URL для пользователей
-  const url = `https://docs.google.com/spreadsheets/d/${copy.getId()}/copy`;
-  SpreadsheetApp.getUi().alert('Template URL готов:', url);
 }
 // ====== ЛОГИРОВАНИЕ ======
 function addLog(msg, level = 'INFO') {
@@ -2020,6 +2010,21 @@ function checkForUpdatesManual_() {
   } catch (e) {
     SpreadsheetApp.getUi().alert('❌ ' + e.message);
   }
+}
+
+/**
+ * DEPRECATED ALIAS: Для обратной совместимости со старыми версиями
+ *
+ * Старые клиенты могут иметь триггеры или вызовы с именем checkForUpdates_()
+ * Эта функция обеспечивает обратную совместимость и позволяет старым клиентам обновиться
+ *
+ * TODO: Удалить после обновления всех клиентов до версии 3.5.2+
+ */
+// eslint-disable-next-line no-unused-vars
+function checkForUpdates_() {
+  addLog('⚠️ DEPRECATED: checkForUpdates_() вызвана - используется алиас для совместимости', 'WARN');
+  addLog('ℹ️ Перенаправление на checkForUpdatesBackground_()...', 'INFO');
+  return checkForUpdatesBackground_();
 }
 
 // ===== GEMINI API KEY MANAGEMENT =====
