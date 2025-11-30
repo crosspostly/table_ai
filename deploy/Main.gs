@@ -45,9 +45,12 @@ const RETRY_DELAY_INCREMENT = 10000;
 
 // ⭐ OTA UPDATES
 const CLIENT_VERSION = '3.4.5';
+if (typeof DEV_MODE === 'undefined') {
+  var DEV_MODE = false;
+  var DEVMODE = false;
+}
 
 // В твоем мастер-листе добавь кнопку:
-// eslint-disable-next-line no-unused-vars
 function shareAsTemplate() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   // Создать копию с очищенными данными, но с кодом
