@@ -9,7 +9,7 @@ const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
 const AUTO_UPDATE_CHECK_INTERVAL = 6;
 
 // ⭐ OTA UPDATES
-const SERVER_VERSION = '3.1.1';
+const SERVER_VERSION = '3.2.0';
 
 
 // ===== Entry points =====
@@ -509,6 +509,118 @@ function doPost(_e) {
           email: email,
           scriptId: scriptId,
         });
+      }
+
+      // ════════════════════════════════════════════════════════
+      // SUBACTION: APPLY UPDATES (сервер обновляет клиента)
+      // ════════════════════════════════════════════════════════
+      if (subaction === 'applyUpdates') {
+        Logger.log('🔄 [OTA] applyUpdates started');
+        Logger.log('   scriptId: ' + scriptId.substring(0, 12) + '...');
+
+        try {
+          // Проверяем лицензию
+          const lic = checkLicense_(token, email, scriptId, spreadsheetId);
+
+          if (!lic.ok) {
+            Logger.log(`❌ [OTA] License check failed: ${lic.error}`);
+            return json_(lic, 403);
+          }
+
+          Logger.log('✅ [OTA] License check passed');
+
+          // Список файлов для обновления
+          const clientFiles = [
+            'Main.gs',
+            'CollectConfig.gs',
+            'TemplateService.gs',
+            'UnpackingViewer.gs',
+            'VK.gs',
+            'ocrRunV2_client.gs',
+            'reniewcell.gs',
+            'CollectConfigUi.html',
+            'SettingsUI.html',
+            'UnpackingViewerUI.html',
+            'logging_system.html',
+            'appsscript.json',
+          ];
+
+          const files = [];
+          let successCount = 0;
+
+          Logger.log(`📦 [OTA] Preparing ${clientFiles.length} files for client update`);
+
+          // Скачиваем файлы с GitHub
+          for (let i = 0; i < clientFiles.length; i++) {
+            const fileName = clientFiles[i];
+            const content = fetchFileContent_(fileName);
+
+            if (!content) {
+              Logger.log(`   ❌ Failed: ${fileName}`);
+              return json_({ok: false, error: `Failed to fetch: ${fileName}`}, 400);
+            }
+
+            successCount++;
+
+            let type = 'SERVER_JS';
+            if (fileName.endsWith('.html')) {
+              type = 'HTML';
+            } else if (fileName === 'appsscript.json') {
+              type = 'JSON';
+            }
+
+            files.push({
+              name: fileName,
+              type: type,
+              source: content,
+            });
+
+            Logger.log(`   ✅ Loaded: ${fileName}`);
+          }
+
+          Logger.log(`📦 [OTA] All ${successCount} files ready`);
+
+          // Обновляем клиентский скрипт через Apps Script API
+          Logger.log('🔧 [OTA] Updating client script via Apps Script API');
+          Logger.log('   URL: https://script.googleapis.com/v1/projects/' + scriptId.substring(0, 12) + '.../content');
+
+          const apiUrl = `https://script.googleapis.com/v1/projects/${scriptId}/content`;
+          const oauthToken = ScriptApp.getOAuthToken();
+
+          const apiResp = UrlFetchApp.fetch(apiUrl, {
+            method: 'put',
+            headers: {
+              'Authorization': 'Bearer ' + oauthToken,
+              'Content-Type': 'application/json',
+            },
+            payload: JSON.stringify({
+              files: files,
+            }),
+            muteHttpExceptions: true,
+          });
+
+          const apiCode = apiResp.getResponseCode();
+
+          if (apiCode !== 200) {
+            const apiError = JSON.parse(apiResp.getContentText());
+            const errorMsg = apiError.error?.message || `HTTP ${apiCode}`;
+            Logger.log(`❌ [OTA] API error: ${errorMsg}`);
+            return json_({ok: false, error: 'API_UPDATE_FAILED: ' + errorMsg}, 500);
+          }
+
+          Logger.log('✅ [OTA] Client script updated successfully!');
+          Logger.log('🎉 [OTA] Update completed for: ' + email);
+
+          return json_({
+            ok: true,
+            message: 'CLIENT_UPDATED',
+            filesCount: successCount,
+            version: SERVER_VERSION,
+          });
+        } catch (e) {
+          Logger.log('❌ [OTA] applyUpdates error: ' + e.message);
+          return json_({ok: false, error: 'UPDATE_ERROR: ' + e.message}, 500);
+        }
       }
 
       // ════════════════════════════════════════════════════════
