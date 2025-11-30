@@ -398,6 +398,12 @@
         <input type="checkbox" id="systemWholeColumn" onchange="handleColumnCheckbox('system')" />
         <label for="systemWholeColumn">📊 Весь столбец</label>
       </div>
+      <div class="checkbox-group">
+        <input type="checkbox" id="usePromptTable" onchange="handlePromptTableCheckbox()" />
+        <label for="usePromptTable" title="Чтение системных промптов с удалённого сервера вместо локальных листов. Встроенные промпты обновляются автоматически.">
+          📡 Использовать prompt_table (сервер)
+        </label>
+      </div>
       <div id="systemPreview" class="cell-preview" style="display:none;"></div>
     </div>
     
@@ -519,6 +525,11 @@
       google.script.run
         .withSuccessHandler(function(config) {
           if (config) {
+            if (config.usePromptTable !== undefined) {
+              document.getElementById('usePromptTable').checked = config.usePromptTable;
+              handlePromptTableCheckbox(); // Применить состояние
+            }
+            
             if (config.systemPrompt) {
               document.getElementById('systemSheet').value = config.systemPrompt.sheet;
               document.getElementById('systemCell').value = config.systemPrompt.cell;
@@ -664,6 +675,39 @@
       }
     }
     
+    function handlePromptTableCheckbox() {
+      const checkbox = document.getElementById('usePromptTable');
+      const systemSheet = document.getElementById('systemSheet');
+      const systemCell = document.getElementById('systemCell');
+      const wholeColumnCheckbox = document.getElementById('systemWholeColumn');
+      
+      if (checkbox.checked) {
+        // Отключить локальные элементы
+        systemSheet.disabled = true;
+        systemCell.disabled = true;
+        wholeColumnCheckbox.disabled = true;
+        
+        // Визуально затемнить
+        systemSheet.style.opacity = '0.5';
+        systemCell.style.opacity = '0.5';
+        
+        addLogEntry('📡 Активирован режим prompt_table (серверные промпты)', 'info');
+        showStatus('📡 Используются встроенные промпты с сервера', 'info');
+      } else {
+        // Включить локальные элементы
+        systemSheet.disabled = false;
+        systemCell.disabled = false;
+        wholeColumnCheckbox.disabled = false;
+        
+        // Восстановить визуал
+        systemSheet.style.opacity = '1';
+        systemCell.style.opacity = '1';
+        
+        addLogEntry('📄 Режим локальных листов восстановлен', 'info');
+        showStatus('', 'info');
+      }
+    }
+    
     function updateSystemPreview() {
       const sheet = document.getElementById('systemSheet').value;
       const cell = document.getElementById('systemCell').value.trim();
@@ -697,11 +741,13 @@
     }
     
     function collectConfig() {
+      const usePromptTable = document.getElementById('usePromptTable').checked;
       const systemSheet = document.getElementById('systemSheet').value;
       const systemCell = document.getElementById('systemCell').value;
       
       const config = {
-        systemPrompt: systemSheet && systemCell ? {
+        usePromptTable: usePromptTable, // ⭐ ДОБАВИТЬ ЭТО ПОЛЕ
+        systemPrompt: (!usePromptTable && systemSheet && systemCell) ? {
           sheet: systemSheet,
           cell: systemCell
         } : null,

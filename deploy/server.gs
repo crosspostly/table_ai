@@ -1022,6 +1022,28 @@ function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddre
  * @return {string} System prompt text
  */
 function serverGetSystemPrompt_(config, defaultSpreadsheetId, logs) {
+  // Проверяем новый флаг usePromptTable
+  if (config.usePromptTable) {
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📡 Использование prompt_table (серверные промпты)'});
+    try {
+      const spreadsheetId = LICENSE_SHEET_ID;
+      const sheetName = 'Промты'; // Лист с промптами в лицензионной таблице
+      const cellAddress = 'A1'; // По умолчанию берём первый промпт
+      
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Использование серверной таблицы с промптами: ' + LICENSE_SHEET_ID});
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 Лист: Промты'});
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📍 Ячейка: ' + cellAddress});
+      
+      const prompt = serverReadData_(spreadsheetId, sheetName, cellAddress, logs);
+      logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ Серверный промпт прочитан, ' + prompt.length + ' символов'});
+      return prompt;
+    } catch (error) {
+      logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: '❌ Ошибка чтения серверного промпта: ' + error.message});
+      throw new Error('Не удалось прочитать серверный промпт: ' + error.message);
+    }
+  }
+
+  // Старая логика для локальных промптов
   if (!config.systemPrompt || !config.systemPrompt.sheet || !config.systemPrompt.cell) {
     return '';
   }

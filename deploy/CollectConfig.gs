@@ -250,7 +250,7 @@ function saveCollectConfig(sheetName, cellAddress, config) {
       configSheet.hideSheet();
 
       // Заголовки
-      const headers = ['Sheet', 'Cell', 'SystemPromptSheet', 'SystemPromptCell', 'UserDataJSON', 'CreatedAt', 'LastRun'];
+      const headers = ['Sheet', 'Cell', 'UsePromptTable', 'SystemPromptSheet', 'SystemPromptCell', 'UserDataJSON', 'CreatedAt', 'LastRun'];
       configSheet.getRange(1, 1, 1, headers.length).setValues([headers])
         .setFontWeight('bold')
         .setBackground('#4285f4')
@@ -270,10 +270,11 @@ function saveCollectConfig(sheetName, cellAddress, config) {
     const rowData = [
       sheetName,
       cellAddress,
+      config.usePromptTable || false,
       config.systemPrompt ? config.systemPrompt.sheet : '',
       config.systemPrompt ? config.systemPrompt.cell : '',
       JSON.stringify(config.userData || []),
-      rowIndex === -1 ? new Date().toISOString() : data[rowIndex - 1][5],
+      rowIndex === -1 ? new Date().toISOString() : data[rowIndex - 1][6],
       '',
     ];
 
@@ -304,19 +305,29 @@ function loadCollectConfig(sheetName, cellAddress) {
     const data = configSheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sheetName && data[i][1] === cellAddress) {
+        // Обратная совместимость: если у старой конфигурации нет колонки UsePromptTable
+        const hasUsePromptTableColumn = data[i].length > 7; // Новая структура имеет 8+ колонок
+        const usePromptTable = hasUsePromptTableColumn ? (data[i][2] || false) : false;
+        
+        // Определяем индексы в зависимости от структуры
+        const systemPromptSheetIndex = hasUsePromptTableColumn ? 3 : 2;
+        const systemPromptCellIndex = hasUsePromptTableColumn ? 4 : 3;
+        const userDataIndex = hasUsePromptTableColumn ? 5 : 4;
+        
         let userData = [];
         try {
-          if (data[i][4]) {
-            userData = JSON.parse(data[i][4]);
+          if (data[i][userDataIndex]) {
+            userData = JSON.parse(data[i][userDataIndex]);
           }
         } catch (e) {
           // ignore
         }
-
+        
         return {
-          systemPrompt: (data[i][2] && data[i][3]) ? {
-            sheet: data[i][2],
-            cell: data[i][3],
+          usePromptTable: usePromptTable,
+          systemPrompt: (data[i][systemPromptSheetIndex] && data[i][systemPromptCellIndex]) ? {
+            sheet: data[i][systemPromptSheetIndex],
+            cell: data[i][systemPromptCellIndex],
           } : null,
           userData: userData,
         };
@@ -369,7 +380,10 @@ function updateLastRun(sheetName, cellAddress) {
     const data = configSheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sheetName && data[i][1] === cellAddress) {
-        configSheet.getRange(i + 1, 7).setValue(new Date().toISOString());
+        // Определяем колонку LastRun в зависимости от структуры
+        const hasUsePromptTableColumn = data[i].length > 7;
+        const lastRunColumn = hasUsePromptTableColumn ? 8 : 7;
+        configSheet.getRange(i + 1, lastRunColumn).setValue(new Date().toISOString());
         return;
       }
     }
