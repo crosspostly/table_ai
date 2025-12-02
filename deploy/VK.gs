@@ -5,6 +5,7 @@
  * 2 строка — заголовки (не трогаем)
  * 3+ строки — данные/формулы (перезаписываем)
  */
+/* exported importVkPosts */
 function addLog(message, level) {
   Logger.log(`[${level || 'INFO'}] ${message}`);
 }
@@ -13,6 +14,7 @@ function addLog(message, level) {
 /**
  * Главная функция импорта постов ВК
  */
+// eslint-disable-next-line no-unused-vars
 function importVkPosts() {
   addLog('→ Импорт VK-постов с фильтрацией', 'INFO');
   const ss = SpreadsheetApp.getActive();
@@ -38,12 +40,23 @@ function importVkPosts() {
   let arr = [];
   try {
     const resp = UrlFetchApp.fetch(url, {muteHttpExceptions: true});
+    const respBody = resp.getContentText();
+
     if (resp.getResponseCode() !== 200) {
       Logger.log('HTTP ERROR: ' + resp.getResponseCode());
-      Logger.log('BODY: ' + resp.getContentText());
+      Logger.log('BODY: ' + respBody);
       throw new Error('Ошибка VK Parser: ' + resp.getResponseCode());
     }
-    arr = JSON.parse(resp.getContentText());
+
+    // ⭐ Проверка HTML перед парсингом JSON
+    if (respBody.trim().startsWith('<!DOCTYPE') ||
+        respBody.trim().startsWith('<html')) {
+      Logger.log('ERROR: VK Parser returned HTML instead of JSON!');
+      Logger.log('Response preview: ' + respBody.substring(0, 200));
+      throw new Error('VK Parser returned HTML instead of JSON');
+    }
+
+    arr = JSON.parse(respBody);
   } catch (e) {
     addLog('❌ Ошибка запроса VK: ' + e.message, 'ERROR');
     SpreadsheetApp.getUi().alert('Ошибка запроса VK Parser: ' + e);

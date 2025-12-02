@@ -585,6 +585,14 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
 
   addCollectLog(`📥 Ответ сервера: HTTP ${responseCode}`, 'INFO');
 
+  // ⭐ Проверка HTML перед парсингом JSON
+  if (responseText.trim().startsWith('<!DOCTYPE') ||
+      responseText.trim().startsWith('<html')) {
+    addCollectLog('❌ ERROR: Server returned HTML instead of JSON!', 'ERROR');
+    addCollectLog(`❌ Response preview: ${responseText.substring(0, 200)}`, 'ERROR');
+    throw new Error('Server returned HTML instead of JSON. Check deployment settings.');
+  }
+
   if (responseCode >= 400) {
     throw new Error(`HTTP ${responseCode}: ${responseText}`);
   }

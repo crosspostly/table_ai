@@ -1352,6 +1352,19 @@ function validateLicense(email, token) {
     const code = resp.getResponseCode();
     const responseText = resp.getContentText();
 
+    // ⭐ КРИТИЧЕСКИ ВАЖНО: Проверка HTML ДО ВСЕХ JSON.parse()!
+    if (responseText.trim().startsWith('<!DOCTYPE') ||
+        responseText.trim().startsWith('<html')) {
+      addLog('❌ ERROR: Received HTML instead of JSON!', 'ERROR');
+      addLog('❌ SERVER_URL: ' + SERVER_URL, 'ERROR');
+      addLog('❌ Response HTTP code: ' + code, 'ERROR');
+      addLog('❌ Response preview: ' + responseText.substring(0, 200), 'ERROR');
+      return {
+        ok: false,
+        error: 'SERVER_RETURNS_HTML: Web App deployment misconfigured. Check "Who has access" setting.',
+      };
+    }
+
     if (typeof getDevMode === 'function' && getDevMode()) {
       addLog(`VALIDATE RAW: HTTP ${code}`, 'DEBUG');
       addLog(`VALIDATE CONTENT: ${responseText.substring(0, 200)}...`, 'DEBUG');
