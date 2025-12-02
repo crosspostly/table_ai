@@ -267,11 +267,22 @@ function saveCollectConfig(sheetName, cellAddress, config) {
       }
     }
 
+    let systemPromptSheet = '';
+    let systemPromptCell = '';
+
+    if (config.prompt_table && config.prompt_table.cellAddress) {
+      systemPromptSheet = 'prompt_table';
+      systemPromptCell = config.prompt_table.cellAddress;
+    } else if (config.systemPrompt) {
+      systemPromptSheet = config.systemPrompt.sheet || '';
+      systemPromptCell = config.systemPrompt.cell || '';
+    }
+
     const rowData = [
       sheetName,
       cellAddress,
-      config.systemPrompt ? config.systemPrompt.sheet : '',
-      config.systemPrompt ? config.systemPrompt.cell : '',
+      systemPromptSheet,
+      systemPromptCell,
       JSON.stringify(config.userData || []),
       rowIndex === -1 ? new Date().toISOString() : data[rowIndex - 1][5],
       '',
@@ -313,13 +324,30 @@ function loadCollectConfig(sheetName, cellAddress) {
           // ignore
         }
 
-        return {
-          systemPrompt: (data[i][2] && data[i][3]) ? {
-            sheet: data[i][2],
-            cell: data[i][3],
-          } : null,
-          userData: userData,
-        };
+        const systemPromptSheet = data[i][2];
+        const systemPromptCell = data[i][3];
+
+        if (systemPromptSheet === 'prompt_table' && systemPromptCell) {
+          return {
+            prompt_table: {
+              cellAddress: systemPromptCell,
+            },
+            userData: userData,
+          };
+        } else if (systemPromptSheet && systemPromptCell) {
+          return {
+            systemPrompt: {
+              sheet: systemPromptSheet,
+              cell: systemPromptCell,
+            },
+            userData: userData,
+          };
+        } else {
+          return {
+            systemPrompt: null,
+            userData: userData,
+          };
+        }
       }
     }
 
@@ -575,7 +603,8 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
   };
 
   addCollectLog(`📤 Отправка запроса на сервер: ${serverUrl}`, 'INFO');
-  addCollectLog(`📋 Payload config.systemPrompt: ${JSON.stringify(config.systemPrompt)}`, 'DEBUG');
+  addCollectLog(`📋 Payload config.systemPrompt: ${JSON.stringify(config.systemPrompt || null)}`, 'DEBUG');
+  addCollectLog(`📋 Payload config.prompt_table: ${JSON.stringify(config.prompt_table || null)}`, 'DEBUG');
   addCollectLog(`📋 Payload config.userData: ${config.userData ? config.userData.length + ' источников' : 'нет'}`, 'DEBUG');
   addCollectLog(`📋 SpreadsheetId: ${spreadsheetId}`, 'DEBUG');
 
