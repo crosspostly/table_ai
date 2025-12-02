@@ -89,7 +89,17 @@ function gmDevFallback_(prompt, maxTokens, temperature, serr) {
     const options = {method: 'POST', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true};
     const resp = UrlFetchApp.fetch(GEMINI_API_URL + '?key=' + apiKey, options);
     const code = resp.getResponseCode();
-    const data = JSON.parse(resp.getContentText());
+    const responseText = resp.getContentText();
+
+    // ⭐ Проверка HTML перед парсингом JSON
+    if (responseText.trim().startsWith('<!DOCTYPE') ||
+        responseText.trim().startsWith('<html')) {
+      addLog('❌ ERROR: Gemini API returned HTML instead of JSON!', 'ERROR');
+      addLog('❌ Response preview: ' + responseText.substring(0, 200), 'ERROR');
+      return 'Error: Gemini API returned HTML instead of JSON';
+    }
+
+    const data = JSON.parse(responseText);
     addLog('← GM (direct): HTTP ' + code, 'DEBUG');
     if (code !== 200) {
       const message = data && data.error && data.error.message ? data.error.message : 'Unknown error';
@@ -309,11 +319,19 @@ function debugOTAStatus() {
     if (respCode === 200) {
       Logger.log('   ✅ Server is reachable and responding');
       const respBody = resp.getContentText();
-      try {
-        const data = JSON.parse(respBody);
-        Logger.log('   📋 Response: ' + JSON.stringify(data));
-      } catch (e) {
-        Logger.log('   ⚠️ Cannot parse response: ' + e.message);
+
+      // ⭐ Проверка HTML перед парсингом JSON
+      if (respBody.trim().startsWith('<!DOCTYPE') ||
+          respBody.trim().startsWith('<html')) {
+        Logger.log('   ❌ ERROR: Server returned HTML instead of JSON!');
+        Logger.log('   Response preview: ' + respBody.substring(0, 200));
+      } else {
+        try {
+          const data = JSON.parse(respBody);
+          Logger.log('   📋 Response: ' + JSON.stringify(data));
+        } catch (e) {
+          Logger.log('   ⚠️ Cannot parse response: ' + e.message);
+        }
       }
     } else if (respCode === 403) {
       Logger.log('   ❌ Server returned 403 (License issue?)');

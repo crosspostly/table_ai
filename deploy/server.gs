@@ -637,6 +637,14 @@ function serverGM_(prompt, maxTokens, temperature, apiKey) {
   Logger.log('Gemini API response code: ' + code);
   Logger.log('Gemini API response length: ' + responseText.length);
 
+  // ⭐ Проверка HTML перед парсингом JSON
+  if (responseText.trim().startsWith('<!DOCTYPE') ||
+      responseText.trim().startsWith('<html')) {
+    Logger.log('ERROR: Gemini API returned HTML instead of JSON!');
+    Logger.log('Response preview: ' + responseText.substring(0, 200));
+    throw new Error('Gemini API returned HTML instead of JSON');
+  }
+
   const data = JSON.parse(responseText);
   if (code !== 200) {
     const msg = data && data.error && data.error.message || ('HTTP_' + code);
@@ -705,6 +713,14 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
 
   Logger.log('Gemini Vision API response code: ' + code);
   Logger.log('Gemini Vision API response length: ' + responseText.length);
+
+  // ⭐ Проверка HTML перед парсингом JSON
+  if (responseText.trim().startsWith('<!DOCTYPE') ||
+      responseText.trim().startsWith('<html')) {
+    Logger.log('ERROR: Gemini Vision API returned HTML instead of JSON!');
+    Logger.log('Response preview: ' + responseText.substring(0, 200));
+    throw new Error('Gemini Vision API returned HTML instead of JSON');
+  }
 
   const data = JSON.parse(responseText);
   if (code !== 200) {
