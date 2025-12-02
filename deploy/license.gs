@@ -3,12 +3,6 @@
 // Вся логика лицензий в отдельном модуле
 // Используется только на сервере через server.gs
 // ═══════════════════════════════════════════════════════════════
-/* exported checkLicense_ */
-
-// ===== Constants =====
-const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
-const TOKENS_SHEET_NAME = 'Tokens';
-const BINDINGS_SHEET_NAME = 'Bindings';
 
 /**
  * ✅ ОСНОВНАЯ ФУНКЦИЯ: Проверка лицензии и управление привязками
