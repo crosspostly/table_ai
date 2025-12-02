@@ -13,6 +13,8 @@ const SERVER_VERSION = '3.5.2';
 
 // ⭐ LICENSE SHEET ID (для prompt_table)
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
+const TOKENS_SHEET_NAME = 'Tokens';
+const BINDINGS_SHEET_NAME = 'Bindings';
 
 // ═════════════════════════════════════════════════════════════════
 // ⭐ OTA CONFIGURATION (ТОЛЬКО НА СЕРВЕРЕ!)
