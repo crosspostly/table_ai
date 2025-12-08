@@ -8,7 +8,7 @@
 
 ## 🎯 EXECUTIVE SUMMARY
 
-**table_ai состоит из ДВУХ полностью отдельных Apps Script проектов:**
+**table_ai состоит из ТРЁХ полностью отдельных Apps Script проектов:**
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -23,7 +23,14 @@
 │  Расположение: Развёрнут как Web Application                │
 │  URL: https://script.google.com/macros/s/[ID]/exec          │
 │  Размер: ~34KB основного кода (server.gs)                   │
-│  Роль: API сервер + бизнес-логика + лицензирование          │
+│  Роль: API сервер + лицензии + маршрутизация                │
+└──────────────────────────────────────────────────────────────┘
+                         ↓ UrlFetchApp (internal API)
+┌──────────────────────────────────────────────────────────────┐
+│  ПРОЕКТ 3: OCR (отдельный Web App)                          │
+│  Расположение: Самостоятельный Web App (ocr.gs)             │
+│  Размер: ~27KB кода                                         │
+│  Роль: Парсинг ссылок, загрузка медиа, Gemini OCR           │
 └──────────────────────────────────────────────────────────────┘
                          ↓ SpreadsheetApp.openById()
 ┌──────────────────────────────────────────────────────────────┐
@@ -83,9 +90,6 @@ CLIENT_PROJECT/
 ├── 📄 UnpackingViewer.gs (16,821 bytes, ~420 строк)
 │   └─ Просмотр JSON данных
 │
-├── 📄 ocrRunV2_client.gs (27,270 bytes, ~680 строк)
-│   └─ OCR клиент (отправка на сервер)
-│
 ├── 📄 reniewcell.gs (20,856 bytes, ~520 строк)
 │   └─ Batch операции над ячейками
 │
@@ -101,6 +105,28 @@ CLIENT_PROJECT/
 └── 📄 appsscript.json (501 bytes)
     └─ Манифест проекта
 ```
+
+### 🟧 ПРОЕКТ 3: OCR (отдельный Web App)
+
+#### **Файловая структура:**
+
+```
+OCR_PROJECT/
+├── 📄 ocr.gs (~27,000 bytes, ~650 строк)
+│   ├─ serverOcrProcess_() - основной обработчик листа
+│   ├─ doPost(e) - HTTP endpoint + проверка секрета
+│   ├─ collect*/enumerate* - загрузка VK/Drive/Yandex
+│   └─ Gemini OCR (serverGmOcrBatchV2_, gmOcrFromBlobV2_)
+└── 📄 appsscript.json (если нужен отдельный манифест)
+```
+
+#### **Ключевые возможности OCR проекта:**
+
+- Принимает запрос только от сервера (OCR_SHARED_SECRET)
+- Читает таблицу пользователя по ID
+- Парсит ссылки, скачивает изображения, вызывает Gemini Vision
+- Возвращает статистику `processed/skipped/empty/errors` и логи
+- Script Properties: GEMINI_API_KEY, OCR_SHARED_SECRET, VK_PARSER_URL (опционально)
 
 #### **Ключевые возможности клиента:**
 
@@ -391,8 +417,9 @@ function serverLog_(logData) {
 | **AI Конструктор (UI)** | ✅ CollectConfigUi.html | ❌ | HTML интерфейс |
 | **AI Конструктор (логика)** | ✅ CollectConfig.gs | ✅ server.gs | Клиент собирает, сервер выполняет |
 | **Шаблоны (хранение)** | ✅ TemplateService.gs | ❌ | PropertiesService пользователя |
-| **OCR (клиент)** | ✅ ocrRunV2_client.gs | ❌ | Подготовка данных |
-| **OCR (обработка)** | ❌ | ✅ server.gs | Google Vision API |
+| **OCR (UI)** | ✅ Main.gs (ocrRun) | ❌ | Читает параметры и отправляет на сервер |
+| **OCR (маршрутизация)** | ❌ | ✅ server.gs | Проверка лицензии + вызов ocr.gs |
+| **OCR (обработка)** | ❌ | ✅ ocr.gs | Парсинг ссылок, загрузка медиа, Gemini OCR |
 | **VK импорт (клиент)** | ✅ VK.gs | ❌ | UI и подготовка |
 | **VK импорт (парсинг)** | ❌ | ✅ server.gs | Вызов VK Parser API |
 | **Batch операции** | ✅ reniewcell.gs | ❌ | Работа с множественными ячейками |
@@ -454,7 +481,6 @@ function serverLog_(logData) {
    - VK.gs
    - TemplateService.gs
    - UnpackingViewer.gs
-   - ocrRunV2_client.gs
    - reniewcell.gs
    - CollectConfigUi.html
    - SettingsUI.html
@@ -611,11 +637,14 @@ jobs:
 КЛИЕНТ (общий размер: ~232 KB)
 ├── Main.gs:                75.3 KB  (32.4%)
 ├── CollectConfig.gs:       25.5 KB  (11.0%)
-├── ocrRunV2_client.gs:     27.3 KB  (11.8%)
 ├── reniewcell.gs:          20.9 KB   (9.0%)
 ├── UnpackingViewer.gs:     16.8 KB   (7.2%)
 ├── TemplateService.gs:     14.2 KB   (6.1%)
 └── HTML файлы:             51.9 KB  (22.4%)
+
+
+OCR (общий размер: ~27 KB)
+├── ocr.gs:                 27.0 KB (100%)
 
 СЕРВЕР (общий размер: ~63 KB)
 ├── server.gs:              34.2 KB  (54.3%)
@@ -630,7 +659,8 @@ jobs:
 |-----------|------------|
 | КЛИЕНТ | ~4,500 |
 | СЕРВЕР | ~1,500 |
-| **ИТОГО** | **~6,000** |
+| OCR | ~650 |
+| **ИТОГО** | **~6,650** |
 
 ### **Функции (приблизительно):**
 

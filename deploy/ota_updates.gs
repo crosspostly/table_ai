@@ -15,7 +15,6 @@ const OTA_CONFIG = {
     'TemplateService.gs',
     'UnpackingViewer.gs',
     'VK.gs',
-    'ocrRunV2_client.gs',
     'reniewcell.gs',
     'CollectConfigUi.html',
     'SettingsUI.html',

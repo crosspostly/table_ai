@@ -8,7 +8,7 @@ All client-side Google Apps Script files.
 - **CollectConfig.gs** - Config handler
 - **TemplateService.gs** - Templates
 - **VK.gs** - VK API integration
-- **ocrRunV2_client.gs** - OCR processing
+- **ocr.gs** - Server-side OCR microservice (separate deployment)
 - **CollectConfigUi.html** - Settings UI
 - **SettingsUI.html** - User settings
 - **appsscript.json** - Script manifest
