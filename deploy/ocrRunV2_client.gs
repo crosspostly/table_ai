@@ -71,7 +71,8 @@ function ocrRun() {
               log_('V2 row ' + r + ': chunk ' + (p/OCR2_CHUNK_SIZE) + ' empty → fallback per-image (' + sub.length + ' imgs)', 'WARN');
               for (var si = 0; si < sub.length && remainingOut > 0; si++) {
                 try {
-                  var singleText = serverGmOcrSingleV2_(sub[si], 'ru');
+                  var blobForFallback = Utilities.newBlob(Utilities.base64Decode(sub[si].data), sub[si].mimeType);
+                  var singleText = gmOcrFromBlobV2_(blobForFallback, 'ru');
                   if (singleText) {
                     texts.push(singleText);
                     remainingOut--;
@@ -93,7 +94,8 @@ function ocrRun() {
           try {
             var fallbackCount = Math.min(remainingOut, batchImages.length);
             for (var j = 0; j < fallbackCount; j++) {
-              var singleFallback = serverGmOcrSingleV2_(batchImages[j], 'ru');
+              var blobForDirectFallback = Utilities.newBlob(Utilities.base64Decode(batchImages[j].data), batchImages[j].mimeType);
+              var singleFallback = gmOcrFromBlobV2_(blobForDirectFallback, 'ru');
               if (singleFallback) {
                 texts.push(singleFallback);
               }
@@ -411,6 +413,61 @@ function cleanTextForUrlsV2_(s){
   } catch (e) { return String(s||''); }
 }
 
+function gmOcrFromBlobV2_(blob, lang){
+  var keyResp = UrlFetchApp.fetch(SERVER_URL, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      action: 'geminiConfig',
+      subaction: 'getDefaultKey',
+      email: (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '',
+      token: (typeof getLicenseToken === 'function') ? getLicenseToken() : ''
+    }),
+    muteHttpExceptions: true
+  });
+  
+  var keyData = JSON.parse(keyResp.getContentText());
+  if (!keyData || !keyData.ok) {
+    throw new Error(keyData && keyData.error ? keyData.error : 'NO_API_KEY');
+  }
+  var apiKey = keyData.apiKey;
+  
+  var mime = blob.getContentType() || 'image/png';
+  var b64 = Utilities.base64Encode(blob.getBytes());
+  var instruction = 'Транскрибируй текст на изображении БЕЗ добавления от себя. Верни только чистый текст. Если изображений несколько — разделяй отзывы строкой из четырёх подчёркиваний: ____ .' + (lang ? (' Язык: ' + lang + '.') : '');
+  
+  var body = {
+    contents: [{
+      parts: [
+        { text: instruction },
+        { inlineData: { mimeType: mime, data: b64 } }
+      ]
+    }],
+    generationConfig: { maxOutputTokens: 2048, temperature: 0 }
+  };
+  
+  var resp = UrlFetchApp.fetch(GEMINI_API_URL + '?key=' + apiKey, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(body),
+    muteHttpExceptions: true
+  });
+  
+  var code = resp.getResponseCode();
+  var data = JSON.parse(resp.getContentText());
+  
+  if (code !== 200) {
+    var msg = (data && data.error && data.error.message) || ('HTTP_' + code);
+    throw new Error('Gemini OCR: ' + msg);
+  }
+  
+  var cand = data.candidates && data.candidates[0];
+  var content = cand && cand.content;
+  var parts = content && content.parts;
+  var text = parts && parts[0] && parts[0].text ? parts[0].text : '';
+  
+  return (typeof processGeminiResponse === 'function') ? processGeminiResponse(text) : text;
+}
 
 function serverGmOcrBatchV2_(images, lang){
   var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
