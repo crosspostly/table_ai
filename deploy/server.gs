@@ -145,7 +145,7 @@ function doPost(_e) {
       Logger.log('Processing gm_image action');
       const images = data.images || [];
       const lang = (data.lang || 'ru').toString();
-      const userApiKey = (data.apiKey || '').toString();
+      const userApiKey = (data.userApiKey || data.apiKey || '').toString(); // поддерживаем оба формата
       const delimiter = (data.delimiter && String(data.delimiter).trim()) ? String(data.delimiter).trim() : null;
 
       Logger.log('images count: ' + images.length);

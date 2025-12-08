@@ -414,66 +414,55 @@ function cleanTextForUrlsV2_(s){
 }
 
 function gmOcrFromBlobV2_(blob, lang){
-  var keyResp = UrlFetchApp.fetch(SERVER_URL, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify({
-      action: 'geminiConfig',
-      subaction: 'getDefaultKey',
-      email: (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '',
-      token: (typeof getLicenseToken === 'function') ? getLicenseToken() : ''
-    }),
-    muteHttpExceptions: true
-  });
+  // Получаем пользовательский API ключ (если настроен)
+  var userApiKey = (typeof getGeminiApiKey === 'function') ? getGeminiApiKey() : '';
   
-  var keyData = JSON.parse(keyResp.getContentText());
-  if (!keyData || !keyData.ok) {
-    throw new Error(keyData && keyData.error ? keyData.error : 'NO_API_KEY');
-  }
-  var apiKey = keyData.apiKey;
+  // Отправляем на сервер для обработки (используем существующий gm_image action)
+  var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
+  var token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';
   
-  var mime = blob.getContentType() || 'image/png';
-  var b64 = Utilities.base64Encode(blob.getBytes());
-  var instruction = 'Транскрибируй текст на изображении БЕЗ добавления от себя. Верни только чистый текст. Если изображений несколько — разделяй отзывы строкой из четырёх подчёркиваний: ____ .' + (lang ? (' Язык: ' + lang + '.') : '');
-  
-  var body = {
-    contents: [{
-      parts: [
-        { text: instruction },
-        { inlineData: { mimeType: mime, data: b64 } }
-      ]
-    }],
-    generationConfig: { maxOutputTokens: 2048, temperature: 0 }
+  var imageData = {
+    mimeType: blob.getContentType() || 'image/png',
+    data: Utilities.base64Encode(blob.getBytes())
   };
   
-  var resp = UrlFetchApp.fetch(GEMINI_API_URL + '?key=' + apiKey, {
+  var payload = { 
+    action: 'gm_image', 
+    email: email, 
+    token: token, 
+    userApiKey: userApiKey,
+    images: [imageData],
+    lang: lang || 'ru', 
+    delimiter: '____'
+  };
+  
+  var resp = UrlFetchApp.fetch(SERVER_URL, {
     method: 'post',
     contentType: 'application/json',
-    payload: JSON.stringify(body),
+    payload: JSON.stringify(payload),
     muteHttpExceptions: true
   });
   
   var code = resp.getResponseCode();
   var data = JSON.parse(resp.getContentText());
   
-  if (code !== 200) {
-    var msg = (data && data.error && data.error.message) || ('HTTP_' + code);
-    throw new Error('Gemini OCR: ' + msg);
+  if (code !== 200 || !data || !data.ok) {
+    throw new Error((data && data.error) || ('HTTP_' + code));
   }
   
-  var cand = data.candidates && data.candidates[0];
-  var content = cand && cand.content;
-  var parts = content && content.parts;
-  var text = parts && parts[0] && parts[0].text ? parts[0].text : '';
+  var text = data.data || '';
   
-  return (typeof processGeminiResponse === 'function') ? processGeminiResponse(text) : text;
+  // Разбиваем результат (на случай если было несколько изображений)
+  var parts = splitBySeparatorV2_(text);
+  if (parts && parts.length) {
+    return parts[0];
+  }
+  
+  return String(text || '').trim();
 }
 
 function serverGmOcrBatchV2_(images, lang){
-  var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
-  var token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';
-  var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-  var payload = { action: 'gm_image', email: email, token: token, apiKey: apiKey, images: images, lang: lang || 'ru', delimiter: '____' };
+  var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';\n  var token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';\n  // Получаем пользовательский API ключ (если настроен)\n  var userApiKey = (typeof getGeminiApiKey === 'function') ? getGeminiApiKey() : '';\n  var payload = { action: 'gm_image', email: email, token: token, userApiKey: userApiKey, images: images, lang: lang || 'ru', delimiter: '____' };
   var resp = UrlFetchApp.fetch(SERVER_URL, { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true });
   var code = resp.getResponseCode();
   var data = JSON.parse(resp.getContentText());
