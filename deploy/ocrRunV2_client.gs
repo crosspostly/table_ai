@@ -372,7 +372,17 @@ function toDropboxDirectV2_(u){ try { var url = u.replace('www.dropbox.com','dl.
 
 // ----- Local OCR fallbacks
 function gmOcrFromBlobV2_(blob, lang){
-  var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY'); if (!apiKey) throw new Error('Не задан GEMINI_API_KEY');
+  var keyResp = UrlFetchApp.fetch(SERVER_URL, {
+    method: 'post',
+    payload: JSON.stringify({
+      action: 'geminiConfig',
+      subaction: 'getDefaultKey',
+      email: getLicenseEmail(),
+      token: getLicenseToken()
+    })
+  });
+  var keyData = JSON.parse(keyResp.getContentText());
+  var apiKey = keyData.apiKey;  // Получили с сервера!
   var mime = blob.getContentType()||'image/png'; var b64 = Utilities.base64Encode(blob.getBytes());
   var instruction = 'Транскрибируй текст на изображении БЕЗ добавления от себя. Верни только чистый текст. Если изображений несколько — разделяй отзывы строкой из четырёх подчёркиваний: ____ .'+(lang?(' Язык: '+lang+'.'):'');
   var body = { contents: [{ parts: [{ text: instruction }, { inlineData: { mimeType: mime, data: b64 } }] }], generationConfig: { maxOutputTokens: 2048, temperature: 0 } };
@@ -434,3 +444,4 @@ function fetchImageToBlobWithHeadersV2_(url) {
     return null;
   }
 }
+
