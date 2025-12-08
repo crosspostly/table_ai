@@ -462,12 +462,20 @@ function gmOcrFromBlobV2_(blob, lang){
 }
 
 function serverGmOcrBatchV2_(images, lang){
-  var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';\n  var token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';\n  // Получаем пользовательский API ключ (если настроен)\n  var userApiKey = (typeof getGeminiApiKey === 'function') ? getGeminiApiKey() : '';\n  var payload = { action: 'gm_image', email: email, token: token, userApiKey: userApiKey, images: images, lang: lang || 'ru', delimiter: '____' };
-  var resp = UrlFetchApp.fetch(SERVER_URL, { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true });
-  var code = resp.getResponseCode();
-  var data = JSON.parse(resp.getContentText());
-  if (code !== 200 || !data || !data.ok) throw new Error((data && data.error) || ('HTTP_' + code));
-  return data.data || '';
+  try {
+    var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
+    var token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';
+    // Получаем пользовательский API ключ (если настроен)
+    var userApiKey = (typeof getGeminiApiKey === 'function') ? getGeminiApiKey() : '';
+    var payload = { action: 'gm_image', email: email, token: token, userApiKey: userApiKey, images: images, lang: lang || 'ru', delimiter: '____' };
+    var resp = UrlFetchApp.fetch(SERVER_URL, { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true });
+    var code = resp.getResponseCode();
+    var data = JSON.parse(resp.getContentText());
+    if (code !== 200 || !data || !data.ok) throw new Error((data && data.error) || ('HTTP_' + code));
+    return data.data || '';
+  } catch (e) {
+    throw new Error('serverGmOcrBatchV2_ error: ' + e.message + ' (This function needs LicenseEmail/Token to work)');
+  }
 }
 
 // Fetch image with browser-like headers to preserve query string semantics (VK CDN)
