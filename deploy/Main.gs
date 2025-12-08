@@ -16,7 +16,7 @@
  * SERVER: Отдельный веб-сервис (SERVER_URL)
  */
 
-/* exported onOpen, smartOTASetup, checkForUpdatesManual_, checkForUpdatesBackground_, checkForUpdates_ */
+/* exported onOpen, smartOTASetup, checkForUpdatesManual_, checkForUpdatesBackground_, checkForUpdates_, ocrRun */
 /* exported setClientGeminiKey, removeClientGeminiKey, debugGeminiKeys */
 // VK Parser URL: используется в VK.gs
 // eslint-disable-next-line no-unused-vars
@@ -25,6 +25,10 @@ const VK_PARSER_URL = 'https://script.google.com/macros/s/AKfycbzttbqz16EmmcXbEY
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 // Фиксированный сервер (веб‑приложение) для лицензий/логов
 const SERVER_URL = 'https://script.google.com/macros/s/AKfycbyyUlB5YWP4bwv3gHHniTv_12cAHlqjYfra7fQ3m3Vri5XvZTQ_uUZZovCYeTo2_u6gQw/exec';
+const OCR_DEFAULT_BATCH_LIMIT = 50;
+const OCR_DEFAULT_SHEET = 'Отзывы';
+const OCR_SOURCE_COLUMN = 'A';
+const OCR_TARGET_COLUMN = 'B';
 
 // ====== КОНСТАНТЫ ДЛЯ АВТОМАТИЗАЦИИ (legacy-триггеры, оставлены для совместимости) ======
 // eslint-disable-next-line no-unused-vars
@@ -115,6 +119,83 @@ function clearLogs() {
     SpreadsheetApp.getUi().alert('Информация', 'Логи очищены.', SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
     SpreadsheetApp.getUi().alert('Ошибка очистки логов: ' + e.message);
+  }
+}
+
+// eslint-disable-next-line no-unused-vars
+function ocrRun() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const ss = SpreadsheetApp.getActive();
+    const sheet = ss.getSheetByName(OCR_DEFAULT_SHEET);
+    if (!sheet) {
+      throw new Error(`Лист "${OCR_DEFAULT_SHEET}" не найден`);
+    }
+
+    const email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
+    const token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';
+    if (!email || !token) {
+      throw new Error('Укажите email и token в Настройках Table AI');
+    }
+
+    const overwrite = (typeof getOcrOverwrite_ === 'function') ? !!getOcrOverwrite_() : false;
+    let limit = (typeof getOcrLimit_ === 'function') ? Number(getOcrLimit_()) : OCR_DEFAULT_BATCH_LIMIT;
+    if (!isFinite(limit) || limit <= 0) limit = OCR_DEFAULT_BATCH_LIMIT;
+    let maxRows = (typeof getOcrRowsLimit_ === 'function') ? Number(getOcrRowsLimit_()) : null;
+    if (!isFinite(maxRows) || maxRows <= 0) maxRows = null;
+
+    const payload = {
+      action: 'ocr_process_sheet',
+      email: email,
+      token: token,
+      scriptId: (typeof ScriptApp !== 'undefined' && ScriptApp.getScriptId) ? ScriptApp.getScriptId() : '',
+      spreadsheetId: ss.getId(),
+      sheetName: sheet.getName(),
+      sourceColumn: OCR_SOURCE_COLUMN,
+      targetColumn: OCR_TARGET_COLUMN,
+      limit: Math.max(1, Math.min(200, Math.floor(limit))),
+      overwrite: overwrite,
+    };
+    if (maxRows) {
+      payload.maxRows = Math.max(1, Math.floor(maxRows));
+    }
+
+    addLog(`🚀 OCR: отправка листа "${payload.sheetName}" (limit=${payload.limit}, overwrite=${overwrite ? 'on' : 'off'})`, 'INFO');
+
+    const resp = UrlFetchApp.fetch(SERVER_URL, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+    });
+
+    const code = resp.getResponseCode();
+    const body = JSON.parse(resp.getContentText() || '{}');
+    if (code !== 200 || !body.ok) {
+      throw new Error((body && body.error) || ('HTTP_' + code));
+    }
+
+    const summary = body.data || {};
+    const lines = [
+      `Строк обработано: ${summary.processed || 0}`,
+      `Пропущено (целевой столбец занят): ${summary.skipped || 0}`,
+      `Пустых: ${summary.empty || 0}`,
+      `Ошибок: ${summary.errors || 0}`,
+      `Лимит на строку: ${summary.limit || payload.limit}`,
+    ];
+    ui.alert('OCR V2 завершён', lines.join('\n'), ui.ButtonSet.OK);
+
+    if (Array.isArray(body.logs)) {
+      body.logs.slice(-10).forEach(function(entry) {
+        if (entry && entry.message) {
+          addLog(entry.message, entry.level || 'INFO');
+        }
+      });
+    }
+  } catch (error) {
+    const msg = error && error.message ? error.message : String(error);
+    addLog('❌ OCR ошибка: ' + msg, 'ERROR');
+    ui.alert('Ошибка OCR', msg, ui.ButtonSet.OK);
   }
 }
 

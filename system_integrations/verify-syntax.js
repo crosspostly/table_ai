@@ -13,7 +13,7 @@ const files = [
   'deploy/VK.gs',
   'deploy/UnpackingViewer.gs',
   'deploy/TemplateService.gs',
-  'deploy/ocrRunV2_client.gs',
+  'deploy/ocr.gs',
   'deploy/reniewcell.gs'
 ];
 

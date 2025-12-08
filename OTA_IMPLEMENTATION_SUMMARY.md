@@ -154,7 +154,7 @@ if (DEV_MODE) {
 
 ---
 
-## 📦 Files Being Updated (12)
+## 📦 Files Being Updated (11)
 
 All files downloaded from GitHub `/deploy` folder:
 
@@ -163,13 +163,14 @@ All files downloaded from GitHub `/deploy` folder:
 3. **TemplateService.gs** - Template management
 4. **UnpackingViewer.gs** - Data unpacking
 5. **VK.gs** - VK integration
-6. **ocrRunV2_client.gs** - OCR client
-7. **reniewcell.gs** - Batch operations
-8. **CollectConfigUi.html** - Config HTML
-9. **SettingsUI.html** - Settings HTML
-10. **UnpackingViewerUI.html** - Unpacking HTML
-11. **logging_system.html** - Logs HTML
-12. **appsscript.json** - App configuration
+6. **reniewcell.gs** - Batch operations
+7. **CollectConfigUi.html** - Config HTML
+8. **SettingsUI.html** - Settings HTML
+9. **UnpackingViewerUI.html** - Unpacking HTML
+10. **logging_system.html** - Logs HTML
+11. **appsscript.json** - App configuration
+
+> ℹ️ OCR логика теперь живёт в отдельном проекте `ocr.gs` и обновляется через его собственный деплой.
 
 **To add new file:**
 1. Place in `/deploy` folder

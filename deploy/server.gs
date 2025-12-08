@@ -6,6 +6,7 @@
 const S_GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const LOG_SHEET_NAME = 'Логи';
 const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
+const OCR_SERVER_DEFAULT_LIMIT = 50;
 const AUTO_UPDATE_CHECK_INTERVAL = 6;
 
 // ⭐ OTA UPDATES
@@ -13,7 +14,7 @@ const SERVER_VERSION = '3.5.2';
 
 // ⭐ LICENSE SHEET ID (для prompt_table)
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
-const TOKENS_SHEET_NAME = 'Tokens';
+const TOKENS_SHEET_NAME = 'Tokens'; // eslint-disable-line no-unused-vars
 const BINDINGS_SHEET_NAME = 'Bindings';
 
 // ═════════════════════════════════════════════════════════════════
@@ -216,6 +217,113 @@ function doPost(_e) {
 
       Logger.log('Returning successful response');
       return json_({ok: true, data: text2});
+    }
+    case 'ocr_process_sheet': {
+      Logger.log('Processing ocr_process_sheet action');
+      const spreadsheetId = (data.spreadsheetId || '').toString();
+      const sheetName = (data.sheetName || 'Отзывы').toString();
+      const sourceColumn = (data.sourceColumn || 'A').toString();
+      const targetColumn = (data.targetColumn || 'B').toString();
+      const overwrite = data.overwrite === true;
+      const limit = data.limit == null ? OCR_SERVER_DEFAULT_LIMIT : Number(data.limit);
+      const maxRows = data.maxRows == null ? null : Number(data.maxRows);
+      const startRow = data.startRow == null ? null : Number(data.startRow);
+      const chunkSize = data.chunkSize == null ? null : Number(data.chunkSize);
+
+      if (!spreadsheetId) {
+        Logger.log('Missing spreadsheetId');
+        return json_({ok: false, error: 'NO_SPREADSHEET_ID'}, 400);
+      }
+      if (!sheetName) {
+        Logger.log('Missing sheetName');
+        return json_({ok: false, error: 'NO_SHEET_NAME'}, 400);
+      }
+      if (!rateLimitOk_(token)) {
+        Logger.log('Rate limit exceeded for ocr_process_sheet');
+        return json_({ok: false, error: 'RATE_LIMIT'}, 429);
+      }
+
+      const traceId = Utilities.getUuid();
+      const logs = [];
+      let remoteLogs = [];
+      const t0 = Date.now();
+      let summary = null;
+      try {
+        const ocrUrl = getOcrScriptUrl_();
+        const payload = {
+          action: 'server_ocr_process',
+          traceId: traceId,
+          params: {
+            spreadsheetId: spreadsheetId,
+            sheetName: sheetName,
+            sourceColumn: sourceColumn,
+            targetColumn: targetColumn,
+            limit: sanitizeOcrLimit_(limit),
+            overwrite: overwrite,
+          },
+        };
+        if (maxRows && isFinite(maxRows) && maxRows > 0) {
+          payload.params.maxRows = Math.floor(maxRows);
+        }
+        if (startRow && isFinite(startRow) && startRow > 1) {
+          payload.params.startRow = Math.floor(startRow);
+        }
+        if (chunkSize && isFinite(chunkSize) && chunkSize > 0) {
+          payload.params.chunkSize = Math.floor(chunkSize);
+        }
+        const secret = getOcrSharedSecret_();
+        if (secret) {
+          payload.secret = secret;
+          payload.params.secret = secret;
+        }
+
+        Logger.log('Calling OCR script: ' + ocrUrl);
+        const ocrResp = UrlFetchApp.fetch(ocrUrl, {
+          method: 'post',
+          contentType: 'application/json',
+          payload: JSON.stringify(payload),
+          muteHttpExceptions: true,
+        });
+        const ocrCode = ocrResp.getResponseCode();
+        const ocrBody = JSON.parse(ocrResp.getContentText() || '{}');
+        remoteLogs = Array.isArray(ocrBody.logs) ? ocrBody.logs : [];
+        if (ocrCode !== 200 || !ocrBody.ok) {
+          const errMsg = (ocrBody && ocrBody.error) || ('OCR_HTTP_' + ocrCode);
+          throw new Error(errMsg);
+        }
+        summary = ocrBody.data || {};
+      } catch (ocrError) {
+        const message = String(ocrError && ocrError.message || ocrError);
+        logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: message});
+        try {
+          serverLog_({
+            action: 'ocr_process_sheet',
+            ok: false,
+            error: message,
+            email: email,
+            token: token,
+            promptLen: 0,
+            ms: Date.now() - t0,
+            keySource: 'OCR',
+          });
+        } catch (_) {}
+        return json_({ok: false, error: message, logs: remoteLogs.length ? remoteLogs : logs}, 500);
+      }
+
+      try {
+        serverLog_({
+          action: 'ocr_process_sheet',
+          ok: true,
+          error: null,
+          email: email,
+          token: token,
+          promptLen: summary && summary.processed || 0,
+          ms: Date.now() - t0,
+          keySource: 'OCR',
+        });
+      } catch (_) {}
+
+      return json_({ok: true, data: summary, logs: remoteLogs});
     }
     // ════════════════════════════════════════════════════════
     // ACTION: GEMINI CONFIG
@@ -780,6 +888,30 @@ function rateLimitOk_(token) {
     return true;
   } catch (e) {
     return true;
+  }
+}
+
+function sanitizeOcrLimit_(value) {
+  const num = Number(value);
+  if (!isFinite(num) || num <= 0) {
+    return OCR_SERVER_DEFAULT_LIMIT;
+  }
+  return Math.max(1, Math.min(200, Math.floor(num)));
+}
+
+function getOcrScriptUrl_() {
+  const url = PropertiesService.getScriptProperties().getProperty('OCR_SCRIPT_URL');
+  if (!url) {
+    throw new Error('OCR_SCRIPT_URL_NOT_CONFIGURED');
+  }
+  return url;
+}
+
+function getOcrSharedSecret_() {
+  try {
+    return PropertiesService.getScriptProperties().getProperty('OCR_SHARED_SECRET') || '';
+  } catch (e) {
+    return '';
   }
 }
 

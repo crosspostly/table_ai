@@ -96,22 +96,23 @@ Shows new version and previous version
 
 ## Files Updated
 
-When version increments, these 12 files are updated:
+When version increments, these 11 files are updated:
 
 1. Main.gs (client code)
 2. CollectConfig.gs
 3. TemplateService.gs
 4. UnpackingViewer.gs
 5. VK.gs
-6. ocrRunV2_client.gs
-7. reniewcell.gs
-8. CollectConfigUi.html
-9. SettingsUI.html
-10. UnpackingViewerUI.html
-11. logging_system.html
-12. appsscript.json
+6. reniewcell.gs
+7. CollectConfigUi.html
+8. SettingsUI.html
+9. UnpackingViewerUI.html
+10. logging_system.html
+11. appsscript.json
 
 All downloaded from: `https://raw.githubusercontent.com/crosspostly/table_ai/main/deploy/`
+
+> 📌 OCR выполняется отдельным Web App (`ocr.gs`) и обновляется через его собственный деплой.
 
 ## Version History
 

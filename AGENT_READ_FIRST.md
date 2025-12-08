@@ -20,7 +20,8 @@
 ### 🏗️ Архитектура
 ```
 🖥️ Клиент (Main.gs) - UI, меню, обёртки (~200 строк)
-🖥️ Сервер (server.gs) - бизнес-логика, API (~800 строк)  
+🖥️ Сервер (server.gs) - бизнес-логика, API (~800 строк)
+🧠 OCR Web App (ocr.gs) - обработка изображений и Gemini Vision
 📦 Модули - независимые компоненты
 🗂️ Данные - Google Sheets + PropertiesService
 ```
@@ -37,7 +38,7 @@ CollectConfig.gs     # UI AI конструктора
 VK.gs                # Модуль импорта VK
 UnpackingViewer.gs   # Просмотр данных распаковки
 TemplateService.gs   # Управление шаблонами
-ocrRunV2_client.gs  # OCR клиент
+ocr.gs              # OCR микросервис (отдельный Web App)
 reniewcell.gs        # Batch обновления
 ```
 

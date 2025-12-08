@@ -129,6 +129,24 @@ function testApiKeys() {
 
 ---
 
+## 🧠 Шаг 3.5: Отдельный OCR скрипт
+
+```
+1. Создать отдельный Apps Script проект "Table AI OCR"
+2. Скопировать файл deploy/ocr.gs (другие файлы не нужны)
+3. Deploy → Web app (Execute as: Me, Access: Anyone)
+4. В Script Properties проекта задать:
+   - GEMINI_API_KEY (если нужен собственный ключ)
+   - VK_PARSER_URL (опционально, если отличается от клиента)
+   - OCR_SHARED_SECRET (любой секретный токен)
+5. Скопировать Web App URL и сохранить его как OCR_SCRIPT_URL в Script Properties сервера
+6. Тот же OCR_SHARED_SECRET прописать в Script Properties сервера (используется для проверки подлинности)
+```
+
+> Сервер вызывает OCR скрипт через `UrlFetchApp.fetch(OCR_SCRIPT_URL)` и ожидает JSON `{ok, data, logs}`.
+
+---
+
 ## 📋 Шаг 4: Создание мастер-таблицы
 
 ### 4.1 Подготовить клиентские файлы
@@ -140,7 +158,6 @@ function testApiKeys() {
 ✅ TemplateService.gs
 ✅ VK.gs
 ✅ UnpackingViewer.gs
-✅ ocrRunV2_client.gs
 ✅ reniewcell.gs
 ✅ license.gs
 ✅ HTML файлы:
@@ -149,6 +166,8 @@ function testApiKeys() {
   - UnpackingViewerUI.html
   - logging_system.html
 ✅ appsscript.json
+
+> ℹ️ OCR-движок теперь вынесен в отдельный проект (`ocr.gs`). См. раздел «🧠 Шаг 3.5» ниже.
 ```
 
 ### 4.2 Настроить мастер-таблицу
