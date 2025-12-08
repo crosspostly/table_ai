@@ -418,18 +418,16 @@ function gmOcrFromBlobV2_(blob, lang){
   var b64 = Utilities.base64Encode(blob.getBytes());
   
   var images = [{ mimeType: mime, data: b64 }];
-  var userApiKey = PropertiesService.getUserProperties().getProperty('GEMINI_API_KEY') || '';
   
-  var result = serverGmOcrBatchV2_(images, lang || 'ru', userApiKey);
+  var result = serverGmOcrBatchV2_(images, lang || 'ru');
   
   return (typeof processGeminiResponse === 'function') ? processGeminiResponse(result) : result;
 }
 
-function serverGmOcrBatchV2_(images, lang, userApiKey){
+function serverGmOcrBatchV2_(images, lang){
   var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
   var token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';
-  var apiKey = userApiKey || PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY') || '';
-  var payload = { action: 'gm_image', email: email, token: token, apiKey: apiKey, images: images, lang: lang || 'ru', delimiter: '____' };
+  var payload = { action: 'gm_image', email: email, token: token, images: images, lang: lang || 'ru', delimiter: '____' };
   var resp = UrlFetchApp.fetch(SERVER_URL, { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true });
   var code = resp.getResponseCode();
   var data = JSON.parse(resp.getContentText());

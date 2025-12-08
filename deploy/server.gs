@@ -13,7 +13,9 @@ const SERVER_VERSION = '3.5.2';
 
 // ⭐ LICENSE SHEET ID (для prompt_table)
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
+// eslint-disable-next-line no-unused-vars
 const TOKENS_SHEET_NAME = 'Tokens';
+// eslint-disable-next-line no-unused-vars
 const BINDINGS_SHEET_NAME = 'Bindings';
 
 // ═════════════════════════════════════════════════════════════════
@@ -145,32 +147,21 @@ function doPost(_e) {
       Logger.log('Processing gm_image action');
       const images = data.images || [];
       const lang = (data.lang || 'ru').toString();
-      const userApiKey = (data.apiKey || '').toString();
       const delimiter = (data.delimiter && String(data.delimiter).trim()) ? String(data.delimiter).trim() : null;
 
       Logger.log('images count: ' + images.length);
       Logger.log('lang: ' + lang);
-      Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
       Logger.log('delimiter: ' + (delimiter || 'NONE'));
 
-      // API key priority: use user key first, otherwise fallback to default
-      let finalApiKey = userApiKey;
-      let keySource = 'USER';
-
-      if (!userApiKey) {
-        // Try to get default API key from script properties
-        const defaultApiKey = getDefaultGeminiKey_();
-        if (defaultApiKey) {
-          finalApiKey = defaultApiKey;
-          keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
-        } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
-          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
-        }
-      } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
+      // ✅ Server uses ONLY its own configured API key
+      // ❌ Never trust client-provided API keys
+      const finalApiKey = getDefaultGeminiKey_();
+      if (!finalApiKey) {
+        Logger.log('ERROR: GEMINI_API_KEY not configured on SERVER');
+        return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
       }
+      Logger.log('✅ Using SERVER API key from script properties');
+      const keySource = 'SERVER';
 
       if (!Array.isArray(images) || images.length === 0) {
         Logger.log('ERROR: No images provided');
