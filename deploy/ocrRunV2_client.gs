@@ -1,5 +1,5 @@
 // Standalone OCR runner (do not touch review.gs)
-// Exported function to assign on a drawing button: ocrRun
+
 
 var OCR2_BATCH_LIMIT = 50;
 var OCR2_CHUNK_SIZE = 8; // разовая порция картинок на один запрос к модели (уменьшает риск усечения ответа)
@@ -71,11 +71,14 @@ function ocrRun() {
               log_('V2 row ' + r + ': chunk ' + (p/OCR2_CHUNK_SIZE) + ' empty → fallback per-image (' + sub.length + ' imgs)', 'WARN');
               for (var si = 0; si < sub.length && remainingOut > 0; si++) {
                 try {
-                  var bb = Utilities.newBlob(Utilities.base64Decode(sub[si].data), sub[si].mimeType || 'image/png', 'img');
-                  var tt = gmOcrFromBlobV2_(bb, 'ru');
-                  tt = String(tt||'').trim();
-                  if (tt) { texts.push(tt); remainingOut--; }
-                } catch (e4) { log_('V2 row ' + r + ': per-image fallback error: ' + e4.message, 'ERROR'); }
+                  var singleText = serverGmOcrSingleV2_(sub[si], 'ru');
+                  if (singleText) {
+                    texts.push(singleText);
+                    remainingOut--;
+                  }
+                } catch (e4) {
+                  log_('V2 row ' + r + ': per-image fallback error: ' + e4.message, 'ERROR');
+                }
               }
             } else {
               var take = Math.min(remainingOut, arr.length);
@@ -88,12 +91,16 @@ function ocrRun() {
           errors++; log_('❌ V2 OCR batch error row ' + r + ': ' + e2.message, 'ERROR');
           // fallback по одному
           try {
-            for (var j = 0; j < Math.min(remainingOut, batchImages.length); j++) {
-              var b = Utilities.newBlob(Utilities.base64Decode(batchImages[j].data), batchImages[j].mimeType || 'image/png', 'img');
-              var t = gmOcrFromBlobV2_(b, 'ru');
-              if (t && String(t).trim()) texts.push(String(t).trim());
+            var fallbackCount = Math.min(remainingOut, batchImages.length);
+            for (var j = 0; j < fallbackCount; j++) {
+              var singleFallback = serverGmOcrSingleV2_(batchImages[j], 'ru');
+              if (singleFallback) {
+                texts.push(singleFallback);
+              }
             }
-          } catch (e3) { log_('❌ V2 OCR fallback error row ' + r + ': ' + e3.message, 'ERROR'); }
+          } catch (e3) {
+            log_('❌ V2 OCR fallback error row ' + r + ': ' + e3.message, 'ERROR');
+          }
         }
       }
 
@@ -370,29 +377,21 @@ function collectYandexPublicV2_(publicUrl, offset, limit){
 }
 function toDropboxDirectV2_(u){ try { var url = u.replace('www.dropbox.com','dl.dropboxusercontent.com'); if (url.indexOf('?dl=0')>=0) url=url.replace('?dl=0','?dl=1'); if (url.indexOf('?dl=1')<0 && url.indexOf('?')<0) url += '?dl=1'; return url; } catch(e){ return u; } }
 
-// ----- Local OCR fallbacks
-function gmOcrFromBlobV2_(blob, lang){
-  var keyResp = UrlFetchApp.fetch(SERVER_URL, {
-    method: 'post',
-    payload: JSON.stringify({
-      action: 'geminiConfig',
-      subaction: 'getDefaultKey',
-      email: getLicenseEmail(),
-      token: getLicenseToken()
-    })
-  });
-  var keyData = JSON.parse(keyResp.getContentText());
-  var apiKey = keyData.apiKey;  // Получили с сервера!
-  var mime = blob.getContentType()||'image/png'; var b64 = Utilities.base64Encode(blob.getBytes());
-  var instruction = 'Транскрибируй текст на изображении БЕЗ добавления от себя. Верни только чистый текст. Если изображений несколько — разделяй отзывы строкой из четырёх подчёркиваний: ____ .'+(lang?(' Язык: '+lang+'.'):'');
-  var body = { contents: [{ parts: [{ text: instruction }, { inlineData: { mimeType: mime, data: b64 } }] }], generationConfig: { maxOutputTokens: 2048, temperature: 0 } };
-  var resp = UrlFetchApp.fetch(GEMINI_API_URL + '?key=' + apiKey, { method:'post', contentType:'application/json', payload: JSON.stringify(body), muteHttpExceptions:true });
-  var code = resp.getResponseCode(); var data = JSON.parse(resp.getContentText()); if (code !== 200) { var msg=(data&&data.error&&data.error.message)||('HTTP_'+code); throw new Error('Gemini OCR: '+msg); }
-  var cand = data.candidates && data.candidates[0]; var part = cand && cand.content && cand.content.parts && cand.content.parts[0]; var text = part && part.text ? part.text : '';
-  return (typeof processGeminiResponse === 'function') ? processGeminiResponse(text) : text;
+// ----- OCR helpers
+function serverGmOcrSingleV2_(image, lang){
+  if (!image || !image.data) {
+    throw new Error('NO_IMAGE_DATA');
+  }
+  var text = serverGmOcrBatchV2_([image], lang || 'ru');
+  var parts = splitBySeparatorV2_(text);
+  if (parts && parts.length) {
+    return parts[0];
+  }
+  return String(text || '').trim();
 }
 function splitBySeparatorV2_(text){
-  var s = String(text||'').trim(); if (!s) return [];
+  var s = String(text||'').trim();
+  if (!s) return [];
   // основной способ: маркер ____ (четыре и более подчёркиваний) отдельной строкой или в тексте
   var parts = s.split(/\n?_{4,}\n?/g).map(function(x){ return String(x||'').trim(); }).filter(Boolean);
   if (parts.length > 1) return parts;
@@ -412,7 +411,7 @@ function cleanTextForUrlsV2_(s){
   } catch (e) { return String(s||''); }
 }
 
-// Локальная версия server OCR call с делимитером "____" (не затрагивает review.gs)
+
 function serverGmOcrBatchV2_(images, lang){
   var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
   var token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';

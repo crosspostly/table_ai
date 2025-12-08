@@ -5,3 +5,4 @@ system_integrations/
 *.md
 *.html
 .git/
+deploy/ocrRunV2_client.gs
