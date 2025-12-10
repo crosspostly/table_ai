@@ -1,0 +1,29 @@
+fix: Resolve prompt_table configuration error (Issue #95)
+
+Fixed a critical bug where prompt_table configurations could be incorrectly
+loaded or saved, leading to errors during AI transformation execution.
+
+Changes:
+1. CollectConfig.gs (line 330): Always return prompt_table object when marker
+   is 'prompt_table', even if cellAddress is empty. This preserves the
+   configuration type and allows validation to catch errors.
+
+2. CollectConfigUi.html (line 839-844): Added explicit validation to check
+   that prompt_table.cellAddress is not empty before sending to server.
+
+3. server.gs (line 1365-1375): Enhanced server-side validation with separate
+   check for prompt_table existence and cellAddress validation. Provides
+   clear error message when cellAddress is missing or empty.
+
+Benefits:
+- Data integrity: Configuration type preserved correctly
+- Clear error messages: Users get explicit feedback on missing cellAddress
+- Defense in depth: Validation at multiple layers (UI, client, server)
+- Backward compatible: Existing systemPrompt configs work as before
+
+Testing:
+- ✅ All 67 tests pass
+- ✅ No breaking changes
+- ✅ ESLint compliant (no new errors introduced)
+
+Fixes #95
