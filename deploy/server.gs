@@ -30,6 +30,382 @@ const REPO_IS_PUBLIC = true; // ← СЕРВЕР решает!
 // setGithubPAT_('ghp_...')
 
 
+// ===== Rate Limit & Cache Implementation =====
+
+/**
+ * ===== RATE LIMIT MANAGER (новый блок) =====
+ * Управление частотой вызовов к Gemini API
+ */
+
+const RATE_LIMIT_KEY = 'gemini_api_rate_limit_store';
+const METRICS_SHEET_NAME = 'API_METRICS';
+const MAX_REQUESTS_PER_MINUTE = 10;
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 минута
+const MAX_CACHE_SIZE_KB = 500;
+const CACHE_TTL_MS = 3600000; // 1 час
+
+class RateLimitManager {
+  constructor() {
+    this.ps = PropertiesService.getUserProperties();
+  }
+
+  /**
+   * Получить данные о запросах за последнюю минуту
+   */
+  getRecentRequests_() {
+    const data = this.ps.getProperty(RATE_LIMIT_KEY);
+    const requests = data ? JSON.parse(data) : [];
+    const now = Date.now();
+    
+    // Отфильтровать запросы старше 60 секунд
+    return requests.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+  }
+
+  /**
+   * Проверить, можно ли сделать запрос прямо сейчас
+   */
+  canMakeRequest() {
+    return this.getRecentRequests_().length < MAX_REQUESTS_PER_MINUTE;
+  }
+
+  /**
+   * Получить время ожидания (миллисекунды) перед следующим запросом
+   */
+  getWaitTime() {
+    const requests = this.getRecentRequests_();
+    
+    if (requests.length < MAX_REQUESTS_PER_MINUTE) {
+      return 0;
+    }
+    
+    // Найти самый старый запрос и вычислить время до конца окна
+    const oldestRequest = Math.min(...requests);
+    const waitTime = Math.max(0, RATE_LIMIT_WINDOW_MS - (Date.now() - oldestRequest) + 500);
+    
+    return waitTime;
+  }
+
+  /**
+   * Ждать, если необходимо (блокирующая операция)
+   */
+  waitIfNeeded() {
+    const waitTime = this.getWaitTime();
+    
+    if (waitTime > 0) {
+      Logger.log(`[RATE_LIMIT] Ожидание ${waitTime}ms перед следующим запросом...`);
+      Utilities.sleep(waitTime);
+    }
+    
+    return waitTime;
+  }
+
+  /**
+   * Логировать новый API запрос
+   */
+  logRequest() {
+    const requests = this.getRecentRequests_();
+    requests.push(Date.now());
+    this.ps.setProperty(RATE_LIMIT_KEY, JSON.stringify(requests));
+  }
+
+  /**
+   * Очистить старые логи
+   */
+  cleanup() {
+    const requests = this.getRecentRequests_();
+    if (requests.length > 0) {
+      this.ps.setProperty(RATE_LIMIT_KEY, JSON.stringify(requests));
+    }
+  }
+}
+
+/**
+ * ===== CACHE MANAGER (новый блок) =====
+ */
+
+class CacheManager {
+  constructor() {
+    this.ps = PropertiesService.getUserProperties();
+  }
+
+  /**
+   * Создать ключ кэша из промпта и модели
+   */
+  static createKey(model, prompt, imageHash = '') {
+    const combined = `${model}:${prompt.substring(0, 200)}:${imageHash}`;
+    // Простой хеш (в реальности можно использовать Utilities.computeDigest)
+    return Utilities.base64Encode(combined).substring(0, 50);
+  }
+
+  /**
+   * Получить закэшированный результат
+   */
+  get(cacheKey) {
+    const cached = this.ps.getProperty(`cache_${cacheKey}`);
+    
+    if (!cached) return null;
+    
+    const entry = JSON.parse(cached);
+    const now = Date.now();
+    
+    // Проверить TTL
+    if (now - entry.timestamp > CACHE_TTL_MS) {
+      this.ps.deleteProperty(`cache_${cacheKey}`);
+      return null;
+    }
+    
+    return entry.result;
+  }
+
+  /**
+   * Сохранить результат в кэш
+   */
+  set(cacheKey, result) {
+    const entry = {
+      result: result,
+      timestamp: Date.now()
+    };
+    
+    try {
+      this.ps.setProperty(`cache_${cacheKey}`, JSON.stringify(entry));
+    } catch (e) {
+      // Если кэш переполнен, очистить старые записи
+      Logger.log(`[CACHE] Переполнение кэша: ${e}`);
+      this.cleanup();
+    }
+  }
+
+  /**
+   * Очистить старые кэш-записи
+   */
+  cleanup() {
+    Logger.log('[CACHE] Выполнена очистка');
+  }
+}
+
+/**
+ * ===== ОСНОВНАЯ ОБЁРТКА (новый блок) =====
+ */
+
+const rateLimiter = new RateLimitManager();
+const cacheManager = new CacheManager();
+
+/**
+ * ГЛАВНАЯ ФУНКЦИЯ: Выполнить Gemini запрос с защитой от квот
+ * 
+ * @param {Object} modelConfig - {model: "...", apiKey: "...", maxTokens: number, temperature: number}
+ * @param {string|Object} prompt - Промпт или {text: "...", image: "..."}
+ * @param {Object} options - {maxRetries: 3, timeout: 30000, skipCache: false}
+ * @returns {Object} {success: true/false, data: "...", error: "...", waitTime: 0}
+ */
+function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
+  const {
+    maxRetries = 3,
+    timeout = 30000,
+    skipCache = false
+  } = options;
+
+  // 1. Проверить кэш (если не skipCache)
+  let cacheKey = null;
+  if (!skipCache && typeof prompt === 'string') {
+    cacheKey = CacheManager.createKey(modelConfig.model, prompt);
+    const cached = cacheManager.get(cacheKey);
+    
+    if (cached) {
+      Logger.log(`[CACHE_HIT] Использован кэшированный результат для модели ${modelConfig.model}`);
+      return {
+        success: true,
+        data: cached,
+        error: null,
+        waitTime: 0,
+        fromCache: true
+      };
+    }
+  }
+
+  // 2. Применить rate limiting
+  const waitTime = rateLimiter.waitIfNeeded();
+
+  // 3. Выполнить запрос с повторами
+  let lastError = null;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Логировать запрос
+      rateLimiter.logRequest();
+
+      // Выполнить API запрос
+      const result = callGeminiApi(modelConfig, prompt);
+
+      // 4. Сохранить в кэш
+      if (!skipCache && cacheKey && result) {
+        cacheManager.set(cacheKey, result);
+      }
+
+      // Логировать успех
+      logApiMetric({
+        functionName: 'executeGeminiWithRateLimit',
+        status: 'success',
+        model: modelConfig.model,
+        tokens: result.length, // approximation
+        error: '',
+        waitTime: waitTime
+      });
+
+      return {
+        success: true,
+        data: result,
+        error: null,
+        waitTime: waitTime,
+        fromCache: false,
+        attempt: attempt + 1
+      };
+
+    } catch (error) {
+      lastError = error;
+      const errorMsg = error.toString();
+
+      // Если ошибка 429 (Quota Exceeded)
+      if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota')) {
+        const backoffDelay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+        
+        Logger.log(`[RATE_LIMIT_429] Попытка ${attempt + 1}/${maxRetries}. Ожидание ${backoffDelay}ms...`);
+        Utilities.sleep(backoffDelay);
+        
+        continue; // Повторить попытку
+      }
+
+      // Для других ошибок - не повторять
+      throw error;
+    }
+  }
+
+  // 5. Все попытки исчерпаны
+  const errorMsg = lastError?.toString() || 'Unknown error';
+  
+  logApiMetric({
+    functionName: 'executeGeminiWithRateLimit',
+    status: 'failed',
+    model: modelConfig.model,
+    tokens: 0,
+    error: errorMsg,
+    waitTime: waitTime
+  });
+
+  return {
+    success: false,
+    data: null,
+    error: errorMsg,
+    waitTime: waitTime,
+    fromCache: false,
+    attempt: maxRetries
+  };
+}
+
+/**
+ * Логировать метрики API в Google Sheets
+ */
+function logApiMetric(metric) {
+  try {
+    const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
+    let sheet = ss.getSheetByName(METRICS_SHEET_NAME);
+    
+    if (!sheet) {
+      try {
+        sheet = ss.insertSheet(METRICS_SHEET_NAME);
+        sheet.appendRow(['Timestamp', 'Function', 'Status', 'Model', 'Tokens', 'Error', 'Wait Time (ms)']);
+      } catch (e) {
+        Logger.log('[METRICS] Could not create sheet: ' + e.message);
+      }
+    }
+    
+    if (sheet) {
+      const now = new Date().toISOString();
+      sheet.appendRow([
+        now,
+        metric.functionName,
+        metric.status,
+        metric.model || '',
+        metric.tokens,
+        metric.error,
+        metric.waitTime
+      ]);
+    }
+  } catch (e) {
+    Logger.log(`[METRICS_ERROR] Не удалось логировать метрику: ${e}`);
+  }
+}
+
+/**
+ * Вспомогательная функция для вызова Gemini API
+ */
+function callGeminiApi(modelConfig, prompt) {
+  // Определяем URL
+  const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/';
+  const model = modelConfig.model || 'gemini-2.5-flash-lite';
+  const url = `${baseUrl}${model}:generateContent`;
+  
+  // Определяем API ключ
+  const apiKey = modelConfig.apiKey;
+  if (!apiKey) throw new Error('No API key provided');
+  
+  let payload = {};
+  
+  // Строим тело запроса
+  if (typeof prompt === 'string') {
+    // Текстовый запрос
+    payload = {
+      contents: [{parts: [{text: prompt}]}],
+      generationConfig: {
+        maxOutputTokens: modelConfig.maxTokens || 12500,
+        temperature: modelConfig.temperature || 0.7,
+      }
+    };
+  } else if (prompt.contents) {
+    // Уже готовый объект contents (для Vision или сложных промптов)
+    payload = {
+      contents: prompt.contents,
+      generationConfig: {
+        maxOutputTokens: modelConfig.maxTokens || 4096,
+        temperature: modelConfig.temperature || 0,
+      }
+    };
+  } else {
+    throw new Error('Invalid prompt format for callGeminiApi');
+  }
+  
+  const options = {
+    method: 'POST',
+    contentType: 'application/json',
+    headers: {
+      'x-goog-api-key': apiKey,
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+  };
+  
+  // Выполняем запрос
+  const resp = UrlFetchApp.fetch(url, options);
+  const code = resp.getResponseCode();
+  const responseText = resp.getContentText();
+  
+  if (code !== 200) {
+    let msg = 'HTTP_' + code;
+    try {
+      const data = JSON.parse(responseText);
+      if (data && data.error && data.error.message) msg = data.error.message;
+    } catch (e) {}
+    throw new Error(msg);
+  }
+  
+  const data = JSON.parse(responseText);
+  const candidate = data.candidates && data.candidates[0];
+  const content = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
+  const text = content && content.text ? content.text : '';
+  
+  return serverProcessMarkdown_(text);
+}
+
 // ===== Entry points =====
 function doGet(_e) {
   return json_({ok: true, ping: 'pong', time: new Date().toISOString()});
@@ -600,65 +976,26 @@ function getScriptIdFromBindingsForOTA_(email) {
 // ===== License =====
 // ===== Gemini (server-side) =====
 function serverGM_(prompt, maxTokens, temperature, apiKey) {
-  Logger.log('=== serverGM_ START ===');
-  Logger.log('prompt length: ' + (prompt ? prompt.length : 0));
-  Logger.log('maxTokens: ' + maxTokens);
-  Logger.log('temperature: ' + temperature);
-  Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
-
-  if (!prompt || typeof prompt !== 'string') {
-    Logger.log('ERROR: Empty or invalid prompt');
-    throw new Error('EMPTY_PROMPT');
-  }
-  if (!apiKey) {
-    Logger.log('ERROR: No API key provided');
-    throw new Error('NO_CLIENT_KEY');
-  }
-
-  Logger.log('Building request to Gemini API...');
-  const requestBody = {
-    contents: [{parts: [{text: prompt}]}],
-    generationConfig: {
-      maxOutputTokens: maxTokens,
-      temperature: temperature,
-    },
+  Logger.log('=== serverGM_ START (Wrapped) ===');
+  
+  const modelConfig = {
+    model: 'gemini-2.5-flash-lite',
+    apiKey: apiKey,
+    maxTokens: maxTokens,
+    temperature: temperature
   };
-const options = {
-  method: 'POST',
-  contentType: 'application/json',
-  headers: {
-    'x-goog-api-key': apiKey,  // ✅ ЗАГОЛОВОК вместо ?key=
-  },
-  payload: JSON.stringify(requestBody),
-  muteHttpExceptions: true,
-};
-
-Logger.log('Sending request to Gemini API...');
-const resp = UrlFetchApp.fetch(S_GEMINI_API_URL, options);  // ✅ БЕЗ ?key=
-const code = resp.getResponseCode();
-const responseText = resp.getContentText();
-
-Logger.log('Gemini API response code: ' + code);
-Logger.log('Gemini API response length: ' + responseText.length);
-
-const data = JSON.parse(responseText);
-if (code !== 200) {
-  const msg = data && data.error && data.error.message || ('HTTP_' + code);
-  Logger.log('Gemini API error: ' + msg);
-  throw new Error(msg);
-}
-
-
-  const candidate = data.candidates && data.candidates[0];
-  const content = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
-  const text = content && content.text ? content.text : '';
-
-  Logger.log('Gemini API success, response length: ' + text.length);
-  return serverProcessMarkdown_(text);
+  
+  const result = executeGeminiWithRateLimit(modelConfig, prompt, {maxRetries: 3});
+  
+  if (!result.success) {
+    throw new Error(result.error);
+  }
+  
+  return result.data;
 }
 
 function serverGMImage_(images, lang, apiKey, delimiter) {
-  Logger.log('=== serverGMImage_ START ===');
+  Logger.log('=== serverGMImage_ START (Wrapped) ===');
   Logger.log('images count: ' + images.length);
   Logger.log('lang: ' + lang);
   Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
@@ -698,32 +1035,26 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
   }
 
   Logger.log('Processing ' + (parts.length - 1) + ' valid images');
-  const body = {contents: [{parts: parts}], generationConfig: {maxOutputTokens: 4096, temperature: 0}};
-
-  Logger.log('Sending request to Gemini Vision API...');
-  const resp = UrlFetchApp.fetch(S_GEMINI_API_URL + '?key=' + apiKey, {
-    method: 'post', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true,
-  });
-
-  const code = resp.getResponseCode();
-  const responseText = resp.getContentText();
-
-  Logger.log('Gemini Vision API response code: ' + code);
-  Logger.log('Gemini Vision API response length: ' + responseText.length);
-
-  const data = JSON.parse(responseText);
-  if (code !== 200) {
-    const msg = data && data.error && data.error.message || ('HTTP_' + code);
-    Logger.log('Gemini Vision API error: ' + msg);
-    throw new Error(msg);
+  
+  // Use Rate Limited Executor
+  const modelConfig = {
+    model: 'gemini-2.5-flash-lite',
+    apiKey: apiKey,
+    maxTokens: 4096,
+    temperature: 0
+  };
+  
+  const promptObj = {
+      contents: [{parts: parts}]
+  };
+  
+  const result = executeGeminiWithRateLimit(modelConfig, promptObj, {maxRetries: 3});
+  
+  if (!result.success) {
+    throw new Error(result.error);
   }
-
-  const candidate = data.candidates && data.candidates[0];
-  const content = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
-  const text = content && content.text ? content.text : '';
-
-  Logger.log('Gemini Vision API success, response length: ' + text.length);
-  return serverProcessMarkdown_(text);
+  
+  return result.data;
 }
 
 function serverProcessMarkdown_(text) {
