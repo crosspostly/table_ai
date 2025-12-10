@@ -327,10 +327,11 @@ function loadCollectConfig(sheetName, cellAddress) {
         const systemPromptSheet = data[i][2];
         const systemPromptCell = data[i][3];
 
-        if (systemPromptSheet === 'prompt_table' && systemPromptCell) {
+        if (systemPromptSheet === 'prompt_table') {
+          // Если это prompt_table, всегда возвращаем prompt_table (даже если cellAddress пустой)
           return {
             prompt_table: {
-              cellAddress: systemPromptCell,
+              cellAddress: systemPromptCell || '',
             },
             userData: userData,
           };

@@ -836,6 +836,13 @@
       
       addLogEntry('Конфигурация собрана: ' + JSON.stringify(config).substring(0, 100) + '...', 'info');
       
+      // Проверка валидности prompt_table
+      if (config.prompt_table && !config.prompt_table.cellAddress) {
+        showStatus('❌ Ошибка: prompt_table активен, но не указана ячейка!', 'error');
+        addLogEntry('❌ Валидация не прошла: prompt_table без cellAddress', 'error');
+        return;
+      }
+      
       if (!config.systemPrompt && !config.prompt_table && config.userData.length === 0) {
         showStatus('⚠️ Заполните хотя бы одно поле!', 'error');
         addLogEntry('❌ Валидация не прошла: нет данных', 'error');

@@ -56,9 +56,9 @@ class RateLimitManager {
     const data = this.ps.getProperty(RATE_LIMIT_KEY);
     const requests = data ? JSON.parse(data) : [];
     const now = Date.now();
-    
+
     // Отфильтровать запросы старше 60 секунд
-    return requests.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+    return requests.filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
   }
 
   /**
@@ -73,15 +73,15 @@ class RateLimitManager {
    */
   getWaitTime() {
     const requests = this.getRecentRequests_();
-    
+
     if (requests.length < MAX_REQUESTS_PER_MINUTE) {
       return 0;
     }
-    
+
     // Найти самый старый запрос и вычислить время до конца окна
     const oldestRequest = Math.min(...requests);
     const waitTime = Math.max(0, RATE_LIMIT_WINDOW_MS - (Date.now() - oldestRequest) + 500);
-    
+
     return waitTime;
   }
 
@@ -90,12 +90,12 @@ class RateLimitManager {
    */
   waitIfNeeded() {
     const waitTime = this.getWaitTime();
-    
+
     if (waitTime > 0) {
       Logger.log(`[RATE_LIMIT] Ожидание ${waitTime}ms перед следующим запросом...`);
       Utilities.sleep(waitTime);
     }
-    
+
     return waitTime;
   }
 
@@ -142,18 +142,18 @@ class CacheManager {
    */
   get(cacheKey) {
     const cached = this.ps.getProperty(`cache_${cacheKey}`);
-    
+
     if (!cached) return null;
-    
+
     const entry = JSON.parse(cached);
     const now = Date.now();
-    
+
     // Проверить TTL
     if (now - entry.timestamp > CACHE_TTL_MS) {
       this.ps.deleteProperty(`cache_${cacheKey}`);
       return null;
     }
-    
+
     return entry.result;
   }
 
@@ -163,9 +163,9 @@ class CacheManager {
   set(cacheKey, result) {
     const entry = {
       result: result,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
-    
+
     try {
       this.ps.setProperty(`cache_${cacheKey}`, JSON.stringify(entry));
     } catch (e) {
@@ -192,7 +192,7 @@ const cacheManager = new CacheManager();
 
 /**
  * ГЛАВНАЯ ФУНКЦИЯ: Выполнить Gemini запрос с защитой от квот
- * 
+ *
  * @param {Object} modelConfig - {model: "...", apiKey: "...", maxTokens: number, temperature: number}
  * @param {string|Object} prompt - Промпт или {text: "...", image: "..."}
  * @param {Object} options - {maxRetries: 3, timeout: 30000, skipCache: false}
@@ -202,7 +202,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
   const {
     maxRetries = 3,
     timeout = 30000,
-    skipCache = false
+    skipCache = false,
   } = options;
 
   // 1. Проверить кэш (если не skipCache)
@@ -210,7 +210,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
   if (!skipCache && typeof prompt === 'string') {
     cacheKey = CacheManager.createKey(modelConfig.model, prompt);
     const cached = cacheManager.get(cacheKey);
-    
+
     if (cached) {
       Logger.log(`[CACHE_HIT] Использован кэшированный результат для модели ${modelConfig.model}`);
       return {
@@ -218,7 +218,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         data: cached,
         error: null,
         waitTime: 0,
-        fromCache: true
+        fromCache: true,
       };
     }
   }
@@ -228,7 +228,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
 
   // 3. Выполнить запрос с повторами
   let lastError = null;
-  
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       // Логировать запрос
@@ -249,7 +249,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         model: modelConfig.model,
         tokens: result.length, // approximation
         error: '',
-        waitTime: waitTime
+        waitTime: waitTime,
       });
 
       return {
@@ -258,9 +258,8 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         error: null,
         waitTime: waitTime,
         fromCache: false,
-        attempt: attempt + 1
+        attempt: attempt + 1,
       };
-
     } catch (error) {
       lastError = error;
       const errorMsg = error.toString();
@@ -268,10 +267,10 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
       // Если ошибка 429 (Quota Exceeded)
       if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota')) {
         const backoffDelay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
-        
+
         Logger.log(`[RATE_LIMIT_429] Попытка ${attempt + 1}/${maxRetries}. Ожидание ${backoffDelay}ms...`);
         Utilities.sleep(backoffDelay);
-        
+
         continue; // Повторить попытку
       }
 
@@ -282,14 +281,14 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
 
   // 5. Все попытки исчерпаны
   const errorMsg = lastError?.toString() || 'Unknown error';
-  
+
   logApiMetric({
     functionName: 'executeGeminiWithRateLimit',
     status: 'failed',
     model: modelConfig.model,
     tokens: 0,
     error: errorMsg,
-    waitTime: waitTime
+    waitTime: waitTime,
   });
 
   return {
@@ -298,7 +297,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     error: errorMsg,
     waitTime: waitTime,
     fromCache: false,
-    attempt: maxRetries
+    attempt: maxRetries,
   };
 }
 
@@ -309,7 +308,7 @@ function logApiMetric(metric) {
   try {
     const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
     let sheet = ss.getSheetByName(METRICS_SHEET_NAME);
-    
+
     if (!sheet) {
       try {
         sheet = ss.insertSheet(METRICS_SHEET_NAME);
@@ -318,7 +317,7 @@ function logApiMetric(metric) {
         Logger.log('[METRICS] Could not create sheet: ' + e.message);
       }
     }
-    
+
     if (sheet) {
       const now = new Date().toISOString();
       sheet.appendRow([
@@ -328,7 +327,7 @@ function logApiMetric(metric) {
         metric.model || '',
         metric.tokens,
         metric.error,
-        metric.waitTime
+        metric.waitTime,
       ]);
     }
   } catch (e) {
@@ -344,13 +343,13 @@ function callGeminiApi(modelConfig, prompt) {
   const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/';
   const model = modelConfig.model || 'gemini-2.5-flash-lite';
   const url = `${baseUrl}${model}:generateContent`;
-  
+
   // Определяем API ключ
   const apiKey = modelConfig.apiKey;
   if (!apiKey) throw new Error('No API key provided');
-  
+
   let payload = {};
-  
+
   // Строим тело запроса
   if (typeof prompt === 'string') {
     // Текстовый запрос
@@ -359,7 +358,7 @@ function callGeminiApi(modelConfig, prompt) {
       generationConfig: {
         maxOutputTokens: modelConfig.maxTokens || 12500,
         temperature: modelConfig.temperature || 0.7,
-      }
+      },
     };
   } else if (prompt.contents) {
     // Уже готовый объект contents (для Vision или сложных промптов)
@@ -368,12 +367,12 @@ function callGeminiApi(modelConfig, prompt) {
       generationConfig: {
         maxOutputTokens: modelConfig.maxTokens || 4096,
         temperature: modelConfig.temperature || 0,
-      }
+      },
     };
   } else {
     throw new Error('Invalid prompt format for callGeminiApi');
   }
-  
+
   const options = {
     method: 'POST',
     contentType: 'application/json',
@@ -383,12 +382,12 @@ function callGeminiApi(modelConfig, prompt) {
     payload: JSON.stringify(payload),
     muteHttpExceptions: true,
   };
-  
+
   // Выполняем запрос
   const resp = UrlFetchApp.fetch(url, options);
   const code = resp.getResponseCode();
   const responseText = resp.getContentText();
-  
+
   if (code !== 200) {
     let msg = 'HTTP_' + code;
     try {
@@ -397,12 +396,12 @@ function callGeminiApi(modelConfig, prompt) {
     } catch (e) {}
     throw new Error(msg);
   }
-  
+
   const data = JSON.parse(responseText);
   const candidate = data.candidates && data.candidates[0];
   const content = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
   const text = content && content.text ? content.text : '';
-  
+
   return serverProcessMarkdown_(text);
 }
 
@@ -977,20 +976,20 @@ function getScriptIdFromBindingsForOTA_(email) {
 // ===== Gemini (server-side) =====
 function serverGM_(prompt, maxTokens, temperature, apiKey) {
   Logger.log('=== serverGM_ START (Wrapped) ===');
-  
+
   const modelConfig = {
     model: 'gemini-2.5-flash-lite',
     apiKey: apiKey,
     maxTokens: maxTokens,
-    temperature: temperature
+    temperature: temperature,
   };
-  
+
   const result = executeGeminiWithRateLimit(modelConfig, prompt, {maxRetries: 3});
-  
+
   if (!result.success) {
     throw new Error(result.error);
   }
-  
+
   return result.data;
 }
 
@@ -1035,25 +1034,25 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
   }
 
   Logger.log('Processing ' + (parts.length - 1) + ' valid images');
-  
+
   // Use Rate Limited Executor
   const modelConfig = {
     model: 'gemini-2.5-flash-lite',
     apiKey: apiKey,
     maxTokens: 4096,
-    temperature: 0
+    temperature: 0,
   };
-  
+
   const promptObj = {
-      contents: [{parts: parts}]
+    contents: [{parts: parts}],
   };
-  
+
   const result = executeGeminiWithRateLimit(modelConfig, promptObj, {maxRetries: 3});
-  
+
   if (!result.success) {
     throw new Error(result.error);
   }
-  
+
   return result.data;
 }
 
@@ -1362,14 +1361,25 @@ function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddre
  */
 function serverGetSystemPrompt_(config, defaultSpreadsheetId, logs) {
   // 1. Если включен prompt_table → читаем только с удалённой таблицы
-  if (config && config.prompt_table && config.prompt_table.cellAddress) {
+  if (config && config.prompt_table) {
+    // Проверяем, что cellAddress указан и не пустой
+    if (!config.prompt_table.cellAddress || config.prompt_table.cellAddress.trim() === '') {
+      const errorMsg = '❌ Ошибка: prompt_table активен, но cellAddress не указан или пустой!';
+      logs.push({
+        timestamp: new Date().toISOString(),
+        level: 'ERROR',
+        message: errorMsg,
+      });
+      throw new Error('prompt_table требует указания cellAddress (например, A2)');
+    }
+
     logs.push({
       timestamp: new Date().toISOString(),
       level: 'INFO',
       message: '📡 prompt_table активен: системный промпт читается с удалённого сервера',
     });
 
-    const cellAddress = config.prompt_table.cellAddress;
+    const cellAddress = config.prompt_table.cellAddress.trim();
 
     try {
       // Используем существующую логику чтения с сервера,
