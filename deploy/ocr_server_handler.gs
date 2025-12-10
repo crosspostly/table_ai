@@ -152,56 +152,27 @@ function ocrBuildInstruction_(lang, delimiter) {
  * @return {string} Распознанный текст
  */
 function callGeminiVisionApi_(parts, apiKey) {
-  const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+  Logger.log('🌐 Отправка запроса к Gemini Vision API (Wrapped)...');
 
-  Logger.log('🌐 Отправка запроса к Gemini Vision API...');
-
-  const body = {
-    contents: [{
-      parts: parts
-    }],
-    generationConfig: {
-      maxOutputTokens: 4096,
-      temperature: 0  // Точное распознавание, без вымышленности
-    }
+  const modelConfig = {
+    model: 'gemini-2.0-flash',
+    apiKey: apiKey,
+    maxTokens: 4096,
+    temperature: 0
   };
-
-  const options = {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(body),
-    muteHttpExceptions: true
+  
+  const promptObj = {
+      contents: [{parts: parts}]
   };
-
-  // Вызиваем API (ЭТО ДЕЛАЕТ СЕРВЕР, НЕ КЛИЕНТ!)
-  const resp = UrlFetchApp.fetch(API_URL + '?key=' + apiKey, options);
-  const code = resp.getResponseCode();
-  const responseText = resp.getContentText();
-
-  Logger.log('🔔 Gemini API response: HTTP ' + code);
-
-  const data = JSON.parse(responseText);
-
-  if (code !== 200) {
-    const errorMsg = (data && data.error && data.error.message) || ('HTTP ' + code);
-    Logger.log('❌ Gemini API error: ' + errorMsg);
-    throw new Error('GEMINI_API_ERROR: ' + errorMsg);
+  
+  // Use Rate Limited Executor (defined in server.gs)
+  const result = executeGeminiWithRateLimit(modelConfig, promptObj, {maxRetries: 3});
+  
+  if (!result.success) {
+      throw new Error('GEMINI_API_ERROR: ' + result.error);
   }
-
-  // Извлекаем текст из ответа
-  const candidate = data.candidates && data.candidates[0];
-  const content = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
-  const text = content && content.text ? content.text : '';
-
-  if (!text || text.trim().length === 0) {
-    Logger.log('⚠️ Gemini returned empty text');
-    return '';
-  }
-
-  Logger.log('✅ Got response from Gemini: ' + text.length + ' characters');
-
-  // Очищаем markdown если нужно
-  return serverProcessMarkdown_(text);
+  
+  return result.data;
 }
 
 /**
