@@ -2,39 +2,42 @@
 // Backend: лицензии, прокси к Gemini с КЛЮЧОМ КЛИЕНТА, серверные логи
 /* exported checkServerAutoUpdate_, setupServerTriggers */
 
+// ===== Constants: Gemini Models =====
+// Обновлено: декабрь 2025, Gemini 2.5+ с максимальными лимитами
+const GEMINI_MODELS = [
+  // Tier 1: Best for Images (OCR, vision)
+  {model: 'gemini-2.5-flash-image', rpd: 10000, rpm: 600000},    // ⭐ OCR優先
+  // Tier 2: Universal (text + vision)
+  {model: 'gemini-2.5-flash', rpd: 10000, rpm: 600000},           // General use
+  {model: 'gemini-2.5-flash-lite', rpd: 10000, rpm: 1000000},     // Fast + cheap
+  // Tier 3: Advanced (thinking)
+  {model: 'gemini-2.5-pro', rpd: 1000, rpm: 40000},               // Advanced
+  {model: 'gemini-2.5-pro-lite', rpd: 1000, rpm: 40000},
+];
+
 // ===== Constants =====
-const S_GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const LOG_SHEET_NAME = 'Логи';
-const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
+const RATE_LIMIT_PER_SEC = 3;
 const AUTO_UPDATE_CHECK_INTERVAL = 6;
-
-// ⭐ OTA UPDATES
-const SERVER_VERSION = '3.5.2';
-
-// ⭐ LICENSE SHEET ID (для prompt_table)
+const API_KEYS_CACHE_DURATION = 3600; // 1 час
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
 const TOKENS_SHEET_NAME = 'Tokens';
 const BINDINGS_SHEET_NAME = 'Bindings';
+const API_GEM_SHEET_NAME = 'api_gem'; // Лист с резервными ключами
+
+// ⭐ OTA UPDATES
+const SERVER_VERSION = '3.5.3'; // Увеличена версия
 
 // ═════════════════════════════════════════════════════════════════
 // ⭐ OTA CONFIGURATION (ТОЛЬКО НА СЕРВЕРЕ!)
 // ═════════════════════════════════════════════════════════════════
 
-// Публичный или приватный GitHub репо?
-// true = публичный (no authentication needed)
-// false = приватный (requires GitHub PAT)
-const REPO_IS_PUBLIC = true; // ← СЕРВЕР решает!
-
-// Если false, установить один раз:
-// Extensions → server.gs → Console
-// setGithubPAT_('ghp_...')
-
+const REPO_IS_PUBLIC = true;
 
 // ===== Entry points =====
 function doGet(_e) {
   return json_({ok: true, ping: 'pong', time: new Date().toISOString()});
 }
-
 
 function doPost(_e) {
   try {
@@ -44,23 +47,21 @@ function doPost(_e) {
     const action = (data.action || '').toString();
     const token = (data.token || '').toString();
     const email = (data.email || '').toString();
-
-    // ⭐ ОБА ID для разных целей
-    const scriptId = (data.scriptId || '').toString(); // ⭐ Для привязки
-    const spreadsheetId = (data.spreadsheetId || '').toString(); // ⭐ Для работы
+    const scriptId = (data.scriptId || '').toString();
+    const spreadsheetId = (data.spreadsheetId || '').toString();
     const apiKey = (data.apiKey || '').toString();
 
     Logger.log('action: ' + action);
     Logger.log('email: ' + (email ? 'SET' : 'NOT SET'));
     Logger.log('token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
-    Logger.log('scriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET')); // ⭐
-    Logger.log('spreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET')); // ⭐
+    Logger.log('scriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET'));
+    Logger.log('spreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET'));
     Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
 
-    // License gate for all actions except 'status' and 'validate'
+    // License gate
     if (action !== 'status' && action !== 'validate') {
       Logger.log('Checking license...');
-      const lic = checkLicense_(token, email, scriptId, spreadsheetId); // ✅ Оба ID
+      const lic = checkLicense_(token, email, scriptId, spreadsheetId);
       Logger.log('License check result: ' + JSON.stringify(lic));
 
       if (!lic.ok) {
@@ -81,39 +82,34 @@ function doPost(_e) {
       Logger.log('prompt length: ' + prompt.length);
       Logger.log('maxTokens: ' + maxTokens);
       Logger.log('temperature: ' + temperature);
-      Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
 
-      // API key priority: use user key first, otherwise fallback to default
       let finalApiKey = userApiKey;
       let keySource = 'USER';
 
       if (!userApiKey) {
-        // Try to get default API key from script properties
         const defaultApiKey = getDefaultGeminiKey_();
         if (defaultApiKey) {
           finalApiKey = defaultApiKey;
           keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
+          Logger.log('Using DEFAULT API key');
         } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
+          Logger.log('ERROR: No API key available');
           return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
         }
-      } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
       }
 
-      // rate limit
       if (!rateLimitOk_(token)) {
-        Logger.log('Rate limit exceeded for token');
+        Logger.log('Rate limit exceeded');
         return json_({ok: false, error: 'RATE_LIMIT'}, 429);
       }
 
-      Logger.log('Calling serverGM_ with ' + keySource + ' API key');
       const t0 = Date.now();
-      let ok = true; let err = null; let text = '';
+      let ok = true;
+      let err = null;
+      let text = '';
       try {
         text = serverGM_(prompt, maxTokens, temperature, finalApiKey);
-        Logger.log('serverGM_ completed successfully, response length: ' + text.length);
+        Logger.log('serverGM_ completed, response length: ' + text.length);
       } catch (ex) {
         ok = false;
         err = String(ex && ex.message || ex);
@@ -133,43 +129,32 @@ function doPost(_e) {
         });
       } catch (_) {}
 
-      if (!ok) {
-        Logger.log('Returning error response: ' + err);
-        return json_({ok: false, error: err}, 500);
-      }
-
-      Logger.log('Returning successful response');
-      return json_({ok: true, data: text});
+      return !ok ? json_({ok: false, error: err}, 500) : json_({ok: true, data: text});
     }
     case 'gm_image': {
       Logger.log('Processing gm_image action');
       const images = data.images || [];
       const lang = (data.lang || 'ru').toString();
-      const userApiKey = (data.userApiKey || data.apiKey || '').toString(); // поддерживаем оба формата
+      const userApiKey = (data.userApiKey || data.apiKey || '').toString();
       const delimiter = (data.delimiter && String(data.delimiter).trim()) ? String(data.delimiter).trim() : null;
 
       Logger.log('images count: ' + images.length);
       Logger.log('lang: ' + lang);
-      Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
       Logger.log('delimiter: ' + (delimiter || 'NONE'));
 
-      // API key priority: use user key first, otherwise fallback to default
       let finalApiKey = userApiKey;
       let keySource = 'USER';
 
       if (!userApiKey) {
-        // Try to get default API key from script properties
         const defaultApiKey = getDefaultGeminiKey_();
         if (defaultApiKey) {
           finalApiKey = defaultApiKey;
           keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
+          Logger.log('Using DEFAULT API key');
         } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
+          Logger.log('ERROR: No API key available');
           return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
         }
-      } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
       }
 
       if (!Array.isArray(images) || images.length === 0) {
@@ -178,22 +163,22 @@ function doPost(_e) {
       }
 
       if (!rateLimitOk_(token)) {
-        Logger.log('Rate limit exceeded for token');
+        Logger.log('Rate limit exceeded');
         return json_({ok: false, error: 'RATE_LIMIT'}, 429);
       }
 
-      Logger.log('Calling serverGMImage_ with ' + keySource + ' API key');
       const t1 = Date.now();
       let ok2 = true;
       let err2 = null;
       let text2 = '';
       try {
-        text2 = serverGMImage_(images, lang, finalApiKey, delimiter);
-        Logger.log('serverGMImage_ completed successfully, response length: ' + text2.length);
+        // 🔄 Используем новую функцию с rotation
+        text2 = serverGMImageWithRotation_(images, lang, finalApiKey, delimiter, keySource);
+        Logger.log('serverGMImageWithRotation_ completed, response length: ' + text2.length);
       } catch (ex2) {
         ok2 = false;
         err2 = String(ex2 && ex2.message || ex2);
-        Logger.log('serverGMImage_ failed: ' + err2);
+        Logger.log('serverGMImageWithRotation_ failed: ' + err2);
       }
 
       try {
@@ -209,35 +194,21 @@ function doPost(_e) {
         });
       } catch (_) {}
 
-      if (!ok2) {
-        Logger.log('Returning error response: ' + err2);
-        return json_({ok: false, error: err2}, 500);
-      }
-
-      Logger.log('Returning successful response');
-      return json_({ok: true, data: text2});
+      return !ok2 ? json_({ok: false, error: err2}, 500) : json_({ok: true, data: text2});
     }
-    // ════════════════════════════════════════════════════════
-    // ACTION: GEMINI CONFIG
-    // ════════════════════════════════════════════════════════
     case 'geminiConfig': {
       Logger.log('Processing geminiConfig action');
       const subaction = (data.subaction || '').toString();
 
-      // ⭐ SUBACTION: GET DEFAULT KEY
       if (subaction === 'getDefaultKey') {
         Logger.log('📌 Getting default Gemini key');
-
-        // Проверяем лицензию
         const lic = checkLicense_(token, email, scriptId, spreadsheetId);
-
         if (!lic.ok) {
           Logger.log(`❌ License check failed: ${lic.error}`);
           return json_(lic, 403);
         }
 
         const defaultKey = getDefaultGeminiKey_();
-
         if (!defaultKey) {
           Logger.log('❌ No default key configured');
           return json_({
@@ -255,13 +226,10 @@ function doPost(_e) {
         });
       }
 
-      // ⭐ SUBACTION: SET DEFAULT KEY (администратор)
       if (subaction === 'setDefaultKey') {
         const adminEmail = data.adminEmail || '';
         const newKey = data.apiKey || '';
-
-        // Проверяем что это администратор (жестко кодируем или берём из конфига)
-        const ADMIN_EMAIL = 'sheepoff@gmail.com'; // ← Измени на свой!
+        const ADMIN_EMAIL = 'sheepoff@gmail.com';
 
         if (adminEmail !== ADMIN_EMAIL) {
           Logger.log(`❌ Unauthorized: ${adminEmail}`);
@@ -269,15 +237,11 @@ function doPost(_e) {
         }
 
         const updated = setDefaultGeminiKey_(newKey);
-
         if (!updated) {
           return json_({ok: false, error: 'FAILED_TO_UPDATE'}, 500);
         }
 
-        return json_({
-          ok: true,
-          message: 'Default Gemini key updated',
-        });
+        return json_({ok: true, message: 'Default Gemini key updated'});
       }
 
       Logger.log(`❌ Unknown geminiConfig subaction: ${subaction}`);
@@ -285,7 +249,7 @@ function doPost(_e) {
     }
     case 'status': {
       Logger.log('Processing status action');
-      const status = checkLicense_(token, email, scriptId, spreadsheetId); // ✅
+      const status = checkLicense_(token, email, scriptId, spreadsheetId);
       Logger.log('License check result: ' + JSON.stringify(status));
 
       try {
@@ -301,7 +265,6 @@ function doPost(_e) {
         });
       } catch (_) {}
 
-      Logger.log('Returning status response');
       return json_({
         ok: status.ok,
         error: status.error || null,
@@ -314,7 +277,7 @@ function doPost(_e) {
     }
     case 'validate': {
       Logger.log('Processing validate action');
-      const status = checkLicense_(token, email, scriptId, spreadsheetId); // ✅
+      const status = checkLicense_(token, email, scriptId, spreadsheetId);
       Logger.log('License check result: ' + JSON.stringify(status));
 
       try {
@@ -330,7 +293,6 @@ function doPost(_e) {
         });
       } catch (_) {}
 
-      Logger.log('Returning validate response');
       return json_({
         ok: status.ok,
         error: status.error || null,
@@ -354,7 +316,6 @@ function doPost(_e) {
         if (!config) throw new Error('NO_CONFIG');
         if (!spreadsheetId && !tableId) throw new Error('NO_SPREADSHEET_ID');
 
-        // Read data for preview
         if (config.userData && config.userData.length > 0) {
           const previews = [];
           config.userData.forEach(function(source, index) {
@@ -403,53 +364,41 @@ function doPost(_e) {
       const logs = [];
 
       Logger.log('config: ' + (config ? 'SET' : 'NOT SET'));
-      Logger.log('config.systemPrompt: ' + JSON.stringify(config.systemPrompt || null));
-      Logger.log('config.userData: ' + (config.userData ? config.userData.length + ' sources' : 'NONE'));
       Logger.log('spreadsheetId: ' + spreadsheetId);
-      Logger.log('sheetName: ' + sheetName);
-      Logger.log('cellAddress: ' + cellAddress);
-      Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
 
-      // API key priority: use user key first, otherwise fallback to default
       let finalApiKey = userApiKey;
       let keySource = 'USER';
 
       if (!userApiKey) {
-        // Try to get default API key from script properties
         const defaultApiKey = getDefaultGeminiKey_();
         if (defaultApiKey) {
           finalApiKey = defaultApiKey;
           keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
+          Logger.log('Using DEFAULT API key');
         } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
+          Logger.log('ERROR: No API key available');
           return json_({ok: false, error: 'NO_API_KEY_AVAILABLE', logs: logs}, 400);
         }
-      } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
       }
 
-      // Validate required fields
       if (!config) return json_({ok: false, error: 'NO_CONFIG', logs: logs}, 400);
       if (!spreadsheetId) return json_({ok: false, error: 'NO_SPREADSHEET_ID', logs: logs}, 400);
       if (!sheetName) return json_({ok: false, error: 'NO_SHEET_NAME', logs: logs}, 400);
       if (!cellAddress) return json_({ok: false, error: 'NO_CELL_ADDRESS', logs: logs}, 400);
       if (!finalApiKey) return json_({ok: false, error: 'NO_API_KEY', logs: logs}, 400);
 
-      // Rate limit for execute calls
       if (!rateLimitOk_(token)) {
-        Logger.log('Rate limit exceeded for token');
+        Logger.log('Rate limit exceeded');
         return json_({ok: false, error: 'RATE_LIMIT', logs: logs}, 429);
       }
 
-      Logger.log('Calling serverCollectConfigExecute_ with ' + keySource + ' API key');
       const t0 = Date.now();
       let ok = true;
       let err = null;
       let result = '';
       try {
         result = serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, finalApiKey, logs);
-        Logger.log('serverCollectConfigExecute_ completed successfully, result length: ' + result.length);
+        Logger.log('serverCollectConfigExecute_ completed, result length: ' + result.length);
       } catch (ex) {
         ok = false;
         err = String(ex && ex.message || ex);
@@ -467,16 +416,9 @@ function doPost(_e) {
           keySource: keySource,
         });
       } catch (_) {}
-      if (!ok) {
-        Logger.log('Returning error response: ' + err);
-        return json_({ok: false, error: err, logs: logs}, 500);
-      }
-
-      Logger.log('Returning successful response');
-      return json_({ok: true, data: result, logs: logs});
+      return !ok ? json_({ok: false, error: err, logs: logs}, 500) : json_({ok: true, data: result, logs: logs});
     }
 
-    // ⭐ OTA UPDATES (СЕРВЕР ОБНОВЛЯЕТ КЛИЕНТА)
     case 'ota': {
       Logger.log('═══════════════════════════════════════════════════════════════');
       Logger.log('⭐ OTA REQUEST RECEIVED');
@@ -484,12 +426,7 @@ function doPost(_e) {
 
       const subaction = (data.subaction || '').toString();
       Logger.log('📌 Subaction: ' + subaction);
-      Logger.log('📧 Email: ' + (email ? 'SET' : 'NOT SET'));
-      Logger.log('🔑 Token: ' + (token ? 'SET (length: ' + token.length + ')' : 'NOT SET'));
-      Logger.log('📄 ScriptId: ' + (scriptId ? scriptId.substring(0, 12) + '...' : 'NOT SET'));
-      Logger.log('📊 SpreadsheetId: ' + (spreadsheetId ? 'SET' : 'NOT SET'));
 
-      // КЛИЕНТ: "Проверь версию!"
       if (subaction === 'checkUpdates') {
         Logger.log('\n📌 STEP: checkUpdates');
         const clientVersion = data.clientVersion || '0.0.0';
@@ -502,8 +439,6 @@ function doPost(_e) {
         return json_(check);
       }
 
-      // КЛИЕНТ: "Обнови меня!"
-      // СЕРВЕР: "Окей, я сам всё сделаю!"
       if (subaction === 'applyUpdates') {
         Logger.log('\n📌 STEP: applyUpdates');
         Logger.log('🔐 Checking license...');
@@ -520,8 +455,6 @@ function doPost(_e) {
         Logger.log('✅ License OK');
         Logger.log('🌐 Starting OTA update for client...');
 
-        // ⭐ СЕРВЕР ВЫЗЫВАЕТ ФУНКЦИЮ ИЗ ota_updates.gs
-        // КЛИЕНТ ЗДЕСЬ НЕ УЧАСТВУЕТ!
         const result = applyUpdatesToClient_(
           token,
           email,
@@ -540,9 +473,6 @@ function doPost(_e) {
       return json_({ok: false, error: 'Unknown OTA subaction'}, 400);
     }
 
-    // ════════════════════════════════════════════════════════
-    // DEFAULT
-    // ════════════════════════════════════════════════════════
     default:
       Logger.log('ERROR: Unknown action - ' + action);
       return json_({ok: false, error: 'UNKNOWN_ACTION'}, 400);
@@ -553,58 +483,104 @@ function doPost(_e) {
   }
 }
 
-/**
- * Получить scriptId из листа Bindings (для OTA)
- * @param {string} email - Email пользователя
- * @return {string|null} Script ID или null
- */
-// eslint-disable-next-line no-unused-vars
-function getScriptIdFromBindingsForOTA_(email) {
-  try {
-    const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
-    const bindingsSheet = ss.getSheetByName(BINDINGS_SHEET_NAME);
+// ═════════════════════════════════════════════════════════════════
+// ⭐ API KEY MANAGEMENT WITH ROTATION
+// ═════════════════════════════════════════════════════════════════
 
-    if (!bindingsSheet) {
-      Logger.log('❌ [OTA] Bindings sheet not found');
-      return null;
+/**
+ * Получить все доступные API ключи (с кэшированием)
+ * @return {Array<string>} Массив ключей или пусто
+ */
+function getApiKeysFromSheet_() {
+  try {
+    const cache = CacheService.getScriptCache();
+    const cacheKey = 'api_keys_list';
+    const cached = cache.get(cacheKey);
+
+    if (cached) {
+      Logger.log('✅ API keys from cache');
+      return JSON.parse(cached);
     }
 
-    // Получаем все данные из листа Bindings
-    const bindingsData = bindingsSheet.getDataRange().getValues();
-    const emailL = String(email).toLowerCase().trim();
+    Logger.log('📖 Reading API keys from sheet: ' + LICENSE_SHEET_ID + '/' + API_GEM_SHEET_NAME);
 
-    // Ищем строку с email
-    for (let r = 1; r < bindingsData.length; r++) {
-      const row = bindingsData[r];
-      const bindEmail = String(row[0] || '').toLowerCase().trim(); // A: Email
+    const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
+    const sheet = ss.getSheetByName(API_GEM_SHEET_NAME);
 
-      if (bindEmail === emailL) {
-        const scriptId = String(row[2] || '').trim(); // C: script_ids
+    if (!sheet) {
+      Logger.log('⚠️ Sheet ' + API_GEM_SHEET_NAME + ' not found');
+      return [];
+    }
 
-        if (scriptId) {
-          Logger.log(`✅ [OTA] Found scriptId for ${email}: ${scriptId.substring(0, 12)}...`);
-          return scriptId;
-        }
+    // Читаем столбец A, начиная с A2
+    const range = sheet.getRange('A2:A');
+    const values = range.getValues();
+    const keys = [];
+
+    for (let i = 0; i < values.length; i++) {
+      const key = String(values[i][0] || '').trim();
+      if (key && key.length > 5) {
+        keys.push(key);
       }
     }
 
-    Logger.log(`❌ [OTA] No scriptId found for email: ${email}`);
-    return null;
+    Logger.log('📊 Found ' + keys.length + ' API keys in sheet');
+
+    // Кэшируем на 1 час
+    cache.put(cacheKey, JSON.stringify(keys), API_KEYS_CACHE_DURATION);
+
+    return keys;
   } catch (e) {
-    Logger.log(`❌ [OTA] Error getting scriptId from Bindings: ${e.message}`);
-    return null;
+    Logger.log('❌ Error reading API keys: ' + e.message);
+    return [];
   }
 }
 
+/**
+ * Очистить кэш API ключей (после ошибки)
+ */
+function clearApiKeyCache_() {
+  try {
+    const cache = CacheService.getScriptCache();
+    cache.remove('api_keys_list');
+    Logger.log('🔄 API keys cache cleared');
+  } catch (e) {
+    Logger.log('⚠️ Error clearing cache: ' + e.message);
+  }
+}
 
-// ===== License =====
-// ===== Gemini (server-side) =====
+/**
+ * Получить модель с минимальным лимитом (для деградации под квоту)
+ * @param {string} excludeModel - Модель для исключения (если она не работает)
+ * @return {Object} {model, rpd, rpm} или null
+ */
+function getMostRestrictiveModel_(excludeModel) {
+  for (let i = GEMINI_MODELS.length - 1; i >= 0; i--) {
+    if (GEMINI_MODELS[i].model !== excludeModel) {
+      return GEMINI_MODELS[i];
+    }
+  }
+  return null;
+}
+
+/**
+ * Получить модель по приоритету
+ * @param {number} index - Индекс в массиве (0 = самая приоритетная)
+ * @return {Object} {model, rpd, rpm} или null
+ */
+function getModelByIndex_(index) {
+  return index >= 0 && index < GEMINI_MODELS.length ? GEMINI_MODELS[index] : null;
+}
+
+// ═════════════════════════════════════════════════════════════════
+// ⭐ GEMINI API CALLS WITH ROTATION
+// ═════════════════════════════════════════════════════════════════
+
 function serverGM_(prompt, maxTokens, temperature, apiKey) {
   Logger.log('=== serverGM_ START ===');
   Logger.log('prompt length: ' + (prompt ? prompt.length : 0));
   Logger.log('maxTokens: ' + maxTokens);
   Logger.log('temperature: ' + temperature);
-  Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
 
   if (!prompt || typeof prompt !== 'string') {
     Logger.log('ERROR: Empty or invalid prompt');
@@ -615,7 +591,13 @@ function serverGM_(prompt, maxTokens, temperature, apiKey) {
     throw new Error('NO_CLIENT_KEY');
   }
 
+  // Используем первую (самую мощную) модель для текста
+  const model = GEMINI_MODELS[0] ? GEMINI_MODELS[0].model : 'gemini-2.5-flash';
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
+
+  Logger.log('Using model: ' + model);
   Logger.log('Building request to Gemini API...');
+
   const requestBody = {
     contents: [{parts: [{text: prompt}]}],
     generationConfig: {
@@ -627,17 +609,19 @@ function serverGM_(prompt, maxTokens, temperature, apiKey) {
   const options = {
     method: 'POST',
     contentType: 'application/json',
+    headers: {
+      'x-goog-api-key': apiKey,  // ✅ Правильный заголовок!
+    },
     payload: JSON.stringify(requestBody),
     muteHttpExceptions: true,
   };
 
   Logger.log('Sending request to Gemini API...');
-  const resp = UrlFetchApp.fetch(S_GEMINI_API_URL + '?key=' + apiKey, options);
+  const resp = UrlFetchApp.fetch(url, options);
   const code = resp.getResponseCode();
   const responseText = resp.getContentText();
 
   Logger.log('Gemini API response code: ' + code);
-  Logger.log('Gemini API response length: ' + responseText.length);
 
   const data = JSON.parse(responseText);
   if (code !== 200) {
@@ -654,31 +638,37 @@ function serverGM_(prompt, maxTokens, temperature, apiKey) {
   return serverProcessMarkdown_(text);
 }
 
-function serverGMImage_(images, lang, apiKey, delimiter) {
-  Logger.log('=== serverGMImage_ START ===');
+/**
+ * Улучшенная функция OCR с поддержкой rotation и fallback
+ */
+function serverGMImageWithRotation_(images, lang, userApiKey, delimiter, keySource) {
+  Logger.log('=== serverGMImageWithRotation_ START ===');
   Logger.log('images count: ' + images.length);
   Logger.log('lang: ' + lang);
-  Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
   Logger.log('delimiter: ' + (delimiter || 'NONE'));
+  Logger.log('keySource: ' + keySource);
 
-  // images: [{ mimeType, data(base64) }, ...]
   if (!Array.isArray(images) || images.length === 0) {
     Logger.log('ERROR: No images provided');
     throw new Error('NO_IMAGES');
   }
-  if (!apiKey) {
+  if (!userApiKey) {
     Logger.log('ERROR: No API key provided');
     throw new Error('NO_CLIENT_KEY');
   }
 
+  // Получаем резервные ключи из таблицы
+  const backupKeys = getApiKeysFromSheet_();
+  Logger.log('📊 Backup keys available: ' + backupKeys.length);
+
   let instruction;
   if (delimiter && delimiter.length) {
-    instruction = 'Задача: транскрибируй текст на каждом изображении БЕЗ добавления от себя. Верни только чистый текст. Если изображений несколько — разделяй отзывы строкой с точным разделителем: ' + delimiter + ' (четыре подчёркивания), лучше на отдельной строке.' + (lang ? (' Язык исходного текста: ' + lang + '.') : '');
+    instruction = 'Задача: транскрибируй текст на каждом изображении БЕЗ добавления от себя. Верни только чистый текст. Разделяй отзывы: ' + delimiter + (lang ? (' Язык: ' + lang + '.') : '');
   } else {
-    instruction = 'Задача: транскрибируй текст на каждом изображении БЕЗ добавления от себя. Верни только чистый текст. Если изображений несколько — разделяй отзывы нумерацией (1., 2., 3.).' + (lang ? (' Язык исходного текста: ' + lang + '.') : '');
+    instruction = 'Задача: транскрибируй текст на каждом изображении БЕЗ добавления от себя. Верни только чистый текст. Разделяй нумерацией (1., 2., 3.).' + (lang ? (' Язык: ' + lang + '.') : '');
   }
 
-  Logger.log('Instruction: ' + instruction.substring(0, 100) + '...');
+  Logger.log('Instruction length: ' + instruction.length);
 
   const parts = [{text: instruction}];
   for (let i = 0; i < images.length; i++) {
@@ -695,39 +685,109 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
   }
 
   Logger.log('Processing ' + (parts.length - 1) + ' valid images');
-  const body = {contents: [{parts: parts}], generationConfig: {maxOutputTokens: 4096, temperature: 0}};
+  const body = {
+    contents: [{parts: parts}],
+    generationConfig: {maxOutputTokens: 4096, temperature: 0},
+  };
 
-  Logger.log('Sending request to Gemini Vision API...');
-  const resp = UrlFetchApp.fetch(S_GEMINI_API_URL + '?key=' + apiKey, {
-    method: 'post', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true,
-  });
+  // 🔄 ROTATION LOGIC: 2 попытки на модель, потом следующий ключ
+  const keysToTry = [userApiKey].concat(backupKeys);
+  let lastError = null;
 
-  const code = resp.getResponseCode();
-  const responseText = resp.getContentText();
+  for (let keyIdx = 0; keyIdx < keysToTry.length; keyIdx++) {
+    const currentKey = keysToTry[keyIdx];
+    const isBackup = keyIdx > 0;
 
-  Logger.log('Gemini Vision API response code: ' + code);
-  Logger.log('Gemini Vision API response length: ' + responseText.length);
+    Logger.log('\n🔑 Key attempt ' + (keyIdx + 1) + ' of ' + keysToTry.length + (isBackup ? ' (BACKUP)' : ' (USER)'));
 
-  const data = JSON.parse(responseText);
-  if (code !== 200) {
-    const msg = data && data.error && data.error.message || ('HTTP_' + code);
-    Logger.log('Gemini Vision API error: ' + msg);
-    throw new Error(msg);
+    // Пробуем каждую модель (2 раза на модель)
+    for (let modelIdx = 0; modelIdx < GEMINI_MODELS.length; modelIdx++) {
+      const modelObj = GEMINI_MODELS[modelIdx];
+      const model = modelObj.model;
+
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        Logger.log('  📦 Model attempt ' + modelIdx + '/' + GEMINI_MODELS.length + ' (' + model + '), try ' + attempt + '/2');
+
+        try {
+          const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
+
+          const options = {
+            method: 'post',
+            contentType: 'application/json',
+            headers: {
+              'x-goog-api-key': currentKey,  // ✅ Правильный заголовок!
+            },
+            payload: JSON.stringify(body),
+            muteHttpExceptions: true,
+          };
+
+          Logger.log('    🌐 POST ' + url);
+          const resp = UrlFetchApp.fetch(url, options);
+          const code = resp.getResponseCode();
+          const responseText = resp.getContentText();
+
+          Logger.log('    ✓ HTTP ' + code);
+
+          const data = JSON.parse(responseText);
+
+          // ✅ Success
+          if (code === 200) {
+            Logger.log('    ✅ SUCCESS with ' + (isBackup ? 'BACKUP' : 'USER') + ' key #' + (keyIdx + 1) + ', model ' + model);
+            const candidate = data.candidates && data.candidates[0];
+            const content = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
+            const text = content && content.text ? content.text : '';
+            return serverProcessMarkdown_(text);
+          }
+
+          // 429 = Quota exceeded
+          if (code === 429) {
+            Logger.log('    ⚠️ QUOTA (429) - trying next model...');
+            lastError = 'QUOTA_LIMIT';
+            break; // Переходим к следующей модели
+          }
+
+          // 401/403 = Auth error
+          if (code === 401 || code === 403) {
+            Logger.log('    ❌ AUTH ERROR (' + code + ') - invalid key, trying next...');
+            lastError = 'AUTH_ERROR_' + code;
+            break; // Переходим к следующему ключу
+          }
+
+          // Другие ошибки
+          const msg = data && data.error && data.error.message || ('HTTP_' + code);
+          Logger.log('    ❌ ERROR: ' + msg);
+          lastError = msg;
+          break;
+        } catch (ex) {
+          Logger.log('    💥 EXCEPTION: ' + ex.message);
+          lastError = ex.message;
+        }
+      }
+
+      // Если 401/403, выходим из цикла моделей и переходим к следующему ключу
+      if (lastError === 'AUTH_ERROR_401' || lastError === 'AUTH_ERROR_403') {
+        Logger.log('  🔑 AUTH failed, trying next API key...');
+        break;
+      }
+    }
   }
 
-  const candidate = data.candidates && data.candidates[0];
-  const content = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
-  const text = content && content.text ? content.text : '';
+  // Все ключи и модели исчерпаны
+  Logger.log('\n❌ ALL ATTEMPTS FAILED');
+  Logger.log('📊 Last error: ' + lastError);
+  throw new Error('ALL_KEYS_EXHAUSTED: ' + (lastError || 'UNKNOWN_ERROR'));
+}
 
-  Logger.log('Gemini Vision API success, response length: ' + text.length);
-  return serverProcessMarkdown_(text);
+function serverGMImage_(images, lang, apiKey, delimiter) {
+  Logger.log('=== serverGMImage_ START (legacy) ===');
+  // Legacy функция - перенаправляем на новую
+  return serverGMImageWithRotation_(images, lang, apiKey, delimiter, 'LEGACY');
 }
 
 function serverProcessMarkdown_(text) {
   if (!text || typeof text !== 'string') return text;
   const isMd = /\*\*[^*]+\*\*|\*[^*]+\*|^#{1,6}\s+/m.test(text) || /```[\s\S]*?```/.test(text) || /`[^`]+`/.test(text);
   if (!isMd) return text;
-  // простая очистка
   const t = text
     .replace(/```[\w]*\n?([\s\S]*?)\n?```/g, function(_m, code) {
       return '\n' + String(code||'').trim() + '\n';
@@ -767,7 +827,6 @@ function json_(obj, status) {
   return out;
 }
 
-// Rate limit: max N requests per second per token
 function rateLimitOk_(token) {
   try {
     const cache = CacheService.getScriptCache();
@@ -776,14 +835,13 @@ function rateLimitOk_(token) {
     const v = cache.get(key);
     const n = v ? parseInt(v, 10) : 0;
     if (n >= RATE_LIMIT_PER_SEC) return false;
-    cache.put(key, String(n + 1), 2); // TTL 2s
+    cache.put(key, String(n + 1), 2);
     return true;
   } catch (e) {
     return true;
   }
 }
 
-// Server logs to the admin spreadsheet
 function serverLog_(info) {
   try {
     Logger.log('=== serverLog_ START ===');
@@ -791,9 +849,6 @@ function serverLog_(info) {
     Logger.log('ok: ' + (info.ok ? 'true' : 'false'));
     Logger.log('error: ' + (info.error || 'NONE'));
     Logger.log('email: ' + (info.email || 'NONE'));
-    Logger.log('promptLen: ' + (info.promptLen || 0));
-    Logger.log('ms: ' + (info.ms || 0));
-    Logger.log('keySource: ' + (info.keySource || 'NONE'));
 
     const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
     const sh = ss.getSheetByName(LOG_SHEET_NAME) || ss.insertSheet(LOG_SHEET_NAME);
@@ -817,11 +872,8 @@ function serverLog_(info) {
     Logger.log('serverLog_ completed successfully');
   } catch (e) {
     Logger.log('serverLog_ ERROR: ' + e.message);
-    // Игнорируем ошибки логирования чтобы не ломать основной функционал
-    console.error('serverLog_ ERROR:', e);
   }
 }
-
 
 function maskToken_(t) {
   const s = String(t || '');
@@ -829,50 +881,12 @@ function maskToken_(t) {
   return s.substring(0, 4) + '****';
 }
 
-// ═══════════════════════════════════════════════════════════════
-// ⭐ OTA UPDATES
-// ═══════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
+// ⭐ GEMINI API KEY MANAGEMENT
+// ═════════════════════════════════════════════════════════════════
 
 /**
- * Скачать файл с GitHub (raw.githubusercontent.com)
- */
-function fetchFileContent_(fileName) {
-  const REPO = 'crosspostly/table_ai';
-  const BRANCH = 'main';
-  const PATH = 'deploy/';
-
-  try {
-    const url = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${PATH}${fileName}`;
-
-    Logger.log('Fetching: ' + url);
-
-    const resp = UrlFetchApp.fetch(url, {
-      method: 'get',
-      muteHttpExceptions: true,
-    });
-
-    const code = resp.getResponseCode();
-
-    if (code !== 200) {
-      Logger.log(`GitHub fetch failed: HTTP ${code} for ${fileName}`);
-      return null;
-    }
-
-    const content = resp.getContentText();
-    Logger.log(`Fetched ${fileName}: ${content.length} bytes`);
-
-    return content;
-  } catch (e) {
-    Logger.log(`Error fetching ${fileName}: ${e.message}`);
-    return null;
-  }
-}
-
-// ===== Gemini API Key Management =====
-
-/**
- * Получить Gemini API ключ по умолчанию (из свойств сервера)
- * @return {string|null} API ключ или null
+ * Получить Gemini API ключ по умолчанию
  */
 function getDefaultGeminiKey_() {
   try {
@@ -884,7 +898,7 @@ function getDefaultGeminiKey_() {
       return null;
     }
 
-    Logger.log('✅ Got default Gemini key from server: ' + key.substring(0, 10) + '...');
+    Logger.log('✅ Got default Gemini key from server');
     return key;
   } catch (e) {
     Logger.log('❌ Error getting default Gemini key: ' + e.message);
@@ -893,8 +907,7 @@ function getDefaultGeminiKey_() {
 }
 
 /**
- * Установить Gemini API ключ по умолчанию (администратор)
- * @param {string} apiKey - Новый API ключ
+ * Установить Gemini API ключ по умолчанию
  */
 function setDefaultGeminiKey_(apiKey) {
   try {
@@ -906,7 +919,7 @@ function setDefaultGeminiKey_(apiKey) {
     const props = PropertiesService.getScriptProperties();
     props.setProperty('GEMINI_API_KEY', apiKey);
 
-    Logger.log('✅ Default Gemini key updated: ' + apiKey.substring(0, 10) + '...');
+    Logger.log('✅ Default Gemini key updated');
     return true;
   } catch (e) {
     Logger.log('❌ Error setting default Gemini key: ' + e.message);
@@ -914,152 +927,115 @@ function setDefaultGeminiKey_(apiKey) {
   }
 }
 
-// ===== CollectConfig Server Functions =====
+// ═════════════════════════════════════════════════════════════════
+// ⭐ COLLECTCONFIG SERVER FUNCTIONS
+// ═════════════════════════════════════════════════════════════════
 
-/**
- * Execute CollectConfig configuration on the server
- * @param {Object} config - CollectConfig configuration
- * @param {string} spreadsheetId - Target spreadsheet ID
- * @param {string} sheetName - Target sheet name
- * @param {string} cellAddress - Target cell address
- * @param {string} apiKey - Gemini API key
- * @param {Array} logs - Array to collect log entries
- * @return {string} AI response text
- */
 function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, apiKey, logs) {
-  logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🚀 Начало выполнения CollectConfig на сервере'});
-  logs.push({timestamp: new Date().toISOString(), level: 'DEBUG', message: '🔧 Config: ' + JSON.stringify({
-    systemPrompt: config.systemPrompt,
-    userDataCount: config.userData ? config.userData.length : 0,
-    spreadsheetId: spreadsheetId,
-  })});
+  logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🚀 Начало выполнения CollectConfig'});
 
   try {
-    // Get system prompt
     logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📖 Загрузка System Prompt...'});
     const systemPrompt = serverGetSystemPrompt_(config, spreadsheetId, logs);
     if (systemPrompt) {
-      logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `✅ System Prompt загружен: ${systemPrompt.length} символов`});
-    } else {
-      logs.push({timestamp: new Date().toISOString(), level: 'WARN', message: '⚠️ System Prompt не задан'});
+      logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `✅ System Prompt: ${systemPrompt.length} символов`});
     }
 
-    // Get user data
     logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📦 Загрузка User Data...'});
     const userDataParts = [];
     if (config.userData && config.userData.length > 0) {
-      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📦 User Data: ${config.userData.length} источников`});
+      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📦 Sources: ${config.userData.length}`});
 
       config.userData.forEach(function(source, index) {
         if (source.sheet && source.cell) {
-          logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  📍 Источник ${index + 1}: ${source.sheet}!${source.cell}`});
-          logs.push({timestamp: new Date().toISOString(), level: 'DEBUG', message: `  🔍 Источник ${index + 1} полный: ${JSON.stringify(source)}`});
           try {
             const data = serverReadData_(spreadsheetId, source.sheet, source.cell, logs);
-            logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `  ✅ Прочитано: ${data.length} символов`});
-            userDataParts.push(`Источник (${source.sheet}!${source.cell}):\n${data}`);
+            logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `  ✅ Source ${index + 1}: ${data.length} символов`});
+            userDataParts.push(`Source (${source.sheet}!${source.cell}):\n${data}`);
           } catch (e) {
-            logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `  ❌ Ошибка: ${e.message}`});
-            userDataParts.push(`Источник (${source.sheet}!${source.cell}):\n[ОШИБКА: ${e.message}]`);
+            logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `  ❌ Source ${index + 1}: ${e.message}`});
+            userDataParts.push(`Source (${source.sheet}!${source.cell}):\n[ERROR: ${e.message}]`);
           }
         }
       });
-    } else {
-      logs.push({timestamp: new Date().toISOString(), level: 'WARN', message: '⚠️ User Data не задан'});
     }
 
-    // Build final prompt
     let finalPrompt = '';
     if (systemPrompt) {
       finalPrompt += systemPrompt + '\n\n---\n\n';
     }
     if (userDataParts.length > 0) {
-      finalPrompt += 'ДАННЫЕ:\n' + userDataParts.join('\n\n');
+      finalPrompt += 'DATA:\n' + userDataParts.join('\n\n');
     }
 
     if (!finalPrompt.trim()) {
-      throw new Error('Нет данных для обработки!');
+      throw new Error('NO_DATA');
     }
 
-    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📝 Финальный промпт: ${finalPrompt.length} символов`});
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `📝 Final prompt: ${finalPrompt.length} символов`});
 
-    // Call AI with defaults or config overrides
     const maxTokens = config.maxTokens || 25000;
     const temperature = config.temperature || 0.7;
 
-    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🤖 Отправка запроса в Gemini...'});
+    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🤖 Calling AI...'});
     const aiResult = serverGM_(finalPrompt, maxTokens, temperature, apiKey);
 
     if (!aiResult || aiResult.startsWith('Error:')) {
-      throw new Error('Ошибка AI: ' + aiResult);
+      throw new Error('AI_ERROR: ' + aiResult);
     }
 
-    logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `✅ Получен ответ от AI: ${aiResult.length} символов`});
+    logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `✅ AI response: ${aiResult.length} символов`});
 
-    // Write result to target sheet
     try {
       const targetSpreadsheet = SpreadsheetApp.openById(spreadsheetId);
       const targetSheet = targetSpreadsheet.getSheetByName(sheetName);
       if (targetSheet) {
         targetSheet.getRange(cellAddress).setValue(aiResult);
-        logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `✅ Результат записан в ${sheetName}!${cellAddress}`});
+        logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: `✅ Written to ${sheetName}!${cellAddress}`});
       } else {
-        throw new Error(`Лист "${sheetName}" не найден`);
+        throw new Error(`Sheet "${sheetName}" not found`);
       }
     } catch (e) {
-      logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `❌ Ошибка записи результата: ${e.message}`});
-      throw new Error(`Не удалось записать результат в ${sheetName}!${cellAddress}: ${e.message}`);
+      logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `❌ Write error: ${e.message}`});
+      throw new Error(`Cannot write to ${sheetName}!${cellAddress}: ${e.message}`);
     }
 
-    logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ Выполнение CollectConfig завершено успешно'});
+    logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ CollectConfig completed'});
     return aiResult;
   } catch (error) {
-    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `❌ Ошибка выполнения: ${error.message}`});
+    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `❌ Error: ${error.message}`});
     throw error;
   }
 }
 
-/**
- * Get system prompt from configuration
- * @param {Object} config - CollectConfig configuration
- * @param {string} defaultSpreadsheetId - Default spreadsheet ID
- * @param {Array} logs - Array to collect log entries
- * @return {string} System prompt text
- */
 function serverGetSystemPrompt_(config, defaultSpreadsheetId, logs) {
-  // 1. Если включен prompt_table → читаем только с удалённой таблицы
   if (config && config.prompt_table && config.prompt_table.cellAddress) {
     logs.push({
       timestamp: new Date().toISOString(),
       level: 'INFO',
-      message: '📡 prompt_table активен: системный промпт читается с удалённого сервера',
+      message: '📡 Using remote prompt_table',
     });
 
     const cellAddress = config.prompt_table.cellAddress;
 
     try {
-      // Используем существующую логику чтения с сервера,
-      // которая сама знает ID таблицы и лист.
       const prompt = readPromptFromServerTable_(cellAddress, logs);
-
       logs.push({
         timestamp: new Date().toISOString(),
-        level: 'INFO',
-        message: '✅ prompt_table прочитан с сервера: ' + cellAddress,
+        level: 'SUCCESS',
+        message: '✅ prompt_table loaded: ' + cellAddress,
       });
-
       return prompt || '';
     } catch (e) {
       logs.push({
         timestamp: new Date().toISOString(),
         level: 'ERROR',
-        message: '❌ Не удалось прочитать prompt_table с сервера: ' + e.message,
+        message: '❌ prompt_table error: ' + e.message,
       });
-      throw new Error('Не удалось прочитать prompt_table: ' + e.message);
+      throw new Error('Cannot read prompt_table: ' + e.message);
     }
   }
 
-  // СТАРЫЙ ПОДХОД: Использовать systemPrompt (обратная совместимость)
   if (!config.systemPrompt || !config.systemPrompt.sheet || !config.systemPrompt.cell) {
     return '';
   }
@@ -1068,60 +1044,37 @@ function serverGetSystemPrompt_(config, defaultSpreadsheetId, logs) {
   let sheetName;
 
   const promptSource = config.systemPrompt.sheet;
-
-  logs.push({timestamp: new Date().toISOString(), level: 'DEBUG', message: '🔍 SystemPrompt source: ' + promptSource});
+  const promptSourceLower = (promptSource || '').toString().toLowerCase().trim();
 
   try {
-    // Проверяем кодовое слово "prompt_table" или "promt_table"
-    const promptSourceLower = (promptSource || '').toString().toLowerCase().trim();
     if (promptSourceLower === 'prompt_table' || promptSourceLower === 'promt_table') {
-      // Используем таблицу с лицензиями и промптами по умолчанию
       spreadsheetId = LICENSE_SHEET_ID;
-      sheetName = 'Промты'; // Лист с промптами в лицензионной таблице
-      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Использование DEFAULT таблицы с промптами: ' + LICENSE_SHEET_ID});
-      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 Лист: Промты'});
+      sheetName = 'Промты';
     } else if (isTableId(promptSource)) {
-      // ID защищённой таблицы
       spreadsheetId = promptSource;
-      sheetName = 'Промты'; // ВСЕГДА Промты!
-      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Защищённая таблица (ID): ' + spreadsheetId});
-      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 Лист: Промты'});
+      sheetName = 'Промты';
     } else {
-      // Название листа в текущей таблице клиента
       spreadsheetId = defaultSpreadsheetId;
       sheetName = promptSource;
-      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📂 Таблица клиента: ' + spreadsheetId});
-      logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📄 Лист клиента: ' + sheetName});
     }
 
-    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '📍 Ячейка: ' + config.systemPrompt.cell});
-
     const prompt = serverReadData_(spreadsheetId, sheetName, config.systemPrompt.cell, logs);
-
-    logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ Промпт прочитан, ' + prompt.length + ' символов'});
-
+    logs.push({timestamp: new Date().toISOString(), level: 'SUCCESS', message: '✅ System Prompt loaded: ' + prompt.length});
     return prompt;
   } catch (error) {
-    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: '❌ Ошибка чтения System Prompt: ' + error.message});
-    throw new Error('Не удалось прочитать System Prompt: ' + error.message);
+    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: '❌ System Prompt error: ' + error.message});
+    throw new Error('Cannot read System Prompt: ' + error.message);
   }
 }
 
-/**
- * Read prompt from server table (LICENSE_SHEET_ID)
- * @param {string} cellAddress - Cell address to read from
- * @param {Array} logs - Array to collect log entries
- * @return {string} Prompt text
- */
 function readPromptFromServerTable_(cellAddress, logs) {
-  // Используем константы напрямую - сервер сам знает ID таблицы и лист
   const promptTableId = LICENSE_SHEET_ID;
   const promptSheetName = 'Промты';
 
   logs.push({
     timestamp: new Date().toISOString(),
     level: 'INFO',
-    message: '📂 Чтение prompt_table: ' + promptTableId + ' / ' + promptSheetName + '!' + cellAddress,
+    message: '📂 Reading prompt_table: ' + promptTableId + '/' + promptSheetName + '!' + cellAddress,
   });
 
   try {
@@ -1129,50 +1082,38 @@ function readPromptFromServerTable_(cellAddress, logs) {
     logs.push({
       timestamp: new Date().toISOString(),
       level: 'SUCCESS',
-      message: '✅ Промпт прочитан с серверной таблицы, ' + prompt.length + ' символов',
+      message: '✅ Prompt loaded: ' + prompt.length + ' chars',
     });
     return prompt;
   } catch (error) {
     logs.push({
       timestamp: new Date().toISOString(),
       level: 'ERROR',
-      message: '❌ Ошибка чтения с серверной таблицы: ' + error.message,
+      message: '❌ Error reading prompt: ' + error.message,
     });
     throw error;
   }
 }
 
-/**
- * Read data from spreadsheet
- * @param {string} spreadsheetId - Spreadsheet ID
- * @param {string} sheetName - Sheet name
- * @param {string} cellAddress - Cell/range address
- * @param {Array} logs - Array to collect log entries
- * @return {string} Flattened text data
- */
 function serverReadData_(spreadsheetId, sheetName, cellAddress, logs) {
-  logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  → Чтение ${sheetName}!${cellAddress} из ${spreadsheetId}`});
+  logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  → Reading ${sheetName}!${cellAddress}`});
 
   try {
     const ss = SpreadsheetApp.openById(spreadsheetId);
     const sheet = ss.getSheetByName(sheetName);
 
     if (!sheet) {
-      throw new Error(`Лист "${sheetName}" не найден`);
+      throw new Error(`Sheet "${sheetName}" not found`);
     }
 
-    // Read range
     const range = sheet.getRange(cellAddress);
     const values = range.getValues();
 
     if (!values || values.length === 0) {
-      logs.push({timestamp: new Date().toISOString(), level: 'WARN', message: `  → Пустой диапазон: ${cellAddress}`});
+      logs.push({timestamp: new Date().toISOString(), level: 'WARN', message: `  → Empty range: ${cellAddress}`});
       return '';
     }
 
-    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  → Прочитано: ${values.length} строк × ${values[0] ? values[0].length : 0} столбцов`});
-
-    // Flatten and filter empty values
     const result = [];
     for (let r = 0; r < values.length; r++) {
       for (let c = 0; c < values[r].length; c++) {
@@ -1183,106 +1124,68 @@ function serverReadData_(spreadsheetId, sheetName, cellAddress, logs) {
       }
     }
 
-    logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: `  → После фильтрации: ${result.length} значений`});
-
     const dataPreview = result.join('\n');
-    const previewLength = Math.min(100, dataPreview.length);
-    logs.push({timestamp: new Date().toISOString(), level: 'DEBUG', message: `  → Превью данных (${previewLength} символов): ${dataPreview.substring(0, previewLength)}${dataPreview.length > previewLength ? '...' : ''}`});
-
     return dataPreview;
   } catch (error) {
-    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `  ❌ Ошибка чтения: ${error.message}`});
-    throw new Error(`Не удалось прочитать ${sheetName}!${cellAddress}: ${error.message}`);
+    logs.push({timestamp: new Date().toISOString(), level: 'ERROR', message: `  ❌ Error: ${error.message}`});
+    throw new Error(`Cannot read ${sheetName}!${cellAddress}: ${error.message}`);
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 // ⭐ SERVER AUTO-UPDATE
-// ═══════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 
-/**
- * Фоновая проверка обновлений сервера (триггер каждые 6 часов)
- */
-// eslint-disable-next-line no-unused-vars
 function checkServerAutoUpdate_() {
   try {
     Logger.log('🌙 Server auto-update check started');
 
-    // Получаем текущий серверный код
     const currentServerCode = getServerFileContent_('server.gs');
-
     if (!currentServerCode) {
       Logger.log('❌ Cannot get current server code');
       return;
     }
 
-    // Получаем код с GitHub
-    const githubServerCode = fetchFileContent_(SERVER_PATH);
-
+    const githubServerCode = fetchFileContent_('server.gs');
     if (!githubServerCode) {
-      Logger.log('⚠️ Cannot fetch from GitHub - skipping update');
+      Logger.log('⚠️ Cannot fetch from GitHub');
       return;
     }
 
-    // Сравниваем
     const currentHash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, currentServerCode);
     const githubHash = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, githubServerCode);
 
     const currentHashB64 = Utilities.base64Encode(currentHash);
     const githubHashB64 = Utilities.base64Encode(githubHash);
 
-    Logger.log(`Current server hash: ${currentHashB64.substring(0, 20)}...`);
-    Logger.log(`GitHub server hash:  ${githubHashB64.substring(0, 20)}...`);
-
     if (currentHashB64 === githubHashB64) {
       Logger.log('✅ Server is up to date');
       return;
     }
 
-    // Обновление доступно!
-    Logger.log('🚀 Server update available! Updating...');
+    Logger.log('🚀 Server update available!');
 
-    // Обновляем серверный файл
     const currentProject = ScriptApp.getScript();
     const serverFile = currentProject.getFiles().find(function(file) {
       return file.getName() === 'server';
     });
 
     if (!serverFile) {
-      Logger.log('❌ Server file not found in project');
+      Logger.log('❌ Server file not found');
       return;
     }
 
     try {
       serverFile.setContent(githubServerCode);
-      Logger.log('✅ Server file updated successfully!');
-
-      // Логируем обновление
-      serverLog_({
-        action: 'SERVER_AUTO_UPDATE',
-        oldVersion: SERVER_VERSION,
-        newHash: githubHashB64.substring(0, 20) + '...',
-        timestamp: new Date().toISOString(),
-      });
-
-      // Перезагружаем deployment (если нужно)
-      Logger.log('🎉 Server auto-update completed!');
+      Logger.log('✅ Server file updated!');
     } catch (updateError) {
       Logger.log('❌ Update failed: ' + updateError.message);
-      serverLog_({
-        action: 'SERVER_AUTO_UPDATE_ERROR',
-        error: updateError.message,
-        timestamp: new Date().toISOString(),
-      });
     }
   } catch (e) {
-    Logger.log('❌ Server auto-update error: ' + e.message);
+    Logger.log('❌ Error: ' + e.message);
   }
 }
 
-/**
- * Получить содержимое файла сервера
- */
 function getServerFileContent_(fileName) {
   try {
     const project = ScriptApp.getScript();
@@ -1300,9 +1203,35 @@ function getServerFileContent_(fileName) {
   }
 }
 
-/**
- * Установить триггер автообновления сервера
- */
+function fetchFileContent_(fileName) {
+  const REPO = 'crosspostly/table_ai';
+  const BRANCH = 'main';
+  const PATH = 'deploy/';
+
+  try {
+    const url = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${PATH}${fileName}`;
+    Logger.log('Fetching: ' + url);
+
+    const resp = UrlFetchApp.fetch(url, {
+      method: 'get',
+      muteHttpExceptions: true,
+    });
+
+    const code = resp.getResponseCode();
+    if (code !== 200) {
+      Logger.log(`GitHub fetch failed: HTTP ${code}`);
+      return null;
+    }
+
+    const content = resp.getContentText();
+    Logger.log(`Fetched ${fileName}: ${content.length} bytes`);
+    return content;
+  } catch (e) {
+    Logger.log(`Error fetching ${fileName}: ${e.message}`);
+    return null;
+  }
+}
+
 function installServerAutoUpdate_() {
   try {
     const triggers = ScriptApp.getProjectTriggers();
@@ -1325,23 +1254,18 @@ function installServerAutoUpdate_() {
       .everyHours(AUTO_UPDATE_CHECK_INTERVAL)
       .create();
 
-    Logger.log(`✅ Server auto-update trigger installed (every ${AUTO_UPDATE_CHECK_INTERVAL} hours)`);
+    Logger.log(`✅ Auto-update trigger installed (every ${AUTO_UPDATE_CHECK_INTERVAL} hours)`);
   } catch (e) {
-    Logger.log('❌ Error installing server auto-update: ' + e.message);
+    Logger.log('❌ Error: ' + e.message);
   }
 }
-/**
- * Установить все триггеры для сервера (запустить один раз после деплоя)
- */
-// eslint-disable-next-line no-unused-vars
+
 function setupServerTriggers() {
   Logger.log('=== SETUP SERVER TRIGGERS ===');
 
   try {
-    // 1. Устанавливаем триггер автообновления
     installServerAutoUpdate_();
 
-    // 2. Проверяем что он создался
     const triggers = ScriptApp.getProjectTriggers();
     let autoUpdateCount = 0;
 
@@ -1351,16 +1275,8 @@ function setupServerTriggers() {
       }
     }
 
-    Logger.log(`✅ Server auto-update trigger: ${autoUpdateCount} installed`);
+    Logger.log(`✅ Auto-update trigger: ${autoUpdateCount}`);
     Logger.log(`⏰ Check every ${AUTO_UPDATE_CHECK_INTERVAL} hours`);
-
-    // 3. Логируем в sheet
-    serverLog_({
-      action: 'SERVER_TRIGGERS_INSTALLED',
-      triggers: autoUpdateCount,
-      version: SERVER_VERSION,
-      timestamp: new Date().toISOString(),
-    });
 
     return {success: true, triggers: autoUpdateCount};
   } catch (e) {
@@ -1370,29 +1286,13 @@ function setupServerTriggers() {
 }
 
 // ═════════════════════════════════════════════════════════════════
-// GitHub PAT (АДМИНИСТРАТОР устанавливает один раз для приватного репо)
+// GitHub helpers (для приватных репо)
 // ═════════════════════════════════════════════════════════════════
 
-/**
- * Установить GitHub PAT (администратор)
- *
- * ВЫЗЫВАЕТСЯ ОДИН РАЗ при настройке приватного репо!
- *
- * Extensions → server.gs → Console
- * setGithubPAT('ghp_YOUR_TOKEN_HERE')
- */
-// eslint-disable-next-line no-unused-vars
 function setGithubPAT(pat) {
   return setGithubPAT_(pat);
 }
 
-/**
- * Проверить что GitHub доступен
- *
- * Extensions → server.gs → Console
- * testGithubAccess()
- */
-// eslint-disable-next-line no-unused-vars
 function testGithubAccess() {
   try {
     const pat = getGithubPAT_();
@@ -1404,5 +1304,53 @@ function testGithubAccess() {
     return {ok: true, working: !!file};
   } catch (e) {
     return {ok: false, error: e.message};
+  }
+}
+
+// Stub для getGithubPAT_ и downloadFileFromGithub_ если они не определены
+function getGithubPAT_() {
+  try {
+    return PropertiesService.getScriptProperties().getProperty('GITHUB_PAT');
+  } catch (e) {
+    return null;
+  }
+}
+
+function downloadFileFromGithub_(fileName, isPublic) {
+  // Реализация зависит от конкретного GitHub интеграции
+  return null;
+}
+
+function getScriptIdFromBindingsForOTA_(email) {
+  try {
+    const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
+    const bindingsSheet = ss.getSheetByName(BINDINGS_SHEET_NAME);
+
+    if (!bindingsSheet) {
+      Logger.log('❌ Bindings sheet not found');
+      return null;
+    }
+
+    const bindingsData = bindingsSheet.getDataRange().getValues();
+    const emailL = String(email).toLowerCase().trim();
+
+    for (let r = 1; r < bindingsData.length; r++) {
+      const row = bindingsData[r];
+      const bindEmail = String(row[0] || '').toLowerCase().trim();
+
+      if (bindEmail === emailL) {
+        const scriptId = String(row[2] || '').trim();
+        if (scriptId) {
+          Logger.log(`✅ Found scriptId for ${email}`);
+          return scriptId;
+        }
+      }
+    }
+
+    Logger.log(`❌ No scriptId found for: ${email}`);
+    return null;
+  } catch (e) {
+    Logger.log(`❌ Error: ${e.message}`);
+    return null;
   }
 }
