@@ -289,7 +289,7 @@ function updateCellsBatch(cellsToUpdate, batchName) {
   const errors = [];
 
   const POOL_SIZE = 3;
-  const RETRY_COUNT = 2;
+  const RETRY_COUNT = 0;
   const DELAY = 800;
 
   addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
@@ -540,7 +540,7 @@ function autoRetryExecutor() {
 /**
  * 🗑️ Удалить триггеры
  */
-function deleteAutoRetryTriggers(batchName) {
+function deleteAutoRetryTriggers(_batchName) {
   try {
     const triggers = ScriptApp.getProjectTriggers();
     for (let i = 0; i < triggers.length; i++) {
