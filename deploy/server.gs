@@ -266,7 +266,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
 
       // Если ошибка 429 (Quota Exceeded)
       if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota')) {
-        const backoffDelay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+        const backoffDelay = Math.pow(2, attempt + 2) * 1000; // 4s, 8s, 16s
 
         Logger.log(`[RATE_LIMIT_429] Попытка ${attempt + 1}/${maxRetries}. Ожидание ${backoffDelay}ms...`);
         Utilities.sleep(backoffDelay);
@@ -339,6 +339,16 @@ function logApiMetric(metric) {
  * Вспомогательная функция для вызова Gemini API
  */
 function callGeminiApi(modelConfig, prompt) {
+  // ✅ ДОБАВИТЬ проверку глобального rate limit
+  if (!rateLimiter.canMakeRequest()) {
+    const waitTime = rateLimiter.getWaitTime();
+    Logger.log(`[RATE_LIMIT] Превышен лимит ${MAX_REQUESTS_PER_MINUTE} req/min. Ожидание ${waitTime}ms...`);
+    Utilities.sleep(waitTime);
+  }
+
+  // Логировать запрос в rate limiter
+  rateLimiter.logRequest();
+
   // Определяем URL
   const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/';
   const model = modelConfig.model || 'gemini-2.5-flash-lite';
