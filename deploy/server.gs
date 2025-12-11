@@ -55,6 +55,10 @@ class TripleRateLimiter {
     this.RPD_WARNING = TRIPLE_RATE_LIMITS.MAX_RPD_WARNING;
     this.TPM_WARNING = TRIPLE_RATE_LIMITS.MAX_TPM_WARNING;
 
+    this.initializeState();
+  }
+
+  initializeState() {
     // Хранилище времени запросов
     this.requestTimestampsMinute = []; // За последнюю минуту
     this.requestTimestampsDay = []; // За последний день
@@ -70,6 +74,13 @@ class TripleRateLimiter {
 
     // Загрузить ключи из листа
     this.loadKeys();
+  }
+
+  reset(reason = '') {
+    const reasonSuffix = reason ? ` (${reason})` : '';
+    Logger.log(`[TRIPLE_RATE_LIMIT] Reset requested${reasonSuffix}`);
+    this.initializeState();
+    Logger.log(`[TRIPLE_RATE_LIMIT] Reset complete. Keys loaded: ${this.keys.length}`);
   }
 
   // ────────────────────────────────────────────────────────────
@@ -688,7 +699,7 @@ class CacheManager {
  * ===== ОСНОВНАЯ ОБЁРТКА (обновлено для Triple Rate Limiting) =====
  */
 
-let tripleRateLimiter = new TripleRateLimiter();
+const tripleRateLimiter = new TripleRateLimiter();
 const cacheManager = new CacheManager();
 
 Logger.log('[INIT] TripleRateLimiter initialized at script load');
@@ -714,7 +725,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
   // 🔧 ШАГ 0: Убедиться что tripleRateLimiter инициализирован
   if (!tripleRateLimiter || !tripleRateLimiter.keys || tripleRateLimiter.keys.length === 0) {
     Logger.log('[TRIPLE_RATE_LIMIT] Reinitializing tripleRateLimiter (was missing or empty)...');
-    tripleRateLimiter = new TripleRateLimiter();
+    tripleRateLimiter.reset('missing or empty keys');
 
     // Логируем статус после переинициализации
     if (tripleRateLimiter.keys && tripleRateLimiter.keys.length > 0) {
@@ -2481,4 +2492,4 @@ function test_serverGMImage_withDummyPng() {
 
   const res = serverGMImage_([img], 'ru', key, '____');
   Logger.log('OK, len=' + (res || '').length);
-}ы
+}
