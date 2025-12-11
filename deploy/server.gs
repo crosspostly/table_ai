@@ -9,7 +9,7 @@ const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
 const AUTO_UPDATE_CHECK_INTERVAL = 6;
 
 // ⭐ OTA UPDATES
-const SERVER_VERSION = '3.5.2';
+const SERVER_VERSION = '3.5.3';
 
 // ⭐ LICENSE SHEET ID (для prompt_table)
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
@@ -1213,16 +1213,22 @@ function doPost(_e) {
       Logger.log('temperature: ' + temperature);
       Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
 
-      // Resolve API key: user key → sheet key
-      const finalApiKey = resolveApiKey(userApiKey);
-      const keySource = userApiKey ? 'USER' : 'SHEET';
+      // ✅ РОТАЦИЯ: Если пользователь предоставил ключ → используем его (без ротации)
+      // Если нет → передаём null, чтобы serverGM_ использовал ротацию из api_gem
+      const finalApiKey = userApiKey && userApiKey.trim() ? userApiKey : null;
+      const keySource = userApiKey ? 'USER' : 'SHEET_ROTATION';
 
+      // Проверяем доступность ключей только если нет пользовательского ключа
       if (!finalApiKey) {
-        Logger.log('ERROR: No API key available');
-        return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
+        const sheetKey = getApiKeyFromSheet();
+        if (!sheetKey || !sheetKey.key) {
+          Logger.log('ERROR: No API key available in api_gem sheet');
+          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
+        }
+        Logger.log('Using SHEET_ROTATION mode with ' + tripleRateLimiter.keys.length + ' keys available');
+      } else {
+        Logger.log('Using USER API key, length: ' + finalApiKey.length);
       }
-
-      Logger.log('Using ' + keySource + ' API key, length: ' + finalApiKey.length);
 
       // rate limit
       if (!rateLimitOk_(token)) {
@@ -1230,7 +1236,7 @@ function doPost(_e) {
         return json_({ok: false, error: 'RATE_LIMIT'}, 429);
       }
 
-      Logger.log('Calling serverGM_ with ' + keySource + ' API key');
+      Logger.log('Calling serverGM_ with ' + keySource + ' mode');
       const t0 = Date.now();
       let ok = true; let err = null; let text = '';
       try {
@@ -1275,16 +1281,22 @@ function doPost(_e) {
       Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
       Logger.log('delimiter: ' + (delimiter || 'NONE'));
 
-      // Resolve API key: user key → sheet key
-      const finalApiKey = resolveApiKey(userApiKey);
-      const keySource = userApiKey ? 'USER' : 'SHEET';
+      // ✅ РОТАЦИЯ: Если пользователь предоставил ключ → используем его (без ротации)
+      // Если нет → передаём null, чтобы serverGMImage_ использовал ротацию из api_gem
+      const finalApiKey = userApiKey && userApiKey.trim() ? userApiKey : null;
+      const keySource = userApiKey ? 'USER' : 'SHEET_ROTATION';
 
+      // Проверяем доступность ключей только если нет пользовательского ключа
       if (!finalApiKey) {
-        Logger.log('ERROR: No API key available');
-        return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
+        const sheetKey = getApiKeyFromSheet();
+        if (!sheetKey || !sheetKey.key) {
+          Logger.log('ERROR: No API key available in api_gem sheet');
+          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
+        }
+        Logger.log('Using SHEET_ROTATION mode with ' + tripleRateLimiter.keys.length + ' keys available');
+      } else {
+        Logger.log('Using USER API key, length: ' + finalApiKey.length);
       }
-
-      Logger.log('Using ' + keySource + ' API key, length: ' + finalApiKey.length);
 
       if (!Array.isArray(images) || images.length === 0) {
         Logger.log('ERROR: No images provided');
@@ -1296,7 +1308,7 @@ function doPost(_e) {
         return json_({ok: false, error: 'RATE_LIMIT'}, 429);
       }
 
-      Logger.log('Calling serverGMImage_ with ' + keySource + ' API key');
+      Logger.log('Calling serverGMImage_ with ' + keySource + ' mode');
       const t1 = Date.now();
       let ok2 = true;
       let err2 = null;
@@ -1711,10 +1723,13 @@ function getScriptIdFromBindingsForOTA_(email) {
 function serverGM_(prompt, maxTokens, temperature, apiKey, skipCache = false) {
   Logger.log('=== serverGM_ START (Wrapped) ===');
   Logger.log('[GEMINI] skipCache: ' + skipCache);
+  Logger.log('[GEMINI] apiKey provided: ' + (apiKey ? 'YES (user key)' : 'NO (will use rotation)'));
 
+  // ✅ РОТАЦИЯ: Если apiKey === null → используем ротацию из api_gem
+  // Если apiKey задан → используем его напрямую (без ротации)
   const modelConfig = {
     model: 'gemini-2.5-flash-lite',
-    apiKey: apiKey,
+    apiKey: apiKey || undefined, // undefined = let getApiKeyWithFallback handle it
     maxTokens: maxTokens,
     temperature: temperature,
   };
@@ -1734,7 +1749,7 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
   Logger.log('=== serverGMImage_ START (Wrapped) ===');
   Logger.log('images count: ' + images.length);
   Logger.log('lang: ' + lang);
-  Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
+  Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET (will use rotation)'));
   Logger.log('delimiter: ' + (delimiter || 'NONE'));
 
   // images: [{ mimeType, data(base64) }, ...]
@@ -1742,10 +1757,9 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
     Logger.log('ERROR: No images provided');
     throw new Error('NO_IMAGES');
   }
-  if (!apiKey) {
-    Logger.log('ERROR: No API key provided');
-    throw new Error('NO_CLIENT_KEY');
-  }
+
+  // ✅ РОТАЦИЯ: apiKey может быть null - тогда используем ротацию из api_gem
+  Logger.log('[GEMINI_IMAGE] Using rotation mode: ' + (!apiKey ? 'YES' : 'NO'));
 
   let instruction;
   if (delimiter && delimiter.length) {
@@ -1775,7 +1789,7 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
   // Use Rate Limited Executor
   const modelConfig = {
     model: 'gemini-2.5-flash-lite',
-    apiKey: apiKey,
+    apiKey: apiKey || undefined, // undefined = let getApiKeyWithFallback handle it
     maxTokens: 4096,
     temperature: 0,
   };
