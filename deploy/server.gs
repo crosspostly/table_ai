@@ -447,6 +447,47 @@ class TripleRateLimiter {
 }
 
 /**
+ * ===== ФУНКЦИЯ ЗАГРУЗКИ ВСЕХ API КЛЮЧЕЙ ИЗ ЛИСТА =====
+ * Загружает все активные ключи из листа api_gem
+ * @returns {Array} Массив объектов {id, key, status}
+ */
+function getAllApiKeysFromSheet() {
+  try {
+    const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
+    const sheet = ss.getSheetByName(TRIPLE_RATE_LIMITS.API_KEYS_SHEET_NAME);
+
+    if (!sheet) {
+      Logger.log('[API_KEYS] api_gem sheet not found');
+      return [];
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const keys = [];
+
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const name = String(row[0] || '').trim();
+      const key = String(row[1] || '').trim();
+      const status = String(row[2] || 'ACTIVE').trim().toUpperCase();
+
+      if (key && status === 'ACTIVE') {
+        keys.push({
+          id: name,
+          key: key,
+          status: status,
+        });
+      }
+    }
+
+    Logger.log(`[API_KEYS] Loaded ${keys.length} active keys from api_gem`);
+    return keys;
+  } catch (e) {
+    Logger.log(`[API_KEYS] Error: ${e.message}`);
+    return [];
+  }
+}
+
+/**
  * ===== ФУНКЦИЯ ПОЛУЧЕНИЯ API КЛЮЧА С ИЕРАРХИЧЕСКИМ FALLBACK =====
  * Приоритет: modelConfig.apiKey → User Properties → Script Properties → API_GEM Sheet
  */
@@ -684,12 +725,12 @@ const cacheManager = new CacheManager();
  *
  * @param {Object} modelConfig - {model: "...", apiKey: "...", maxTokens: number, temperature: number}
  * @param {string|Object} prompt - Промпт или {text: "...", image: "..."}
- * @param {Object} options - {maxRetries: 3, timeout: 30000, skipCache: false}
+ * @param {Object} options - {maxRetries: null (auto), timeout: 30000, skipCache: false}
  * @returns {Object} {success: true/false, data: "...", error: "...", waitTime: 0, tokensUsed: 0, keyId: "..."}
  */
 function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
   const {
-    maxRetries = 3,
+    maxRetries = null, // null = автоматически использовать количество доступных ключей
     timeout = 30000,
     skipCache = false,
     useRotation = true, // По умолчанию включаем ротацию
@@ -787,12 +828,25 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     limiter.logRequest();
   }
 
-  // 5. RETRY LOOP (для 429 ошибок)
+  // 5. CALCULATE DYNAMIC maxRetries (based on available keys count)
+  let effectiveMaxRetries = maxRetries;
+  if (effectiveMaxRetries === null && limiter && limiter.keys) {
+    // Автоматически: пробуем все доступные ACTIVE ключи
+    const activeKeysCount = limiter.keys.filter((k) => k.status === 'ACTIVE').length;
+    effectiveMaxRetries = Math.max(activeKeysCount, 1);
+    Logger.log(`[EXECUTE_GEMINI] Auto maxRetries: ${effectiveMaxRetries} (based on ${activeKeysCount} active keys)`);
+  } else if (effectiveMaxRetries === null) {
+    // Если нет limiter, используем дефолтное значение
+    effectiveMaxRetries = 3;
+  }
+
+  // 6. RETRY LOOP (для quota/overload/429 ошибок с ротацией ключей)
   let lastError = null;
   let currentApiKey = apiKeyInfo.key;
   let currentKeyId = apiKeyInfo.id;
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  for (let attempt = 0; attempt < effectiveMaxRetries; attempt++) {
+    Logger.log(`[GEMINI] Attempt ${attempt + 1}/${effectiveMaxRetries} using key: ${currentKeyId}`);
     try {
       // Выполнить API запрос
       const modelConfigWithKey = {...modelConfig, apiKey: currentApiKey};
@@ -829,7 +883,10 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         cacheManager.set(cacheKey, result);
       }
 
-      // 8. LOG METRIC в API_METRICS
+      // 8. LOG SUCCESS
+      Logger.log(`[GEMINI] ✅ Success with key: ${currentKeyId}`);
+
+      // 9. LOG METRIC в API_METRICS
       logApiMetric({
         functionName: 'executeGeminiWithRateLimit',
         status: 'success',
@@ -864,13 +921,20 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
       lastError = error;
       const errorMsg = error.toString();
 
-      // ЕСЛИ 429 → переключить ключ (ТОЛЬКО если используем ротацию)
-      if ((errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota')) && limiter) {
-        Logger.log('[EXECUTE_GEMINI] 429 error. Switching to next key...');
+      // ЕСЛИ quota/overload/429 → переключить ключ (ТОЛЬКО если используем ротацию)
+      const isQuotaError = errorMsg.includes('429') ||
+                           errorMsg.includes('quota') ||
+                           errorMsg.includes('Quota') ||
+                           errorMsg.includes('overloaded') ||
+                           errorMsg.includes('RESOURCE_EXHAUSTED');
+
+      if (isQuotaError && limiter) {
+        Logger.log(`[GEMINI] ❌ Attempt ${attempt + 1} failed with key ${currentKeyId}: ${errorMsg}`);
+        Logger.log('[GEMINI] Quota/overload error - trying next key...');
 
         const switched = limiter.switchToNextKey();
         if (!switched) {
-          Logger.log('[EXECUTE_GEMINI] All keys exhausted!');
+          Logger.log(`[GEMINI] All ${limiter.keys.length} keys failed!`);
 
           // Логируем неудачу
           logApiMetric({
@@ -1649,12 +1713,14 @@ function serverGM_(prompt, maxTokens, temperature, apiKey) {
     temperature: temperature,
   };
 
-  const result = executeGeminiWithRateLimit(modelConfig, prompt, {maxRetries: 3});
+  // maxRetries: null = автоматически использовать все доступные ключи
+  const result = executeGeminiWithRateLimit(modelConfig, prompt, {maxRetries: null});
 
   if (!result.success) {
     throw new Error(result.error);
   }
 
+  Logger.log(`[serverGM_] Used key: ${result.keyId}, attempt: ${result.attempt}`);
   return result.data;
 }
 
@@ -1712,12 +1778,14 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
     contents: [{parts: parts}],
   };
 
-  const result = executeGeminiWithRateLimit(modelConfig, promptObj, {maxRetries: 3});
+  // maxRetries: null = автоматически использовать все доступные ключи
+  const result = executeGeminiWithRateLimit(modelConfig, promptObj, {maxRetries: null});
 
   if (!result.success) {
     throw new Error(result.error);
   }
 
+  Logger.log(`[serverGMImage_] Used key: ${result.keyId}, attempt: ${result.attempt}`);
   return result.data;
 }
 
