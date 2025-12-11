@@ -447,6 +447,72 @@ class TripleRateLimiter {
 }
 
 /**
+ * ===== ФУНКЦИЯ ПОЛУЧЕНИЯ API КЛЮЧА С ИЕРАРХИЧЕСКИМ FALLBACK =====
+ * Приоритет: modelConfig.apiKey → User Properties → Script Properties → API_GEM Sheet
+ */
+
+/**
+ * Получить API ключ с 4-уровневой иерархией fallback
+ */
+function getApiKeyWithFallback(modelConfig) {
+  // Приоритет 0: Явно передан в modelConfig
+  if (modelConfig && modelConfig.apiKey) {
+    Logger.log('[API_KEY] Using key from modelConfig');
+    return {
+      key: modelConfig.apiKey,
+      source: 'modelConfig',
+      id: 'USER_PROVIDED',
+    };
+  }
+
+  // Приоритет 1: User Properties (пользователь ввёл свой)
+  const userKey = PropertiesService.getUserProperties()
+    .getProperty('GEMINI_API_KEY');
+  if (userKey && userKey.trim().length > 0) {
+    Logger.log('[API_KEY] Using key from User Properties');
+    return {
+      key: userKey,
+      source: 'userProperties',
+      id: 'USER_KEY',
+    };
+  }
+
+  // Приоритет 2: Script Properties (дефолтный)
+  const scriptKey = PropertiesService.getScriptProperties()
+    .getProperty('GEMINI_API_KEY');
+  if (scriptKey && scriptKey.trim().length > 0) {
+    Logger.log('[API_KEY] Using key from Script Properties (default)');
+    return {
+      key: scriptKey,
+      source: 'scriptProperties',
+      id: 'DEFAULT_KEY',
+    };
+  }
+
+  // Приоритет 3: API_GEM Sheet (rotation mode) - ТОЛЬКО как последний fallback
+  try {
+    if (tripleRateLimiter && tripleRateLimiter.keys && tripleRateLimiter.keys.length > 0) {
+      const firstActiveKey = tripleRateLimiter.getCurrentKey();
+      if (firstActiveKey) {
+        Logger.log(`[API_KEY] Using key from api_gem sheet (${firstActiveKey.id})`);
+        return {
+          key: firstActiveKey.key,
+          source: 'apiGemSheet',
+          id: firstActiveKey.id,
+          useRotation: true,
+        };
+      }
+    }
+  } catch (e) {
+    Logger.log(`[API_KEY] Error loading from api_gem sheet: ${e.message}`);
+  }
+
+  // Не найдено ни одного ключа
+  Logger.log('[API_KEY] ERROR: No API keys found!');
+  return null;
+}
+
+/**
  * ===== ФУНКЦИЯ МОНИТОРИНГА TRIPLE RATE LIMITER =====
  * Получить полный статус системы тройного ограничения скорости
  */
@@ -623,32 +689,59 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     maxRetries = 3,
     timeout = 30000,
     skipCache = false,
+    useRotation = true, // По умолчанию включаем ротацию
   } = options;
 
-  // 1. ESTIMATE TOKENS (перед checkLimits)
-  let estimatedInputTokens = 0;
-  if (typeof prompt === 'string') {
-    estimatedInputTokens = tripleRateLimiter.estimateTokens(prompt);
-    Logger.log(`[EXECUTE_GEMINI] Estimated input tokens: ${estimatedInputTokens}`);
+  // 1. GET API KEY (с 4-уровневой иерархией fallback)
+  const apiKeyInfo = getApiKeyWithFallback(modelConfig);
+
+  if (!apiKeyInfo || !apiKeyInfo.key) {
+    Logger.log('[EXECUTE_GEMINI] No API key available');
+    return {
+      success: false,
+      data: null,
+      error: 'No API key available. Please configure GEMINI_API_KEY.',
+      waitTime: 0,
+      fromCache: false,
+      tokensUsed: 0,
+      keyId: 'NO_KEY',
+    };
   }
 
-  // 2. CHECK LIMITS (RPD → RPM → TPM)
-  const limitsCheck = tripleRateLimiter.checkLimits(estimatedInputTokens);
+  Logger.log(`[EXECUTE_GEMINI] Using key from: ${apiKeyInfo.source} (${apiKeyInfo.id})`);
 
-  // ЕСЛИ лимит превышен → подождать и повторить рекурсивно
-  if (!limitsCheck.canMakeRequest) {
-    Logger.log(`[EXECUTE_GEMINI] Rate limit: ${limitsCheck.limitType}`);
-    Logger.log(`[EXECUTE_GEMINI] Wait: ${limitsCheck.waitTime}ms`);
+  // 2. Инициализировать TripleRateLimiter ТОЛЬКО если используем ротацию
+  let limiter = null;
+  let limitsCheck = {canMakeRequest: true, limitType: 'NO_LIMITER'};
 
-    if (limitsCheck.message) {
-      Logger.log(`[EXECUTE_GEMINI] Message: ${limitsCheck.message}`);
+  if (useRotation && apiKeyInfo.useRotation) {
+    limiter = tripleRateLimiter;
+
+    // ESTIMATE TOKENS (перед checkLimits)
+    let estimatedInputTokens = 0;
+    if (typeof prompt === 'string') {
+      estimatedInputTokens = limiter.estimateTokens(prompt);
+      Logger.log(`[EXECUTE_GEMINI] Estimated input tokens: ${estimatedInputTokens}`);
     }
 
-    Utilities.sleep(limitsCheck.waitTime);
-    return executeGeminiWithRateLimit(modelConfig, prompt, options); // Рекурсия!
+    // CHECK LIMITS (RPD → RPM → TPM)
+    limitsCheck = limiter.checkLimits(estimatedInputTokens);
+
+    // ЕСЛИ лимит превышен → подождать и повторить рекурсивно
+    if (!limitsCheck.canMakeRequest) {
+      Logger.log(`[EXECUTE_GEMINI] Rate limit: ${limitsCheck.limitType}`);
+      Logger.log(`[EXECUTE_GEMINI] Wait: ${limitsCheck.waitTime}ms`);
+
+      if (limitsCheck.message) {
+        Logger.log(`[EXECUTE_GEMINI] Message: ${limitsCheck.message}`);
+      }
+
+      Utilities.sleep(limitsCheck.waitTime);
+      return executeGeminiWithRateLimit(modelConfig, prompt, options); // Рекурсия!
+    }
   }
 
-  // ✅ ЛИМИТЫ OK
+  // ✅ ЛИМИТЫ OK (или ротация отключена)
 
   // 3. Проверить кэш (если не skipCache)
   let cacheKey = null;
@@ -659,9 +752,11 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     if (cached) {
       Logger.log(`[CACHE_HIT] Использован кэшированный результат для модели ${modelConfig.model}`);
 
-      // Логируем что использовали кэш
-      tripleRateLimiter.logRequest();
-      const tokenLog = tripleRateLimiter.logTokens(estimatedInputTokens, 0);
+      // Логируем что использовали кэш (только если есть limiter)
+      if (limiter) {
+        limiter.logRequest();
+        limiter.logTokens(0, 0); // Примерная оценка для кэша
+      }
 
       return {
         success: true,
@@ -669,73 +764,60 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         error: null,
         waitTime: 0,
         fromCache: true,
-        tokensUsed: tokenLog.totalTokens,
-        keyId: tripleRateLimiter.getCurrentKeyId(),
+        tokensUsed: 0,
+        keyId: apiKeyInfo.id,
       };
     }
   }
 
   // 4. LOG REQUEST (перед API call)
-  tripleRateLimiter.logRequest();
-
-  // 5. GET CURRENT API KEY (с авторотацией)
-  const currentKey = tripleRateLimiter.getCurrentKey();
-  const finalApiKey = modelConfig.apiKey || (currentKey ? currentKey.key : null);
-  const keyId = tripleRateLimiter.getCurrentKeyId();
-
-  Logger.log(`[EXECUTE_GEMINI] Using key: ${keyId}`);
-
-  if (!finalApiKey) {
-    Logger.log('[EXECUTE_GEMINI] No API key available');
-    return {
-      success: false,
-      data: null,
-      error: 'No API key available',
-      waitTime: 0,
-      fromCache: false,
-      tokensUsed: 0,
-      keyId: keyId,
-    };
+  if (limiter) {
+    limiter.logRequest();
   }
 
-  // 6. RETRY LOOP (для 429 ошибок)
+  // 5. RETRY LOOP (для 429 ошибок)
   let lastError = null;
+  let currentApiKey = apiKeyInfo.key;
+  let currentKeyId = apiKeyInfo.id;
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       // Выполнить API запрос
-      const modelConfigWithKey = {...modelConfig, apiKey: finalApiKey};
+      const modelConfigWithKey = {...modelConfig, apiKey: currentApiKey};
       const result = callGeminiApi(modelConfigWithKey, prompt);
 
-      // 7. LOG ACTUAL TOKENS (из response)
-      let actualInputTokens = estimatedInputTokens;
+      // 6. LOG ACTUAL TOKENS (из response) - ТОЛЬКО если есть limiter
+      let actualInputTokens = 0;
       let actualOutputTokens = 0;
+      let tokenLog = {totalTokens: 0, currentTPM: 0, remainingTPM: 0};
 
-      try {
-        // Пытаемся получить точные токены из ответа API
-        if (result && result.includes('usageMetadata')) {
-          const usageMatch = result.match(/"usageMetadata":\s*{[^}]*"promptTokenCount":\s*(\d+)/);
-          const outputMatch = result.match(/"candidatesTokenCount":\s*(\d+)/);
-          if (usageMatch) {
-            actualInputTokens = parseInt(usageMatch[1]) || actualInputTokens;
+      if (limiter) {
+        try {
+          // Пытаемся получить точные токены из ответа API
+          if (result && result.includes('usageMetadata')) {
+            const usageMatch = result.match(/"usageMetadata":\s*{[^}]*"promptTokenCount":\s*(\d+)/);
+            const outputMatch = result.match(/"candidatesTokenCount":\s*(\d+)/);
+            if (usageMatch) {
+              actualInputTokens = parseInt(usageMatch[1]) || 0;
+            }
+            if (outputMatch) {
+              actualOutputTokens = parseInt(outputMatch[1]) || 0;
+            }
           }
-          if (outputMatch) {
-            actualOutputTokens = parseInt(outputMatch[1]) || 0;
-          }
+        } catch (e) {
+          Logger.log('[EXECUTE_GEMINI] Could not parse usageMetadata: ' + e.toString());
         }
-      } catch (e) {
-        Logger.log('[EXECUTE_GEMINI] Could not parse usageMetadata: ' + e.toString());
+
+        tokenLog = limiter.logTokens(actualInputTokens, actualOutputTokens);
+        Logger.log(`[EXECUTE_GEMINI] Tokens - Input: ${actualInputTokens}, Output: ${actualOutputTokens}`);
       }
 
-      const tokenLog = tripleRateLimiter.logTokens(actualInputTokens, actualOutputTokens);
-
-      Logger.log(`[EXECUTE_GEMINI] Tokens - Input: ${actualInputTokens}, Output: ${actualOutputTokens}`);
-
-      // 8. Сохранить в кэш
+      // 7. Сохранить в кэш
       if (!skipCache && cacheKey && result) {
         cacheManager.set(cacheKey, result);
       }
 
-      // 9. LOG METRIC в API_METRICS
+      // 8. LOG METRIC в API_METRICS
       logApiMetric({
         functionName: 'executeGeminiWithRateLimit',
         status: 'success',
@@ -743,14 +825,14 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         inputTokens: actualInputTokens,
         outputTokens: actualOutputTokens,
         totalTokens: tokenLog.totalTokens,
-        keyId: keyId,
-        keysStatus: tripleRateLimiter.getKeysStatus(),
-        currentRPD: limitsCheck.currentRPD,
-        currentRPM: limitsCheck.currentRPM,
+        keyId: currentKeyId,
+        keysStatus: limiter ? limiter.getKeysStatus() : [],
+        currentRPD: limiter ? (limitsCheck.currentRPD || 0) : 0,
+        currentRPM: limiter ? (limitsCheck.currentRPM || 0) : 0,
         currentTPM: tokenLog.currentTPM,
-        maxRPD: limitsCheck.maxRPD,
-        maxRPM: limitsCheck.maxRPM,
-        maxTPM: limitsCheck.maxTPM,
+        maxRPD: limiter ? (limitsCheck.maxRPD || TRIPLE_RATE_LIMITS.MAX_RPD) : 0,
+        maxRPM: limiter ? (limitsCheck.maxRPM || TRIPLE_RATE_LIMITS.MAX_RPM) : 0,
+        maxTPM: limiter ? (limitsCheck.maxTPM || TRIPLE_RATE_LIMITS.MAX_TPM) : 0,
         error: '',
         waitTime: 0,
         attempt: attempt + 1,
@@ -763,18 +845,18 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         waitTime: 0,
         fromCache: false,
         tokensUsed: tokenLog.totalTokens,
-        keyId: keyId,
+        keyId: currentKeyId,
         attempt: attempt + 1,
       };
     } catch (error) {
       lastError = error;
       const errorMsg = error.toString();
 
-      // ЕСЛИ 429 → переключить ключ
-      if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota')) {
+      // ЕСЛИ 429 → переключить ключ (ТОЛЬКО если используем ротацию)
+      if ((errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota')) && limiter) {
         Logger.log('[EXECUTE_GEMINI] 429 error. Switching to next key...');
 
-        const switched = tripleRateLimiter.switchToNextKey();
+        const switched = limiter.switchToNextKey();
         if (!switched) {
           Logger.log('[EXECUTE_GEMINI] All keys exhausted!');
 
@@ -786,11 +868,11 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
             inputTokens: actualInputTokens,
             outputTokens: actualOutputTokens,
             totalTokens: tokenLog.totalTokens,
-            keyId: keyId,
-            keysStatus: tripleRateLimiter.getKeysStatus(),
+            keyId: currentKeyId,
+            keysStatus: limiter.getKeysStatus(),
             currentRPD: limitsCheck.currentRPD,
             currentRPM: limitsCheck.currentRPM,
-            currentTPM: tripleRateLimiter.calculateCurrentTPM(),
+            currentTPM: limiter.calculateCurrentTPM(),
             maxRPD: limitsCheck.maxRPD,
             maxRPM: limitsCheck.maxRPM,
             maxTPM: limitsCheck.maxTPM,
@@ -803,9 +885,10 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         }
 
         // Обновим ключ для следующей попытки
-        const newCurrentKey = tripleRateLimiter.getCurrentKey();
+        const newCurrentKey = limiter.getCurrentKey();
         if (newCurrentKey) {
-          finalApiKey = newCurrentKey.key;
+          currentApiKey = newCurrentKey.key;
+          currentKeyId = newCurrentKey.id;
         }
         continue; // Повторить с новым ключом
       }
@@ -823,17 +906,17 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     functionName: 'executeGeminiWithRateLimit',
     status: 'failed',
     model: modelConfig.model,
-    inputTokens: estimatedInputTokens,
+    inputTokens: 0,
     outputTokens: 0,
-    totalTokens: estimatedInputTokens,
-    keyId: keyId,
-    keysStatus: tripleRateLimiter.getKeysStatus(),
-    currentRPD: limitsCheck.currentRPD,
-    currentRPM: limitsCheck.currentRPM,
-    currentTPM: tripleRateLimiter.calculateCurrentTPM(),
-    maxRPD: limitsCheck.maxRPD,
-    maxRPM: limitsCheck.maxRPM,
-    maxTPM: limitsCheck.maxTPM,
+    totalTokens: 0,
+    keyId: currentKeyId,
+    keysStatus: limiter ? limiter.getKeysStatus() : [],
+    currentRPD: limiter ? (limitsCheck.currentRPD || 0) : 0,
+    currentRPM: limiter ? (limitsCheck.currentRPM || 0) : 0,
+    currentTPM: limiter ? limiter.calculateCurrentTPM() : 0,
+    maxRPD: limiter ? (limitsCheck.maxRPD || TRIPLE_RATE_LIMITS.MAX_RPD) : 0,
+    maxRPM: limiter ? (limitsCheck.maxRPM || TRIPLE_RATE_LIMITS.MAX_RPM) : 0,
+    maxTPM: limiter ? (limitsCheck.maxTPM || TRIPLE_RATE_LIMITS.MAX_TPM) : 0,
     error: errorMsg,
     waitTime: 0,
     attempt: maxRetries,
@@ -846,7 +929,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     waitTime: 0,
     fromCache: false,
     tokensUsed: 0,
-    keyId: keyId,
+    keyId: currentKeyId,
     attempt: maxRetries,
   };
 }

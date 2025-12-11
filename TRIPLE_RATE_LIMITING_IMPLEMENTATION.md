@@ -91,6 +91,24 @@ const TRIPLE_RATE_LIMITS = {
 };
 ```
 
+### 🔑 Иерархия загрузки API ключей (4 уровня):
+
+1. **Приоритет 0**: `modelConfig.apiKey` - явно переданный ключ
+2. **Приоритет 1**: User Properties - ключ пользователя из интерфейса
+3. **Приоритет 2**: Script Properties - дефолтный ключ скрипта
+4. **Приоритет 3**: API_GEM Sheet - ротация между 6 ключами
+
+```javascript
+// Функция getApiKeyWithFallback() реализует эту иерархию
+const apiKeyInfo = getApiKeyWithFallback(modelConfig);
+
+// TripleRateLimiter используется ТОЛЬКО если:
+// - Включена опция useRotation: true (по умолчанию)
+// - Ключ получен из API_GEM Sheet (apiKeyInfo.useRotation === true)
+```
+
+Это обеспечивает обратную совместимость с существующим кодом, где пользователи могут вводить свои ключи!
+
 ### Лист api_gem (LICENSE_SHEET_ID):
 | A        | B                              | C      |
 |----------|--------------------------------|--------|
