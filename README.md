@@ -1,10 +1,10 @@
 # Table AI - AI-Powered Google Sheets Constructor v3.5
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-3.5.2-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-3.5.3-brightgreen.svg)]()
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)]()
 
-> **🆕 v3.5.2**: Исправлена обратная совместимость OTA системы - старые клиенты теперь могут обновиться автоматически!
+> **🆕 v3.5.3**: Добавлен Dual-Metric Rate Limiter с TPM/RPM tracking и multi-key rotation!
 
 ## 📌 О проекте
 
@@ -358,6 +358,7 @@ clasp deploy --server
 - 📖 [OTA_UPDATES.md](docs/OTA_UPDATES.md) - Подробно об обновлениях (v3.5)
 - 🔐 [GITHUB_PRIVATE_REPO.md](docs/GITHUB_PRIVATE_REPO.md) - Приватные GitHub репо (NEW!)
 - 🔑 [GEMINI_API_CONFIG.md](docs/GEMINI_API_CONFIG.md) - Управление API ключами
+- ⚡ [DUAL_RATE_LIMITER.md](docs/DUAL_RATE_LIMITER.md) - Dual-Metric Rate Limiting (TPM+RPM) (NEW!)
 - 🏗️ [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Архитектура системы
 - 📦 [LICENSE_SYSTEM.md](docs/LICENSE_SYSTEM.md) - Система лицензирования
 - 🚀 [SERVER_SETUP.md](docs/SERVER_SETUP.md) - Настройка сервера
@@ -429,6 +430,7 @@ MIT License - смотри [LICENSE](LICENSE)
 - [x] v3.5.0 - Private GitHub OTA + Client/Server separation
 - [x] v3.5.1 - DEV tools extraction
 - [x] v3.5.2 - OTA backward compatibility fix
+- [x] v3.5.3 - Dual-Metric Rate Limiter (TPM+RPM) + Multi-Key Rotation
 - [ ] v3.6 - Multi-language support
 - [ ] v4.0 - Web dashboard
 
@@ -440,4 +442,4 @@ MIT License - смотри [LICENSE](LICENSE)
 
 ---
 
-**Последнее обновление:** 2025-01-XX | v3.5.2
+**Последнее обновление:** 2024-12-11 | v3.5.3
