@@ -803,7 +803,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     const cached = cacheManager.get(cacheKey);
 
     if (cached) {
-      Logger.log(`[CACHE_HIT] Использован кэшированный результат для модели ${modelConfig.model}`);
+      Logger.log(`[CACHE] Using cached result for model ${modelConfig.model}`);
 
       // Логируем что использовали кэш (только если есть limiter)
       if (limiter) {
@@ -821,6 +821,8 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         keyId: apiKeyInfo.id,
       };
     }
+  } else if (skipCache) {
+    Logger.log('[CACHE] Skipping cache (skipCache=true)');
   }
 
   // 4. LOG REQUEST (перед API call)
@@ -1512,6 +1514,7 @@ function doPost(_e) {
       const sheetName = (data.sheetName || '').toString();
       const cellAddress = (data.cellAddress || '').toString();
       const userApiKey = (data.apiKey || '').toString();
+      const skipCache = data.skipCache === true;
       const logs = [];
 
       Logger.log('config: ' + (config ? 'SET' : 'NOT SET'));
@@ -1521,6 +1524,7 @@ function doPost(_e) {
       Logger.log('sheetName: ' + sheetName);
       Logger.log('cellAddress: ' + cellAddress);
       Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
+      Logger.log('[COLLECT_CONFIG] skipCache: ' + skipCache);
 
       // Resolve API key: user key → sheet key
       const finalApiKey = resolveApiKey(userApiKey);
@@ -1552,8 +1556,9 @@ function doPost(_e) {
       let err = null;
       let result = '';
       try {
-        result = serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, finalApiKey, logs);
-        Logger.log('serverCollectConfigExecute_ completed successfully, result length: ' + result.length);
+        result = serverCollectConfigExecute_(
+          config, spreadsheetId, sheetName, cellAddress, finalApiKey, logs, skipCache);
+        Logger.log('serverCollectConfigExecute_ completed, result length: ' + result.length);
       } catch (ex) {
         ok = false;
         err = String(ex && ex.message || ex);
@@ -1703,8 +1708,9 @@ function getScriptIdFromBindingsForOTA_(email) {
 
 // ===== License =====
 // ===== Gemini (server-side) =====
-function serverGM_(prompt, maxTokens, temperature, apiKey) {
+function serverGM_(prompt, maxTokens, temperature, apiKey, skipCache = false) {
   Logger.log('=== serverGM_ START (Wrapped) ===');
+  Logger.log('[GEMINI] skipCache: ' + skipCache);
 
   const modelConfig = {
     model: 'gemini-2.5-flash-lite',
@@ -1714,7 +1720,7 @@ function serverGM_(prompt, maxTokens, temperature, apiKey) {
   };
 
   // maxRetries: null = автоматически использовать все доступные ключи
-  const result = executeGeminiWithRateLimit(modelConfig, prompt, {maxRetries: null});
+  const result = executeGeminiWithRateLimit(modelConfig, prompt, {maxRetries: null, skipCache: skipCache});
 
   if (!result.success) {
     throw new Error(result.error);
@@ -2057,10 +2063,12 @@ function setDefaultGeminiKey_(apiKey) {
  * @param {string} cellAddress - Target cell address
  * @param {string} apiKey - Gemini API key
  * @param {Array} logs - Array to collect log entries
+ * @param {boolean} skipCache - Skip cache on explicit refresh
  * @return {string} AI response text
  */
-function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, apiKey, logs) {
+function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, apiKey, logs, skipCache = false) {
   logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🚀 Начало выполнения CollectConfig на сервере'});
+  logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '[COLLECT_CONFIG] skipCache: ' + (skipCache ? 'ДА (пропускаем кэш)' : 'НЕТ')});
   logs.push({timestamp: new Date().toISOString(), level: 'DEBUG', message: '🔧 Config: ' + JSON.stringify({
     systemPrompt: config.systemPrompt,
     userDataCount: config.userData ? config.userData.length : 0,
@@ -2121,7 +2129,7 @@ function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddre
     const temperature = config.temperature || 0.7;
 
     logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🤖 Отправка запроса в Gemini...'});
-    const aiResult = serverGM_(finalPrompt, maxTokens, temperature, apiKey);
+    const aiResult = serverGM_(finalPrompt, maxTokens, temperature, apiKey, skipCache);
 
     if (!aiResult || aiResult.startsWith('Error:')) {
       throw new Error('Ошибка AI: ' + aiResult);

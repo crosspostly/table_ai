@@ -387,8 +387,8 @@ function updateSingleCell(sheetName, cellName) {
       };
     }
 
-    // Use server-based execution (NO local fallback)
-    const result = callCollectConfigServer_(config, sheetName, cellName);
+    // Use server-based execution with skipCache=true for explicit refresh (NO local fallback)
+    const result = callCollectConfigServer_(config, sheetName, cellName, true);
 
     if (result && result.ok) {
       updateLastRunWithStatus(sheetName, cellName, true); // ⭐ Пишем TRUE
