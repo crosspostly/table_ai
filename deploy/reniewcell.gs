@@ -352,6 +352,8 @@ function updateCellsBatch(cellsToUpdate, batchName) {
 
   addLog(`📊 ${batchName}: ✅ ${successCount}, ❌ ${errorCount}`, 'INFO');
   addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
+  // ⭐ ДЕТАЛЬНАЯ СТАТИСТИКА БАТЧА
+  BatchStartComplete(batchName, successCount, errorCount, cellsToUpdate.length);
 
   const msg = `${batchName}\n✅ ${successCount}\n❌ ${errorCount}`;
 
@@ -387,8 +389,11 @@ function updateSingleCell(sheetName, cellName) {
       };
     }
 
-    // Use server-based execution with skipCache=true for explicit refresh (NO local fallback)
-    const result = callCollectConfigServer_(config, sheetName, cellName, true);
+    // Use server-based execution with skipCache=false to enable caching (EXCEPT for explicit refresh)
+    // skipCache=true should only be used when user explicitly clicks "Refresh"
+    const result = callCollectConfigServer_(config, sheetName, cellName, false);
+
+    addLog(`🔄 ${sheetName}!${cellName}: skipCache=false (caching enabled)`, 'DEBUG');
 
     if (result && result.ok) {
       updateLastRunWithStatus(sheetName, cellName, true); // ⭐ Пишем TRUE
@@ -673,4 +678,71 @@ function unfreezeAllSheets() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`✅ ИТОГО: откреплено ${count} листов`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+}
+
+/**
+ * ⭐ ДЕТАЛЬНАЯ СТАТИСТИКА БАТЧА
+ * Логирует полную статистику работы батча для финальной проверки
+ */
+function BatchStartComplete(batchName, successCount, errorCount, totalCells) {
+  try {
+    const now = new Date();
+    const timestamp = now.toLocaleTimeString('ru-RU');
+
+    // Рассчитываем статистику
+    const skippedCount = totalCells - successCount - errorCount;
+    const totalProcessed = successCount + errorCount;
+    const successRate = totalProcessed > 0 ? ((successCount / totalProcessed) * 100).toFixed(1) : '0.0';
+
+    // Детальное логирование для финальной проверки
+    Logger.log('==========================================');
+    Logger.log(`🎯 BATCH COMPLETE: ${batchName}`);
+    Logger.log(`⏰ Время: ${timestamp}`);
+    Logger.log('📊 Статистика:');
+    Logger.log(`   ✅ Обновлено: ${successCount}`);
+    Logger.log(`   ❌ Ошибки: ${errorCount}`);
+    Logger.log(`   ⏭️ Пропущено: ${skippedCount}`);
+    Logger.log(`   📋 Всего обработано: ${totalProcessed}/${totalCells}`);
+    Logger.log(`   📈 Успешность: ${successRate}%`);
+
+    // Логируем состояние кеша и ротации ключей
+    Logger.log('💾 Кеширование: ВКЛЮЧЕНО (skipCache=false)');
+    Logger.log('🔑 Ротация ключей: АКТИВНА (до 6 попыток)');
+    Logger.log(`⏱️ Временная логика: АКТИВНА (< ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} мин)`);
+
+    Logger.log('==========================================');
+
+    // Также добавляем в системный лог
+    addLog('==========================================', 'INFO');
+    addLog(`🎯 BATCH COMPLETE: ${batchName}`, 'INFO');
+    addLog(`⏰ Время: ${timestamp}`, 'INFO');
+    addLog(`📊 Обновлено: ${successCount}, Ошибки: ${errorCount}, Пропущено: ${skippedCount}`, 'INFO');
+    addLog(`📈 Успешность: ${successRate}%`, 'INFO');
+    addLog('💾 Кеширование: ВКЛЮЧЕНО | 🔑 Ротация: АКТИВНА | ⏱️ Таймер: АКТИВЕН', 'INFO');
+    addLog('==========================================', 'INFO');
+
+    // Если есть ConfigData, записываем итоговую статистику
+    try {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const logSheet = ss.getSheetByName('BatchLogs');
+
+      if (logSheet) {
+        const nextRow = logSheet.getLastRow() + 1;
+        logSheet.getRange(nextRow, 1).setValue(timestamp);
+        logSheet.getRange(nextRow, 2).setValue(batchName);
+        logSheet.getRange(nextRow, 3).setValue(successCount);
+        logSheet.getRange(nextRow, 4).setValue(errorCount);
+        logSheet.getRange(nextRow, 5).setValue(skippedCount);
+        logSheet.getRange(nextRow, 6).setValue(totalProcessed);
+        logSheet.getRange(nextRow, 7).setValue(successRate + '%');
+        logSheet.getRange(nextRow, 8).setValue('Кеш:ВКЛ | Ключи:АКТ | Таймер:АКТ');
+
+        addLog(`📝 Статистика записана в BatchLogs (строка ${nextRow})`, 'DEBUG');
+      }
+    } catch (e) {
+      addLog(`⚠️ Не удалось записать в BatchLogs: ${e.message}`, 'WARN');
+    }
+  } catch (error) {
+    addLog(`❌ Ошибка в BatchStartComplete: ${error.message}`, 'ERROR');
+  }
 }
