@@ -3,7 +3,7 @@
 /* exported checkServerAutoUpdate_, setupServerTriggers */
 
 // ===== Constants =====
-const S_GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
+// Unused: const S_GEMINI_API_URL (dynamic URL construction in callGeminiApi)
 const LOG_SHEET_NAME = 'Логи';
 const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
 const AUTO_UPDATE_CHECK_INTERVAL = 6;
@@ -13,7 +13,7 @@ const SERVER_VERSION = '3.5.2';
 
 // ⭐ LICENSE SHEET ID (для prompt_table)
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
-const TOKENS_SHEET_NAME = 'Tokens';
+// const TOKENS_SHEET_NAME = 'Tokens'; // eslint-disable-line no-unused-vars
 const BINDINGS_SHEET_NAME = 'Bindings';
 
 // ═════════════════════════════════════════════════════════════════
@@ -39,10 +39,11 @@ const REPO_IS_PUBLIC = true; // ← СЕРВЕР решает!
 
 const RATE_LIMIT_KEY = 'gemini_api_rate_limit_store';
 const METRICS_SHEET_NAME = 'API_METRICS';
-const MAX_REQUESTS_PER_MINUTE = 10;
+const MAX_REQUESTS_PER_MINUTE = 2; // ⭐ Снижено с 10 до 2 для предотвращения quota exhaustion
 const RATE_LIMIT_WINDOW_MS = 60000; // 1 минута
-const MAX_CACHE_SIZE_KB = 500;
+// const MAX_CACHE_SIZE_KB = 500; // eslint-disable-line no-unused-vars
 const CACHE_TTL_MS = 3600000; // 1 час
+const MIN_RETRY_DELAY_MS = 30000; // ⭐ Минимум 30 секунд для quota retry
 
 class RateLimitManager {
   constructor() {
@@ -92,11 +93,29 @@ class RateLimitManager {
     const waitTime = this.getWaitTime();
 
     if (waitTime > 0) {
-      Logger.log(`[RATE_LIMIT] Ожидание ${waitTime}ms перед следующим запросом...`);
+      const waitSeconds = Math.ceil(waitTime / 1000);
+      Logger.log('[RATE_LIMIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      Logger.log('[RATE_LIMIT] ⏸️ ПРЕВЫШЕН ЛИМИТ ЗАПРОСОВ');
+      Logger.log(`[RATE_LIMIT] Текущий лимит: ${MAX_REQUESTS_PER_MINUTE} запросов/минуту`);
+      Logger.log(`[RATE_LIMIT] Ожидание: ${waitSeconds} секунд`);
+      Logger.log('[RATE_LIMIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       Utilities.sleep(waitTime);
+      Logger.log('[RATE_LIMIT] ✅ Ожидание завершено, продолжаю...');
     }
 
     return waitTime;
+  }
+
+  /**
+   * Получить сообщение об ошибке для пользователя
+   */
+  getRateLimitErrorMessage() {
+    const waitTime = this.getWaitTime();
+    if (waitTime > 0) {
+      const waitSeconds = Math.ceil(waitTime / 1000);
+      return `⏸️ Превышен лимит запросов (${MAX_REQUESTS_PER_MINUTE} запросов/минуту). Подождите ${waitSeconds} секунд и попробуйте снова.`;
+    }
+    return null;
   }
 
   /**
@@ -195,13 +214,27 @@ const cacheManager = new CacheManager();
  *
  * @param {Object} modelConfig - {model: "...", apiKey: "...", maxTokens: number, temperature: number}
  * @param {string|Object} prompt - Промпт или {text: "...", image: "..."}
- * @param {Object} options - {maxRetries: 3, timeout: 30000, skipCache: false}
- * @returns {Object} {success: true/false, data: "...", error: "...", waitTime: 0}
+ * @param {Object} options - {maxRetries: 3, timeout: 30000, skipCache: false, failFastOnRateLimit: false}
+ * @returns {Object} {success: true/false, data: "...", error: "...", waitTime: 0, retryAfter: seconds|null}
+ *
+ * RETRY LOGIC (v3.5.2+):
+ * - При ошибке 429 (Quota Exceeded) выполняется exponential backoff:
+ *   Попытка 1: 30 секунд
+ *   Попытка 2: 60 секунд
+ *   Попытка 3: 120 секунд
+ * - Если API возвращает Retry-After, используется это значение вместо backoff
+ * - Максимум 3 попытки (по умолчанию)
+ * - После исчерпания попыток возвращается user-friendly ошибка с рекомендацией
+ *
+ * RATE LIMITING:
+ * - MAX_REQUESTS_PER_MINUTE = 2 запроса/минуту (глобально для всех пользователей)
+ * - Если лимит превышен, функция автоматически ждёт
+ * - Если failFastOnRateLimit=true, вернёт ошибку немедленно без ожидания
  */
 function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
   const {
     maxRetries = 3,
-    timeout = 30000,
+    // timeout = 30000, // eslint-disable-line no-unused-vars
     skipCache = false,
   } = options;
 
@@ -224,15 +257,34 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
   }
 
   // 2. Применить rate limiting
+  // Сначала проверяем, не превышен ли лимит (для быстрого отказа)
+  const rateLimitError = rateLimiter.getRateLimitErrorMessage();
+  if (rateLimitError && options.failFastOnRateLimit) {
+    Logger.log(`[RATE_LIMIT] ❌ Быстрый отказ: ${rateLimitError}`);
+    return {
+      success: false,
+      data: null,
+      error: rateLimitError,
+      waitTime: rateLimiter.getWaitTime(),
+      fromCache: false,
+      attempt: 0,
+    };
+  }
+
   const waitTime = rateLimiter.waitIfNeeded();
 
   // 3. Выполнить запрос с повторами
   let lastError = null;
+  let retryAfterSuggested = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       // Логировать запрос
       rateLimiter.logRequest();
+
+      const attemptTimestamp = new Date().toISOString();
+      Logger.log(`[GEMINI_CALL] Попытка ${attempt + 1}/${maxRetries} в ${attemptTimestamp}`);
+      Logger.log(`[GEMINI_CALL] Модель: ${modelConfig.model}, Prompt size: ${typeof prompt === 'string' ? prompt.length : 'multimodal'}`);
 
       // Выполнить API запрос
       const result = callGeminiApi(modelConfig, prompt);
@@ -252,6 +304,8 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         waitTime: waitTime,
       });
 
+      Logger.log(`[GEMINI_SUCCESS] Получен ответ: ${result.length} символов`);
+
       return {
         success: true,
         data: result,
@@ -264,23 +318,73 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
       lastError = error;
       const errorMsg = error.toString();
 
-      // Если ошибка 429 (Quota Exceeded)
-      if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota')) {
-        const backoffDelay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+      // Детальное логирование ошибки
+      const errorTimestamp = new Date().toISOString();
+      Logger.log(`[GEMINI_ERROR] Попытка ${attempt + 1}/${maxRetries} НЕУДАЧНА в ${errorTimestamp}`);
+      Logger.log(`[GEMINI_ERROR] Ошибка: ${errorMsg}`);
 
-        Logger.log(`[RATE_LIMIT_429] Попытка ${attempt + 1}/${maxRetries}. Ожидание ${backoffDelay}ms...`);
-        Utilities.sleep(backoffDelay);
+      // Если ошибка 429 (Quota Exceeded) или rate limit
+      if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
+        // ⭐ НОВАЯ ЛОГИКА: Exponential backoff с минимумом 30 секунд
+        // 30s → 60s → 120s (вместо 1s → 2s → 4s)
+        const backoffDelay = Math.pow(2, attempt) * MIN_RETRY_DELAY_MS; // 30s, 60s, 120s
 
-        continue; // Повторить попытку
+        // Попытка извлечь Retry-After из ошибки (если есть)
+        try {
+          const retryAfterMatch = errorMsg.match(/retry after (\d+)/i);
+          if (retryAfterMatch) {
+            retryAfterSuggested = parseInt(retryAfterMatch[1], 10) * 1000; // в миллисекунды
+            Logger.log(`[RETRY_AFTER] Извлечён из ошибки: ${retryAfterSuggested}ms`);
+          }
+        } catch (e) {
+          // Игнорируем ошибки парсинга
+        }
+
+        const finalDelay = retryAfterSuggested || backoffDelay;
+
+        Logger.log('[RATE_LIMIT_429] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        Logger.log('[RATE_LIMIT_429] 🚫 QUOTA EXCEEDED или RATE LIMIT');
+        Logger.log(`[RATE_LIMIT_429] Попытка: ${attempt + 1}/${maxRetries}`);
+        Logger.log(`[RATE_LIMIT_429] Ожидание: ${finalDelay / 1000} секунд`);
+        Logger.log(`[RATE_LIMIT_429] Retry-After из API: ${retryAfterSuggested ? (retryAfterSuggested / 1000) + 's' : 'не указан'}`);
+        Logger.log(`[RATE_LIMIT_429] Backoff delay: ${backoffDelay / 1000}s`);
+        Logger.log('[RATE_LIMIT_429] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        // Если это не последняя попытка - ждём
+        if (attempt < maxRetries - 1) {
+          Logger.log(`[RATE_LIMIT_429] ⏳ Начинаю ожидание ${finalDelay / 1000}s...`);
+          Utilities.sleep(finalDelay);
+          Logger.log('[RATE_LIMIT_429] ✅ Ожидание завершено, повторяю попытку...');
+          continue; // Повторить попытку
+        } else {
+          Logger.log(`[RATE_LIMIT_429] ❌ Исчерпаны все попытки (${maxRetries})`);
+          // Не продолжаем, выходим из цикла
+        }
+      } else {
+        // Для других ошибок - не повторять
+        Logger.log('[GEMINI_ERROR] ❌ Неповторяемая ошибка, выхожу');
+        throw error;
       }
-
-      // Для других ошибок - не повторять
-      throw error;
     }
   }
 
   // 5. Все попытки исчерпаны
   const errorMsg = lastError?.toString() || 'Unknown error';
+
+  // Улучшенное сообщение об ошибке для пользователя
+  let userFriendlyError = errorMsg;
+
+  if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
+    const suggestedWait = retryAfterSuggested ? Math.ceil(retryAfterSuggested / 1000) : 120;
+    userFriendlyError = `⏸️ Квота Gemini API исчерпана. Подождите ${suggestedWait} секунд и попробуйте снова.\n\nВыполнено попыток: ${maxRetries}\nПоследняя ошибка: ${errorMsg}`;
+  }
+
+  Logger.log('[GEMINI_FAILED] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('[GEMINI_FAILED] ❌ ВСЕ ПОПЫТКИ ИСЧЕРПАНЫ');
+  Logger.log(`[GEMINI_FAILED] Попыток: ${maxRetries}`);
+  Logger.log(`[GEMINI_FAILED] Ошибка: ${errorMsg}`);
+  Logger.log(`[GEMINI_FAILED] Пользователю: ${userFriendlyError}`);
+  Logger.log('[GEMINI_FAILED] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   logApiMetric({
     functionName: 'executeGeminiWithRateLimit',
@@ -294,10 +398,11 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
   return {
     success: false,
     data: null,
-    error: errorMsg,
+    error: userFriendlyError,
     waitTime: waitTime,
     fromCache: false,
     attempt: maxRetries,
+    retryAfter: retryAfterSuggested ? Math.ceil(retryAfterSuggested / 1000) : null,
   };
 }
 
@@ -390,10 +495,35 @@ function callGeminiApi(modelConfig, prompt) {
 
   if (code !== 200) {
     let msg = 'HTTP_' + code;
+    let retryDelay = null;
+
     try {
       const data = JSON.parse(responseText);
-      if (data && data.error && data.error.message) msg = data.error.message;
-    } catch (e) {}
+      if (data && data.error) {
+        // Извлекаем сообщение об ошибке
+        if (data.error.message) {
+          msg = data.error.message;
+        }
+
+        // Пытаемся извлечь retryDelay из metadata (если есть)
+        if (data.error.details && Array.isArray(data.error.details)) {
+          for (let i = 0; i < data.error.details.length; i++) {
+            const detail = data.error.details[i];
+            if (detail.metadata && detail.metadata.retryDelay) {
+              // retryDelay обычно в формате "30s", "60s" и т.д.
+              const match = detail.metadata.retryDelay.match(/(\d+)/);
+              if (match) {
+                retryDelay = parseInt(match[1], 10);
+                msg += ` (retry after ${retryDelay}s)`;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Если не удалось распарсить - используем HTTP код
+    }
+
     throw new Error(msg);
   }
 
@@ -1751,6 +1881,7 @@ function testGithubAccess() {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 function test_serverGMImage_withDummyPng() {
   const dummy = Utilities.newBlob('test', 'image/png', 't.png');
   const img = {

@@ -1,6 +1,96 @@
 # CHANGELOG - Table AI
 
-## v3.5.2 (2025-01-XX) - OTA COMPATIBILITY FIX
+## v3.5.2 (2025-01-XX) - CRITICAL: RETRY LOGIC & RATE LIMIT FIX
+
+### 🚨 Critical Bug Fixes
+
+#### 1. Gemini API Retry Logic: Quota Exhaustion Storm
+**Проблема:**
+- Пользователь запускал CollectConfig → упирался в quota
+- Система делала retry каждые **1s → 2s → 4s** (слишком быстро!)
+- Результат: **20+ retry за несколько минут** → блокировка пользователя на 15+ минут
+- Пример: одна попытка в 18:39:05 привела к 20+ ошибкам до 18:54:19
+
+**Решение:**
+- ⭐ **Exponential backoff увеличен:** 30s → 60s → 120s (вместо 1s → 2s → 4s)
+- ⭐ **Максимум 3 попытки** (жёстко), затем понятная ошибка пользователю
+- ⭐ **Парсинг Retry-After** из ответа Google API (если есть)
+- ⭐ **Детальное логирование** каждой попытки с таймстампами
+- ⭐ **User-friendly ошибка:** "⏸️ Квота Gemini API исчерпана. Подождите 120 секунд"
+
+**Код:**
+```javascript
+// server.gs: executeGeminiWithRateLimit()
+const backoffDelay = Math.pow(2, attempt) * MIN_RETRY_DELAY_MS; // 30s, 60s, 120s
+```
+
+**Логи:**
+```
+[RATE_LIMIT_429] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[RATE_LIMIT_429] 🚫 QUOTA EXCEEDED или RATE LIMIT
+[RATE_LIMIT_429] Попытка: 1/3
+[RATE_LIMIT_429] Ожидание: 30 секунд
+[RATE_LIMIT_429] Retry-After из API: не указан
+[RATE_LIMIT_429] Backoff delay: 30s
+[RATE_LIMIT_429] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+#### 2. Rate Limiter: Слишком агрессивный лимит
+**Проблема:**
+- `MAX_REQUESTS_PER_MINUTE = 10` (слишком много!)
+- При batch-операциях (reniewcell.gs) быстро исчерпывалась квота
+- Нет предупреждения пользователю до превышения
+
+**Решение:**
+- ⭐ **Снижен лимит:** `MAX_REQUESTS_PER_MINUTE = 2` (вместо 10)
+- ⭐ **Детальное логирование:** каждое ожидание rate limit
+- ⭐ **User-friendly сообщение:** "⏸️ Превышен лимит запросов (2 запросов/минуту)"
+
+**Код:**
+```javascript
+// server.gs
+const MAX_REQUESTS_PER_MINUTE = 2; // ⭐ Снижено с 10
+const MIN_RETRY_DELAY_MS = 30000; // ⭐ Минимум 30 секунд
+```
+
+#### 3. Улучшенное логирование
+**Добавлено:**
+- ⭐ Timestamp для каждого вызова Gemini API
+- ⭐ Функция-источник вызова
+- ⭐ Размер входных данных (prompt size)
+- ⭐ Retry count
+- ⭐ Полный текст ошибки
+- ⭐ Retry-After значение (если есть)
+- ⭐ Логирование в лист `API_METRICS` (LICENSE_SHEET_ID)
+
+**Пример логов:**
+```
+[GEMINI_CALL] Попытка 1/3 в 2025-01-15T18:39:05Z
+[GEMINI_CALL] Модель: gemini-2.5-flash-lite, Prompt size: 1234
+[GEMINI_ERROR] Попытка 1/3 НЕУДАЧНА в 2025-01-15T18:39:06Z
+[GEMINI_ERROR] Ошибка: Resource exhausted (retry after 30s)
+```
+
+**Файлы:**
+- `deploy/server.gs`: Полностью переработана функция `executeGeminiWithRateLimit()`
+- `deploy/server.gs`: Улучшена функция `callGeminiApi()` для парсинга retryDelay
+- `deploy/server.gs`: Добавлен метод `RateLimitManager.getRateLimitErrorMessage()`
+- `docs/GEMINI_API_CALLS.md`: **Новый документ** с картой всех вызовов API
+- `README.md`: Добавлена секция "⚡ Retry-логика и Rate Limiting"
+
+**Обратная совместимость:**
+- ✅ Все существующие вызовы продолжают работать
+- ✅ Новая логика применяется автоматически
+- ✅ Нет breaking changes
+
+### 📊 Acceptance Criteria
+
+- [x] Все функции, вызывающие Gemini, найдены и задокументированы (docs/GEMINI_API_CALLS.md)
+- [x] Retry-логика использует exponential backoff ≥30s между попытками
+- [x] Rate-limiter предотвращает избыточные запросы (макс 2/минуту)
+- [x] Добавлено детальное логирование с таймстампами
+- [x] Пользователь получает понятную ошибку при исчерпании квоты
+- [x] Документирован весь поток вызовов API
 
 ### 🔧 Bug Fixes
 
