@@ -494,24 +494,37 @@ function getApiKeyWithFallback(modelConfig) {
 
   // Приоритет 3: API_GEM Sheet (rotation mode) - ТОЛЬКО как последний fallback
   try {
-    if (tripleRateLimiter && tripleRateLimiter.keys && tripleRateLimiter.keys.length > 0) {
-      const firstActiveKey = tripleRateLimiter.getCurrentKey();
-      if (firstActiveKey) {
-        Logger.log(`[API_KEY] Using key from api_gem sheet (${firstActiveKey.id})`);
-        return {
-          key: firstActiveKey.key,
-          source: 'apiGemSheet',
-          id: firstActiveKey.id,
-          useRotation: true, // ← ОБЯЗАТЕЛЬНО true (ротация!)
-        };
+    Logger.log('[API_KEY] Checking tripleRateLimiter for api_gem keys...');
+
+    if (tripleRateLimiter) {
+      Logger.log(`[API_KEY] tripleRateLimiter exists. Keys count: ${tripleRateLimiter.keys ? tripleRateLimiter.keys.length : 'UNDEFINED'}`);
+
+      if (tripleRateLimiter.keys && tripleRateLimiter.keys.length > 0) {
+        const firstActiveKey = tripleRateLimiter.getCurrentKey();
+
+        if (firstActiveKey) {
+          Logger.log(`[API_KEY] Using key from apigem sheet: ${firstActiveKey.id}`);
+          return {
+            key: firstActiveKey.key,
+            source: 'apiGemSheet',
+            id: firstActiveKey.id,
+            useRotation: true, // ← ОБЯЗАТЕЛЬНО true (ротация!)
+          };
+        } else {
+          Logger.log('[API_KEY] ERROR: getCurrentKey() returned null even though keys.length > 0');
+        }
+      } else {
+        Logger.log('[API_KEY] ERROR: tripleRateLimiter.keys is empty or undefined');
       }
+    } else {
+      Logger.log('[API_KEY] ERROR: tripleRateLimiter is undefined');
     }
   } catch (e) {
-    Logger.log(`[API_KEY] Error loading from api_gem sheet: ${e.message}`);
+    Logger.log(`[API_KEY] Error loading from apigem sheet: ${e.message}`);
   }
 
   // Не найдено ни одного ключа
-  Logger.log('[API_KEY] ERROR: No API keys found!');
+  Logger.log('[API_KEY] ERROR: No API keys found! Checked: request, User Properties, Script Properties, apigem sheet');
   return null;
 }
 
@@ -675,8 +688,11 @@ class CacheManager {
  * ===== ОСНОВНАЯ ОБЁРТКА (обновлено для Triple Rate Limiting) =====
  */
 
-const tripleRateLimiter = new TripleRateLimiter();
+let tripleRateLimiter = new TripleRateLimiter();
 const cacheManager = new CacheManager();
+
+Logger.log('[INIT] TripleRateLimiter initialized at script load');
+Logger.log(`[INIT] Keys loaded: ${tripleRateLimiter.keys ? tripleRateLimiter.keys.length : 0}`);
 
 /**
  * ГЛАВНАЯ ФУНКЦИЯ: Выполнить Gemini запрос с тройной защитой от квот
@@ -694,6 +710,19 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     skipCache = false,
     useRotation = true, // По умолчанию включаем ротацию
   } = options;
+
+  // 🔧 ШАГ 0: Убедиться что tripleRateLimiter инициализирован
+  if (!tripleRateLimiter || !tripleRateLimiter.keys || tripleRateLimiter.keys.length === 0) {
+    Logger.log('[TRIPLE_RATE_LIMIT] Reinitializing tripleRateLimiter (was missing or empty)...');
+    tripleRateLimiter = new TripleRateLimiter();
+
+    // Логируем статус после переинициализации
+    if (tripleRateLimiter.keys && tripleRateLimiter.keys.length > 0) {
+      Logger.log(`[TRIPLE_RATE_LIMIT] Reinitialized successfully. Keys loaded: ${tripleRateLimiter.keys.length}`);
+    } else {
+      Logger.log('[TRIPLE_RATE_LIMIT] ERROR: Reinitialization failed! No keys found.');
+    }
+  }
 
   // 1. GET API KEY (с 4-уровневой иерархией fallback)
   const apiKeyInfo = getApiKeyWithFallback(modelConfig);
