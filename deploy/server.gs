@@ -1147,24 +1147,16 @@ function doPost(_e) {
       Logger.log('temperature: ' + temperature);
       Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
 
-      // API key priority: use user key first, otherwise fallback to default
-      let finalApiKey = userApiKey;
-      let keySource = 'USER';
+      // Resolve API key: user key → sheet key
+      const finalApiKey = resolveApiKey(userApiKey);
+      const keySource = userApiKey ? 'USER' : 'SHEET';
 
-      if (!userApiKey) {
-        // Try to get default API key from script properties
-        const defaultApiKey = getDefaultGeminiKey_();
-        if (defaultApiKey) {
-          finalApiKey = defaultApiKey;
-          keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
-        } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
-          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
-        }
-      } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
+      if (!finalApiKey) {
+        Logger.log('ERROR: No API key available');
+        return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
       }
+
+      Logger.log('Using ' + keySource + ' API key, length: ' + finalApiKey.length);
 
       // rate limit
       if (!rateLimitOk_(token)) {
@@ -1217,24 +1209,16 @@ function doPost(_e) {
       Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
       Logger.log('delimiter: ' + (delimiter || 'NONE'));
 
-      // API key priority: use user key first, otherwise fallback to default
-      let finalApiKey = userApiKey;
-      let keySource = 'USER';
+      // Resolve API key: user key → sheet key
+      const finalApiKey = resolveApiKey(userApiKey);
+      const keySource = userApiKey ? 'USER' : 'SHEET';
 
-      if (!userApiKey) {
-        // Try to get default API key from script properties
-        const defaultApiKey = getDefaultGeminiKey_();
-        if (defaultApiKey) {
-          finalApiKey = defaultApiKey;
-          keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
-        } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
-          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
-        }
-      } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
+      if (!finalApiKey) {
+        Logger.log('ERROR: No API key available');
+        return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
       }
+
+      Logger.log('Using ' + keySource + ' API key, length: ' + finalApiKey.length);
 
       if (!Array.isArray(images) || images.length === 0) {
         Logger.log('ERROR: No images provided');
@@ -1300,9 +1284,9 @@ function doPost(_e) {
           return json_(lic, 403);
         }
 
-        const defaultKey = getDefaultGeminiKey_();
+        const defaultKeyObj = getApiKeyFromSheet();
 
-        if (!defaultKey) {
+        if (!defaultKeyObj || !defaultKeyObj.key) {
           Logger.log('❌ No default key configured');
           return json_({
             ok: false,
@@ -1314,8 +1298,8 @@ function doPost(_e) {
         Logger.log('✅ Returning default Gemini key');
         return json_({
           ok: true,
-          apiKey: defaultKey,
-          source: 'server_default',
+          apiKey: defaultKeyObj.key,
+          source: 'apiGemSheet',
         });
       }
 
@@ -1474,24 +1458,16 @@ function doPost(_e) {
       Logger.log('cellAddress: ' + cellAddress);
       Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
 
-      // API key priority: use user key first, otherwise fallback to default
-      let finalApiKey = userApiKey;
-      let keySource = 'USER';
+      // Resolve API key: user key → sheet key
+      const finalApiKey = resolveApiKey(userApiKey);
+      const keySource = userApiKey ? 'USER' : 'SHEET';
 
-      if (!userApiKey) {
-        // Try to get default API key from script properties
-        const defaultApiKey = getDefaultGeminiKey_();
-        if (defaultApiKey) {
-          finalApiKey = defaultApiKey;
-          keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
-        } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
-          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE', logs: logs}, 400);
-        }
-      } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
+      if (!finalApiKey) {
+        Logger.log('ERROR: No API key available');
+        return json_({ok: false, error: 'NO_API_KEY_AVAILABLE', logs: logs}, 400);
       }
+
+      Logger.log('Using ' + keySource + ' API key, length: ' + finalApiKey.length);
 
       // Validate required fields
       if (!config) return json_({ok: false, error: 'NO_CONFIG', logs: logs}, 400);
@@ -1891,6 +1867,73 @@ function fetchFileContent_(fileName) {
 }
 
 // ===== Gemini API Key Management =====
+
+/**
+ * Load Gemini API keys from api_gem sheet in LICENSE_SHEET_ID
+ * Returns first active key or null if none found
+ * @return {Object|null} Object with {key, source, id} or null
+ */
+function getApiKeyFromSheet() {
+  try {
+    const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
+    const sheet = ss.getSheetByName('api_gem');
+
+    if (!sheet) {
+      Logger.log('[API_KEY] api_gem sheet not found in LICENSE_SHEET_ID');
+      return null;
+    }
+
+    const data = sheet.getDataRange().getValues();
+
+    // Read rows starting from row 1 (row 0 is header)
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const name = String(row[0] || '').trim();
+      const key = String(row[1] || '').trim();
+      const status = String(row[2] || 'ACTIVE').trim();
+
+      // Return first active key
+      if (key && status === 'ACTIVE') {
+        Logger.log('[API_KEY] Using key from api_gem: ' + name);
+        return {
+          key: key,
+          source: 'apiGemSheet',
+          id: name,
+        };
+      }
+    }
+
+    Logger.log('[API_KEY] No active keys found in api_gem sheet');
+    return null;
+  } catch (e) {
+    Logger.log('[API_KEY] Error loading from api_gem: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * Resolve which API key to use (client key → sheet key)
+ * @param {string} userApiKey - User's personal API key (may be null/undefined)
+ * @return {string|null} API key to use or null if none available
+ */
+function resolveApiKey(userApiKey) {
+  // 1. If client provided their own key, use it
+  if (userApiKey && userApiKey.trim()) {
+    Logger.log('[API_KEY] Using key from client');
+    return userApiKey;
+  }
+
+  // 2. If not, get from api_gem sheet in LICENSE_SHEET_ID
+  const sheetKey = getApiKeyFromSheet();
+
+  if (sheetKey && sheetKey.key) {
+    return sheetKey.key;
+  }
+
+  // 3. Nothing available
+  Logger.log('[API_KEY] No API key available!');
+  return null;
+}
 
 /**
  * Получить Gemini API ключ по умолчанию (из свойств сервера)
@@ -2447,9 +2490,9 @@ function test_serverGMImage_withDummyPng() {
     data: Utilities.base64Encode(dummy.getBytes()),
   };
 
-  const key = getDefaultGeminiKey_(); // уже есть
-  if (!key) throw new Error('NO_DEFAULT_GEMINI_KEY');
+  const keyObj = getApiKeyFromSheet();
+  if (!keyObj || !keyObj.key) throw new Error('NO_DEFAULT_GEMINI_KEY');
 
-  const res = serverGMImage_([img], 'ru', key, '____');
+  const res = serverGMImage_([img], 'ru', keyObj.key, '____');
   Logger.log('OK, len=' + (res || '').length);
 }
