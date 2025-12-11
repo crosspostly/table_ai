@@ -27,8 +27,8 @@ const TRIPLE_RATE_LIMITS = {
   MAX_RPM_WARNING: 8, // 80%
 
   // Tokens Per Minute
-  MAX_TPM: 250_000,
-  MAX_TPM_WARNING: 200_000, // 80%
+  MAX_TPM: 250000,
+  MAX_TPM_WARNING: 200000, // 80%
 
   // API Keys Management
   API_KEYS_SHEET_NAME: 'api_gem',
@@ -2481,4 +2481,4 @@ function test_serverGMImage_withDummyPng() {
 
   const res = serverGMImage_([img], 'ru', key, '____');
   Logger.log('OK, len=' + (res || '').length);
-}
+}ы
