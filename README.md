@@ -1,509 +1,617 @@
-# Table AI - AI-Powered Google Sheets Constructor v3.5
+# Table AI - AI-Powered Google Sheets Automation
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-3.5.2-brightgreen.svg)]()
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)]()
+[![Google Apps Script](https://img.shields.io/badge/Google%20Apps%20Script-enabled-blue.svg)]()
 
-> **🆕 v3.5.2**: Исправлена обратная совместимость OTA системы - старые клиенты теперь могут обновиться автоматически!
-> 
-> **🚀 НОВИНКА v2.1**: Triple-Metric Rate Limiting - увеличена дневная производительность с 20 до 120 запросов через ротацию 6 API ключей!
-
-## 📌 О проекте
-
-**Table AI** - это мощный Google Sheets add-on, который использует **AI (Gemini 2.0)** для автоматизации работы с данными:
-
-✅ **Интеллектуальные трансформации** - преобразование данных через natural language  
-✅ **Парсинг VK постов** - автоматический импорт контента из VK  
-✅ **OCR отзывов** - распознавание текста с изображений  
-✅ **Автоматические обновления** - система OTA для бесперебойных апдейтов  
-✅ **Лицензирование** - управление копиями и доступом пользователей  
+> **🆕 Latest:** v3.5.2 - OTA backward compatibility + prompt_table feature
 
 ---
 
-## 🚀 Быстрый старт
+## 📌 Overview
 
-### 1️⃣ Установка
+**Table AI** is a powerful Google Sheets add-on that leverages **Gemini 2.0 AI** to automate and enhance spreadsheet workflows:
 
-```
-# Клонируем репозиторий
+✅ **AI Transformations** - Process data with natural language prompts  
+✅ **VK Import** - Automatically import posts from VKontakte  
+✅ **OCR** - Extract text from images using Vision AI  
+✅ **OTA Updates** - Automatic code updates via Over-The-Air system  
+✅ **Licensing** - Multi-user license management  
+✅ **Prompt Table** - Remote system prompts from centralized sheets  
+✅ **Multi-Key Rotation** - 120 requests/day via 6 API keys
+
+---
+
+## 🚀 Quick Start
+
+### 1. Installation
+
+```bash
+# Clone repository
 git clone https://github.com/crosspostly/table_ai.git
-
-# Входим в проект
 cd table_ai
 
-# Устанавливаем зависимости (если нужны)
+# Install dependencies (for development)
 npm install
 ```
 
-### 2️⃣ Развертывание на Google Apps Script
+### 2. Deploy to Google Apps Script
 
-```
-# Создаём новый Apps Script проект
-# Extensions → Apps Script в Google Sheets
+#### Option A: Using clasp (CLI)
 
-# Копируем файлы из deploy/
-- Main.gs
-- CollectConfig.gs
-- TemplateService.gs
-- ... остальные файлы
+```bash
+# Install clasp
+npm install -g @google/clasp
 
-# Или используем clasp (Google Apps Script CLI)
-clasp clone <scriptId>
+# Login to Google
+clasp login
+
+# Clone your project
+clasp clone <your-script-id>
+
+# Push code
 clasp push
+
+# Deploy
+clasp deploy
 ```
 
-### 3️⃣ Первый запуск
+#### Option B: Manual Copy
 
-```
-1. Открываешь таблицу
-2. Extensions → Apps Script → (обновляешь браузер)
-3. Меню: 🤖 Table AI → ⚙️ Настройки
-4. Вставляешь Gemini API ключ (опционально)
-5. Сохраняешь
-6. ✅ Готово!
-```
+1. Open Google Sheets
+2. **Extensions → Apps Script**
+3. Copy files from `/deploy/` folder:
+   - Main.gs
+   - server.gs
+   - CollectConfig.gs
+   - TemplateService.gs
+   - (and all other files)
+4. Save and close
+
+### 3. First Run
+
+1. Open your spreadsheet
+2. Refresh page (F5)
+3. Menu: **🤖 Table AI → ⚙️ Настройки**
+4. Enter your Gemini API key (optional)
+5. Enter license email and token (if required)
+6. Save
+7. ✅ Ready to use!
 
 ---
 
-## 🏗️ Архитектура
+## 🏗️ Architecture
 
-### Компоненты системы
+### System Overview
 
-```
-┌─────────────────────────────────────┐
-│     КЛИЕНТ (Google Sheets)          │
-│  ┌──────────────────────────────┐   │
-│  │ Main.gs (UI, логика)         │   │
-│  │ CollectConfig.gs             │   │
-│  │ SettingsUI.html              │   │
-│  └──────────────────────────────┘   │
-└────────────┬────────────────────────┘
-             │ OTA Updates
-             │ Gemini API (client key)
-             ▼
-┌─────────────────────────────────────┐
-│   СЕРВЕР (Google Apps Script Web App)│
-│  ┌──────────────────────────────┐   │
-│  │ server.gs (OTA, Лицензии)    │   │
-│  │ license_module.gs            │   │
-│  │ Обновляет клиентские скрипты │   │
-│  └──────────────────────────────┘   │
-└────────────┬────────────────────────┘
-             │ Gemini API (default key)
-             │ GitHub Raw API
-             ▼
-┌─────────────────────────────────────┐
-│    ВНЕШНИЕ СЕРВИСЫ                  │
-│  -  GitHub (deploy/ folder)          │
-│  -  Google Gemini API                │
-│  -  VK API                           │
-│  -  Google Drive API                 │
-└─────────────────────────────────────┘
-```
-
-### Поток данных OTA
+Table AI consists of **two separate Google Apps Script projects**:
 
 ```
-1. Клиент проверяет версию (3:00 AM или вручную)
-   └─> SERVER: action='ota', subaction='checkUpdates'
-
-2. Сервер возвращает: updateAvailable=true
-
-3. Клиент запрашивает файлы
-   └─> SERVER: action='ota', subaction='getUpdatedFiles'
-
-4. Сервер скачивает файлы с GitHub
-   └─> GITHUB: /deploy/*.gs
-
-5. Сервер отправляет файлы клиенту
-
-6. Клиент запрашивает сервер обновить код
-   └─> SERVER: action='ota', subaction='applyUpdates'
-
-7. Сервер обновляет клиентский скрипт (Apps Script API)
-   └─> API: PUT /projects/{scriptId}/content
-
-8. ✅ Клиентский код обновлён!
+┌─────────────────────────────────────────────────────┐
+│  CLIENT (Container-bound Script in user's sheet)   │
+│  ┌───────────────────────────────────────────────┐ │
+│  │ Main.gs - UI, menus, client logic            │ │
+│  │ CollectConfig.gs - AI Constructor             │ │
+│  │ TemplateService.gs - Template management      │ │
+│  │ VK.gs - VK import module                      │ │
+│  │ UnpackingViewer.gs - Data viewer              │ │
+│  │ ocrRunV2_client.gs - OCR client               │ │
+│  │ reniewcell.gs - Batch operations              │ │
+│  └───────────────────────────────────────────────┘ │
+└──────────────┬──────────────────────────────────────┘
+               │ HTTP POST (UrlFetchApp)
+               │ - License validation
+               │ - Gemini API proxy
+               │ - OTA updates
+               ▼
+┌─────────────────────────────────────────────────────┐
+│  SERVER (Standalone Web App)                        │
+│  ┌───────────────────────────────────────────────┐ │
+│  │ server.gs - API router, business logic        │ │
+│  │ ota_updates.gs - OTA update system            │ │
+│  │ license_module.gs - License validation        │ │
+│  └───────────────────────────────────────────────┘ │
+│  URL: https://script.google.com/macros/s/.../exec  │
+└──────────────┬──────────────────────────────────────┘
+               │ External APIs
+               ├─→ GitHub (code repository)
+               ├─→ Gemini AI (text/vision processing)
+               ├─→ Google Sheets API (data access)
+               └─→ Apps Script API (code updates)
 ```
+
+### Key Components
+
+#### Client Layer
+- **Main.gs** (~2,150 lines) - Core client logic:
+  - Menu system and UI dialogs
+  - Gemini API wrappers (`GM()`, `GM_IF()`)
+  - Logging system
+  - OTA client
+- **CollectConfig.gs** - AI Constructor for complex configs
+- **TemplateService.gs** - Save/load template configurations
+- **VK.gs** - VKontakte post import
+- **UnpackingViewer.gs** - JSON data viewer
+- **ocrRunV2_client.gs** - OCR batch processing
+- **reniewcell.gs** - Batch cell updates
+
+#### Server Layer
+- **server.gs** (~800 lines) - Main API handler:
+  - `doPost()` - Request router
+  - Gemini API proxy
+  - License validation
+  - Rate limiting
+- **ota_updates.gs** (~375 lines) - OTA system:
+  - GitHub file downloads
+  - Apps Script API integration
+  - Version management
+- **license_module.gs** - License management
+
+#### Data Storage
+- **License Spreadsheet:**
+  - Tokens (email, token, expires, copies_count)
+  - Bindings (email, sheet_id, script_id)
+  - API Keys (multi-key rotation)
+- **User Properties** - Personal API keys
+- **Script Properties** - Sheet-level configurations
+- **Cache Service** - Temporary logs (24h)
 
 ---
 
-## ⚡ Triple-Metric Rate Limiting (v2.1)
+## ⚡ Features
 
-### 🚀 Что это даёт?
+### 1. AI Transformations
 
-**ПРОБЛЕМА РЕШЕНА:** Увеличена дневная производительность с **20 до 120 запросов**!
+Use AI directly in spreadsheet formulas:
 
-### Лимиты Google AI Studio (Free Tier):
-- **RPD** (Requests Per Day): 20 запросов/сутки ← САМЫЙ ЖЁСТКИЙ!
-- **RPM** (Requests Per Minute): 10 запросров/минуту  
-- **TPM** (Tokens Per Minute): 250,000 токенов/минуту
+```
+=GM("Translate to English: " & A2)
+=GM("Summarize: " & B2, 5000, 0.5)
+=GM_IF(A2<>"", "Extract email from: " & A2)
+```
 
-### 🔄 Multi-Key Rotation Solution:
+Or use the **AI Constructor** (Menu → 🛠️ AI Constructor):
+- Configure system prompts
+- Define data sources
+- Save as templates
+- Execute on demand
+
+### 2. prompt_table (Remote Prompts)
+
+Store system prompts in a centralized Google Sheet:
+
+**Benefits:**
+- Update prompts for all users at once
+- A/B test different prompts
+- License-specific prompts
+- Multi-language support
+
+**Configuration:**
 ```javascript
-Key 1: 20 RPD
-Key 2: 20 RPD  
-Key 3: 20 RPD
-Key 4: 20 RPD
-Key 5: 20 RPD
-Key 6: 20 RPD
-─────────────
-TOTAL: 120 RPD в день! 🚀
-```
-
-### ⚙️ Как настроить:
-
-**1. Создать лист `api_gem` в лицензионной таблице:**
-| A        | B                              | C      |
-|----------|--------------------------------|--------|
-| api_key_1 | sk-proj-xxxx...full-key...   | ACTIVE |
-| api_key_2 | sk-proj-yyyy...full-key...   | ACTIVE |
-| api_key_3 | sk-proj-zzzz...full-key...   | ACTIVE |
-| api_key_4 | sk-proj-wwww...full-key...   | ACTIVE |
-| api_key_5 | sk-proj-uuuu...full-key...   | ACTIVE |
-| api_key_6 | sk-proj-vvvv...full-key...   | ACTIVE |
-
-**2. Проверить статус в Console:**
-```javascript
-logTripleRateLimiterStatus()
-```
-
-### 📊 Мониторинг в листе API_METRICS:
-Автоматически логируются:
-- Какой ключ использовался (KeyId)
-- Текущее использование (CurrentRPD/RPM/TPM) 
-- Лимиты (MaxRPD/RPM/TPM)
-- Статус всех ключей (AllKeysStatus)
-
-### 🌍 Pacific Timezone:
-Сброс RPD лимитов происходит в **полночь Pacific Time** (не UTC или московское время), как требует Google.
-
-### ⚡ Ожидаемый результат:
-```
-19:02:38 ✅ key_1 Request 1  (RPD: 1/20)
-19:29:21 ✅ key_2 Request 6  (RPD: 1/20) ← Автопереключение!
-20:00:00 ✅ key_3 Request 11 (RPD: 1/20) ← Автопереключение!
-...
-20:50:00 ✅ key_6 Request 115 (RPD: 20/20)
-20:50:15 ❌ Request 121 → ALL_KEYS_EXHAUSTED
-```
-
-**ИТОГО:** 120 успешных + 0 неудачных = идеально! 🚀
-
----
-
-## 📡 prompt_table (удалённые промпты)
-
-### Что это такое?
-
-**prompt_table** позволяет получать системный промпт (System Prompt) из удалённой Google Таблицы вместо локальных листов. Это полезно для:
-
-✅ Централизованного управления промптами для разных пользователей  
-✅ Быстрого изменения промпта без обновления каждой копии таблицы  
-✅ Использования конфиденциальной таблицы с лицензированными промптами  
-
-### Как использовать
-
-**1. Открыть AI Constructor:**
-- Меню: 🤖 Table AI → 🛠️ AI Constructor
-
-**2. Включить prompt_table:**
-- Поставить галку: `📡 prompt_table (удалённый сервер)`
-
-**3. Заполнить параметры:**
-
-| Поле | Описание | Пример |
-|------|---------|--------|
-| 📋 ID таблицы | ID Google Sheets (из URL) | `1abc123def456ghi` |
-| 📄 Лист | Название листа с промптом | `Промты` |
-| 📍 Ячейка | Адрес ячейки с промптом | `B2` или `A1:B5` |
-
-**4. Применить:**
-- Нажать: 🚀 Запустить
-
-### Пример конфигурации
-
-Если локальная таблица может читать из удалённой:
-
-```javascript
-// config.prompt_table (новый формат)
 {
   "prompt_table": {
-    "spreadsheetId": "1abc123def456ghi",
-    "sheetName": "Промты",
+    "spreadsheetId": "1abc123...",
+    "sheetName": "Prompts",
     "cellAddress": "B2"
   }
 }
 ```
 
-### Проверка доступа
+See [PROMPT_TABLE.md](docs/PROMPT_TABLE.md) for details.
 
-Перед использованием убедитесь что:
-- ✅ Удалённая таблица доступна вашему Google аккаунту
-- ✅ Лист `Промты` существует в таблице
-- ✅ Ячейка `B2` содержит текст промпта
-- ✅ Нет запрета на доступ через Apps Script
+### 3. Multi-Key Rate Limiting
 
-### Откат на локальные промпты
+Bypass Gemini API daily limits (20 RPD → 120 RPD):
 
-Если нужно вернуться к локальным промптам:
-1. Открыть AI Constructor
-2. Убрать галку с `📡 prompt_table`
-3. Выбрать локальный лист и ячейку
-4. Нажать 🚀 Запустить
+**Setup:**
+1. Create sheet `api_gem` in license spreadsheet:
+
+| A | B | C |
+|---|---|---|
+| api_key_1 | AIza...key-1... | ACTIVE |
+| api_key_2 | AIza...key-2... | ACTIVE |
+| api_key_3 | AIza...key-3... | ACTIVE |
+| api_key_4 | AIza...key-4... | ACTIVE |
+| api_key_5 | AIza...key-5... | ACTIVE |
+| api_key_6 | AIza...key-6... | ACTIVE |
+
+2. System automatically rotates keys when limits hit
+3. Monitor in `API_METRICS` sheet
+
+**Result:** 6 keys × 20 RPD = **120 requests per day**
+
+### 4. OTA (Over-The-Air) Updates
+
+Automatic code updates without manual intervention:
+
+**How it works:**
+1. Every night at 3:00 AM (or manual trigger)
+2. Client checks server for new version
+3. Server downloads files from GitHub
+4. Server updates client via Apps Script API
+5. User receives email notification
+
+**Features:**
+- Backward compatibility (v3.5.2+)
+- Private GitHub repository support
+- Staged rollouts
+- Version tracking
+
+See [OTA_UPDATES.md](docs/OTA_UPDATES.md) for details.
+
+### 5. License System
+
+Multi-user license management:
+
+**License Table:**
+```
+┌─────────────────┬──────────┬────────────┬──────────────┐
+│ email           │ token    │ expires    │ copies_count │
+├─────────────────┼──────────┼────────────┼──────────────┤
+│ user@gmail.com  │ abc123   │ 2026-12-31 │ 100          │
+└─────────────────┴──────────┴────────────┴──────────────┘
+```
+
+**Bindings Table:**
+```
+┌─────────────────┬─────────────┬─────────────┬────────────┐
+│ email           │ sheet_id    │ script_id   │ created_at │
+├─────────────────┼─────────────┼─────────────┼────────────┤
+│ user@gmail.com  │ 1abc123...  │ 12bp9cBT... │ 2025-12-01 │
+└─────────────────┴─────────────┴─────────────┴────────────┘
+```
+
+See [LICENSE_SYSTEM.md](docs/LICENSE_SYSTEM.md) for details.
+
+### 6. VK Import
+
+Automatically import VKontakte posts:
+
+1. Configure VK owner ID and post count
+2. Menu: **🤖 Table AI → 📥 VK Import**
+3. Posts imported to "посты" sheet
+4. Auto-filtering and formatting applied
+
+### 7. OCR (Optical Character Recognition)
+
+Extract text from images using Gemini Vision:
+
+1. Insert image URLs in sheet
+2. Menu: **🤖 Table AI → 📸 OCR Batch**
+3. System extracts text from all images
+4. Results written to adjacent cells
+
+Supports: PNG, JPEG, GIF, WebP
 
 ---
 
-## 🔑 Управление API ключами
+## 🔑 API Key Management
 
-### Gemini API (три уровня приоритета)
+Three-tier priority system:
 
-```
-ПРИОРИТЕТ:
-1️⃣ ЛИЧНЫЙ КЛЮЧ (UserProperties)
-   └─ Если установлен → используется только для этого пользователя
+### 1️⃣ Personal Key (Highest Priority)
+**Storage:** UserProperties  
+**Scope:** Current user only  
+**Set via:** Menu → ⚙️ Настройки
 
-2️⃣ ОБЩИЙ КЛЮЧ ТАБЛИЦЫ (ScriptProperties клиента)
-   └─ Если личного нет → используется для всех пользователей этой копии
-
-3️⃣ СЕРВЕРНЫЙ КЛЮЧ (ScriptProperties сервера)
-   └─ Если на клиенте нет ключей → сервер выполняет запрос своим ключом
-
-НОЛЬ КЛЮЧЕЙ В СИСТЕМЕ?
-❌ Сервер вернёт `NO_API_KEY_AVAILABLE` и попросит администратора настроить ключ
+```javascript
+// Stored in UserProperties
+PropertiesService.getUserProperties()
+  .setProperty('GEMINI_API_KEY', 'AIza...')
 ```
 
-### Как установить ключи
+### 2️⃣ Sheet Key (Medium Priority)
+**Storage:** ScriptProperties (client)  
+**Scope:** All users of this sheet  
+**Set via:** Console or Settings
 
-**Серверный ключ (администратор):**
+```javascript
+// Stored in ScriptProperties
+PropertiesService.getScriptProperties()
+  .setProperty('GEMINI_API_KEY', 'AIza...')
 ```
-// Extensions → server.gs → Console
+
+### 3️⃣ Server Key (Fallback)
+**Storage:** ScriptProperties (server)  
+**Scope:** All clients without keys  
+**Set via:** Server console (admin only)
+
+```javascript
+// Server console:
 setDefaultGeminiKey_('AIza...')
 ```
 
-**Общий ключ таблицы (владелец):**
-```
-// В таблице: Меню → 🔑 Gemini → "Установить API ключ"
-// или вручную через консоль Apps Script клиента
-PropertiesService.getScriptProperties().setProperty('GEMINI_API_KEY', 'AIza...')
-```
-
-**Личный ключ (пользователь):**
-```
-1. ⚙️ Настройки (Table AI → ⚙️ Настройки)
-2. 🤖 Gemini API Ключ
-3. Вставляешь свой ключ
-4. ✅ Сохраняешь
-```
+**Priority:** Personal > Sheet > Server
 
 ---
 
-## 📦 Лицензирование
+## 📚 Documentation
 
-### Система Bindings
+### User Guides
+- **[Quick Start](#quick-start)** - Get started in 5 minutes
+- **[API Reference](docs/API.md)** - Complete API documentation
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
-Таблица лицензий (Google Sheet):
-```
-┌─────────────────┬──────────────┬──────────────┐
-│ Email           │ sheet_ids    │ script_ids   │
-├─────────────────┼──────────────┼──────────────┤
-│ user@gmail.com  │ sheet-123... │ script-456...│
-│ user@gmail.com  │ sheet-789... │ script-abc...│
-└─────────────────┴──────────────┴──────────────┘
+### Feature Guides
+- **[prompt_table Feature](docs/PROMPT_TABLE.md)** - Remote prompts guide
+- **[OTA Updates](docs/OTA_UPDATES.md)** - Automatic update system
+- **[License System](docs/LICENSE_SYSTEM.md)** - Multi-user licensing
 
-Каждая строка = одна копия таблицы
-```
+### Developer Docs
+- **[Architecture](docs/ARCHITECTURE.md)** - System design and components
+- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Development workflow
+- **[Deployment](docs/DEPLOYMENT.md)** - Production deployment guide
+- **[Testing Guide](docs/TESTING_GUIDE.md)** - Test suite and practices
 
-### Как работает
+### Advanced Topics
+- **[Private GitHub Repo](docs/GITHUB_PRIVATE_REPO.md)** - Private repo OTA setup
+- **[Gemini API Config](docs/GEMINI_API_CONFIG.md)** - API key management
+- **[Server Setup](docs/SERVER_SETUP.md)** - Server configuration
+- **[Functions Reference](docs/FUNCTIONS_REFERENCE.md)** - All public functions
+- **[Comprehensive API](docs/COMPREHENSIVE_PUBLIC_API.md)** - Full API reference
 
-```
-Пользователь копирует таблицу
-    ↓
-Открывает копию
-    ↓
-onOpen() → installUpdateTrigger_()
-    ↓
-Триггер создается → checkForUpdatesBackground_()
-    ↓
-Каждую ночь в 3:00 сервер проверяет обновления
-    ↓
-✅ Новый код автоматически загружается!
-```
+### Audit & Analysis
+- **[Gemini API Audit Summary](docs/GEMINI_API_AUDIT_SUMMARY.md)** - API usage analysis
+- **[Gemini API Flow Diagram](docs/GEMINI_API_FLOW_DIAGRAM.md)** - Request flows
+- **[Gemini API Quick Reference](docs/GEMINI_API_QUICK_REFERENCE.md)** - Quick lookup
 
 ---
 
-## 🔄 OTA (Over-The-Air) Обновления
+## 🛠️ Development
 
-### Как работают обновления
+### Local Setup
 
-```
-АВТОМАТИЧЕСКИЕ (каждую ночь в 3:00):
-✅ Запускается checkForUpdatesBackground_()
-✅ Сервер обновляет код клиента
-✅ Пользователь ничего не делает
-
-РУЧНЫЕ:
-✅ Пользователь нажимает: 🔄 Автообновление
-✅ Проверяется триггер (создается если нет)
-✅ Запускается проверка обновлений
-✅ Если есть обновление → обновляется код
-```
-
-### Стадии обновления
-
-```
-СТАДИЯ 1: ПРОВЕРКА ВЕРСИИ
-├─ Клиент: CLIENT_VERSION = '3.1.0'
-├─ Сервер: SERVER_VERSION = '3.1.1'
-└─ Результат: updateAvailable = true
-
-СТАДИЯ 2: СКАЧИВАНИЕ ФАЙЛОВ
-├─ Сервер → GitHub: Скачивает 12 файлов
-├─ Проверка: Все файлы получены?
-└─ Результат: ✅ 12 файлов готовы
-
-СТАДИЯ 3: ОБНОВЛЕНИЕ КОДА
-├─ Сервер → Apps Script API
-├─ Обновляет код в клиентском проекте
-└─ Результат: ✅ Код обновлён в скрипте
-
-СТАДИЯ 4: ГОТОВО
-└─ ✅ Клиент перезагружается с новым кодом
-```
-
----
-
-## 🛠️ Разработка и развертывание
-
-### Локальная разработка
-
-```
-# 1. Клонируем репо
+```bash
+# Clone repository
 git clone https://github.com/crosspostly/table_ai.git
+cd table_ai
 
-# 2. Устанавливаем Google Apps Script CLI
+# Install dependencies
+npm install
+
+# Install clasp globally
 npm install -g @google/clasp
 
-# 3. Логинимся в Google
+# Login to Google
 clasp login
 
-# 4. Создаём Apps Script проект
-clasp create
+# Create new project (or clone existing)
+clasp create --type sheets --title "Table AI Dev"
+# or
+clasp clone <your-script-id>
 
-# 5. Синхронизируем код
+# Push code
 clasp push
 
-# 6. Разворачиваем
-clasp deploy
+# Open in browser
+clasp open
 ```
 
-### Развертывание на production
+### Development Workflow
 
+1. **Create feature branch:**
+```bash
+git checkout -b feature/amazing-feature
 ```
-# 1. Увеличиваем версии:
-#    - CLIENT_VERSION в Main.gs
-#    - SERVER_VERSION в server.gs
 
-# 2. Коммитим в main ветку
-git add deploy/
-git commit -m "Release v3.1.1: add feature X"
+2. **Make changes in `/deploy/` folder**
+
+3. **Test locally:**
+```bash
+clasp push
+# Test in spreadsheet
+```
+
+4. **Run tests:**
+```bash
+npm test
+```
+
+5. **Commit and push:**
+```bash
+git add .
+git commit -m "feat: add amazing feature"
+git push origin feature/amazing-feature
+```
+
+6. **Create Pull Request**
+
+### Release Process
+
+1. **Update version numbers:**
+   - `deploy/Main.gs`: `CLIENT_VERSION = '3.5.3'`
+   - `deploy/server.gs`: `SERVER_VERSION = '3.5.3'`
+
+2. **Update CHANGELOG:**
+   - Add new version section
+   - Document changes
+
+3. **Commit and push:**
+```bash
+git add deploy/ docs/CHANGELOG.md
+git commit -m "chore: release v3.5.3"
 git push origin main
-
-# 3. Deployим сервер
-clasp deploy --server
-
-# 4. OTA система автоматически обновит всех клиентов! ✅
 ```
 
----
-
-## 📚 Документация
-
-### Гайды
-
-- 📖 [OTA_UPDATES.md](docs/OTA_UPDATES.md) - Подробно об обновлениях (v3.5)
-- 🔐 [GITHUB_PRIVATE_REPO.md](docs/GITHUB_PRIVATE_REPO.md) - Приватные GitHub репо (NEW!)
-- 🔑 [GEMINI_API_CONFIG.md](docs/GEMINI_API_CONFIG.md) - Управление API ключами
-- 🏗️ [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Архитектура системы
-- 📦 [LICENSE_SYSTEM.md](docs/LICENSE_SYSTEM.md) - Система лицензирования
-- 🚀 [SERVER_SETUP.md](docs/SERVER_SETUP.md) - Настройка сервера
-- 🎯 [DEPLOYMENT.md](docs/DEPLOYMENT.md) - Развертывание
-
----
-
-## 🐛 Отладка
-
-### Включить DEV режим
-
-```
-// Main.gs, строка ~50
-const DEV_MODE = true;  // ← Включить для отладки
+4. **Deploy server:**
+```bash
+# In server project:
+clasp push
+clasp deploy --description "v3.5.3: New features"
 ```
 
-### DEV Меню
+5. **OTA automatically updates clients** 🎉
 
-```
-🧰 DEV
-├─ 📝 Показать логи (все события)
-├─ ⬇️ Экспорт логов (скачать в CSV)
-├─ 🗑 Очистить логи
-├─ 🔍 Тест сервера (проверить связь)
-├─ 🧪 Dev Self Test (вся система)
-├─ 🔑 Debug Gemini Keys (проверить ключи)
-└─ 🔄 Автообновление (управление триггерами)
-```
+---
 
-### Вызвать отладку
+## 🧪 Testing
 
-```
-// Extensions → Apps Script → Console
-debugOTAFlow()        // Отладка OTA
-debugGeminiKeys()     // Отладка Gemini ключей
-testServerConnection() // Проверить сервер
+### Run Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run specific test file
+npm test __tests__/Main.test.js
+
+# Run with coverage
+npm run test:coverage
 ```
 
----
+### Test Coverage
 
-## 🤝 Вклад
+Current coverage: **67 tests passing**
 
-Хочешь помочь развивать проект?
+Key areas tested:
+- Gemini API integration
+- License validation
+- Template service
+- OTA update flow
+- Configuration management
 
-1. Fork репозиторий
-2. Создай feature ветку: `git checkout -b feature/amazing-thing`
-3. Коммитишь изменения: `git commit -m 'Add amazing thing'`
-4. Пушишь: `git push origin feature/amazing-thing`
-5. Создаешь Pull Request
-
----
-
-## 📄 Лицензия
-
-MIT License - смотри [LICENSE](LICENSE)
+See [TESTING_GUIDE.md](docs/TESTING_GUIDE.md) for details.
 
 ---
 
-## 📞 Контакты
+## 🐛 Debugging
 
-- 👨‍💻 Автор: [@daoqub](https://vk.com/daoqub)
-- 🐛 Ошибка? [Создай Issue](https://github.com/crosspostly/table_ai/issues)
-- 💬 Предложение? [Обсудим в Discussions](https://github.com/crosspostly/table_ai/discussions)
+### Enable DEV Mode
+
+```javascript
+// Main.gs, line ~50
+const DEV_MODE = true;  // Enable debugging
+```
+
+### DEV Menu
+
+Menu: **🧰 DEV** includes:
+- 📝 Show Logs
+- ⬇️ Export Logs
+- 🗑 Clear Logs
+- 🔍 Test Server Connection
+- 🧪 Dev Self Test
+- 🔑 Debug Gemini Keys
+- 🔄 OTA Manual Update
+
+### Console Commands
+
+```javascript
+// View logs
+showLogsDialog()
+getLogs(100)
+exportLogsToSheet()
+
+// Debug OTA
+debugOTAFlow()
+debugOTAStatus()
+
+// Debug API keys
+debugGeminiKeys()
+
+// Test connection
+testServerConnection()
+
+// Self test
+runDevSelfTest()
+```
+
+See [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common issues.
 
 ---
 
-## 🎯 Дорожная карта
+## 📊 Roadmap
 
-- [x] v3.5.0 - Private GitHub OTA + Client/Server separation
-- [x] v3.5.1 - DEV tools extraction
-- [x] v3.5.2 - OTA backward compatibility fix
-- [ ] v3.6 - Multi-language support
-- [ ] v4.0 - Web dashboard
+### v3.6 (Next Release)
+- [ ] Improved mobile UI
+- [ ] Multi-language support (i18n)
+- [ ] Circuit breaker for rate limiting
+- [ ] Failed cell queue system
+
+### v4.0 (Future)
+- [ ] Web dashboard for management
+- [ ] Multi-AI support (Claude, GPT-4)
+- [ ] Team collaboration features
+- [ ] Advanced analytics
+
+See [TODO.md](TODO.md) for detailed roadmap.
 
 ---
 
-## 📋 История изменений
+## 🤝 Contributing
 
-См. [CHANGELOG.md](docs/CHANGELOG.md) для полной истории изменений.
+We welcome contributions! Here's how:
+
+1. **Fork the repository**
+2. **Create feature branch:**
+```bash
+git checkout -b feature/amazing-feature
+```
+3. **Make changes and test**
+4. **Commit with conventional commits:**
+```bash
+git commit -m "feat: add amazing feature"
+# or
+git commit -m "fix: resolve issue #123"
+```
+5. **Push and create Pull Request**
+
+### Commit Convention
+
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation changes
+- `refactor:` - Code refactoring
+- `test:` - Add/update tests
+- `chore:` - Maintenance tasks
 
 ---
 
-**Последнее обновление:** 2025-01-XX | v3.5.2
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file
+
+Copyright (c) 2025 Table AI
+
+---
+
+## 📞 Support
+
+### Get Help
+
+- 🐛 **Bug Reports:** [Create an issue](https://github.com/crosspostly/table_ai/issues)
+- 💬 **Discussions:** [GitHub Discussions](https://github.com/crosspostly/table_ai/discussions)
+- 👨‍💻 **Direct Contact:** [@daoqub](https://vk.com/daoqub)
+
+### Resources
+
+- **Documentation:** [docs/](docs/)
+- **Examples:** [examples/](examples/) (if exists)
+- **Changelog:** [docs/CHANGELOG.md](docs/CHANGELOG.md)
+- **Roadmap:** [TODO.md](TODO.md)
+
+---
+
+## 🌟 Credits
+
+**Author:** [@daoqub](https://vk.com/daoqub)
+
+**Technologies:**
+- Google Apps Script
+- Gemini 2.0 AI
+- Node.js
+- Jest (testing)
+- clasp (deployment)
+
+---
+
+## ⚖️ Disclaimer
+
+This project is not officially affiliated with Google. Gemini API usage subject to [Google's Terms of Service](https://ai.google.dev/gemini-api/terms).
+
+---
+
+**Made with ❤️ for automation enthusiasts**
+
+[![Star on GitHub](https://img.shields.io/github/stars/crosspostly/table_ai?style=social)](https://github.com/crosspostly/table_ai)
