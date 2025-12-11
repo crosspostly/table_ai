@@ -462,6 +462,7 @@ function getApiKeyWithFallback(modelConfig) {
       key: modelConfig.apiKey,
       source: 'modelConfig',
       id: 'USER_PROVIDED',
+      useRotation: false, // ← ОБЯЗАТЕЛЬНО false
     };
   }
 
@@ -474,6 +475,7 @@ function getApiKeyWithFallback(modelConfig) {
       key: userKey,
       source: 'userProperties',
       id: 'USER_KEY',
+      useRotation: false, // ← ОБЯЗАТЕЛЬНО false
     };
   }
 
@@ -486,6 +488,7 @@ function getApiKeyWithFallback(modelConfig) {
       key: scriptKey,
       source: 'scriptProperties',
       id: 'DEFAULT_KEY',
+      useRotation: false, // ← ОБЯЗАТЕЛЬНО false
     };
   }
 
@@ -499,7 +502,7 @@ function getApiKeyWithFallback(modelConfig) {
           key: firstActiveKey.key,
           source: 'apiGemSheet',
           id: firstActiveKey.id,
-          useRotation: true,
+          useRotation: true, // ← ОБЯЗАТЕЛЬНО true (ротация!)
         };
       }
     }
@@ -714,7 +717,9 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
   let limiter = null;
   let limitsCheck = {canMakeRequest: true, limitType: 'NO_LIMITER'};
 
-  if (useRotation && apiKeyInfo.useRotation) {
+  // ✅ ПРАВИЛЬНАЯ ЛОГИКА:
+  // useRotation из options + useRotation из apiKeyInfo ДОЛЖНЫ БЫТЬ true
+  if (useRotation === true && apiKeyInfo.useRotation === true) {
     limiter = tripleRateLimiter;
 
     // ESTIMATE TOKENS (перед checkLimits)
@@ -739,6 +744,13 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
       Utilities.sleep(limitsCheck.waitTime);
       return executeGeminiWithRateLimit(modelConfig, prompt, options); // Рекурсия!
     }
+  } else {
+    // ❌ Ротация ОТКЛЮЧЕНА:
+    // - useRotation === false В ОПЦИЯХ, или
+    // - apiKeyInfo.useRotation === false (user/script properties ключ)
+
+    Logger.log('[EXECUTE_GEMINI] Rate limiting disabled (rotation off or single key)');
+    // В этом случае просто используем ключ как есть
   }
 
   // ✅ ЛИМИТЫ OK (или ротация отключена)
