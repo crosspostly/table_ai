@@ -494,30 +494,26 @@ function getApiKeyWithFallback(modelConfig) {
 
   // Приоритет 3: API_GEM Sheet (rotation mode) - ТОЛЬКО как последний fallback
   try {
-    Logger.log('[API_KEY] Checking tripleRateLimiter for api_gem keys...');
+    Logger.log('[API_KEY] Checking TripleRateLimiter for api_gem keys...');
 
-    if (tripleRateLimiter) {
-      Logger.log(`[API_KEY] tripleRateLimiter exists. Keys count: ${tripleRateLimiter.keys ? tripleRateLimiter.keys.length : 'UNDEFINED'}`);
+    const limiterInstance = initTripleRateLimiter();
 
-      if (tripleRateLimiter.keys && tripleRateLimiter.keys.length > 0) {
-        const firstActiveKey = tripleRateLimiter.getCurrentKey();
+    if (limiterInstance && limiterInstance.keys && limiterInstance.keys.length > 0) {
+      const firstActiveKey = limiterInstance.getCurrentKey();
 
-        if (firstActiveKey) {
-          Logger.log(`[API_KEY] Using key from apigem sheet: ${firstActiveKey.id}`);
-          return {
-            key: firstActiveKey.key,
-            source: 'apiGemSheet',
-            id: firstActiveKey.id,
-            useRotation: true, // ← ОБЯЗАТЕЛЬНО true (ротация!)
-          };
-        } else {
-          Logger.log('[API_KEY] ERROR: getCurrentKey() returned null even though keys.length > 0');
-        }
+      if (firstActiveKey) {
+        Logger.log(`[API_KEY] Using key from apigem sheet: ${firstActiveKey.id}`);
+        return {
+          key: firstActiveKey.key,
+          source: 'apiGemSheet',
+          id: firstActiveKey.id,
+          useRotation: true, // ← ОБЯЗАТЕЛЬНО true (ротация!)
+        };
       } else {
-        Logger.log('[API_KEY] ERROR: tripleRateLimiter.keys is empty or undefined');
+        Logger.log('[API_KEY] ERROR: getCurrentKey() returned null even though keys.length > 0');
       }
     } else {
-      Logger.log('[API_KEY] ERROR: tripleRateLimiter is undefined');
+      Logger.log('[API_KEY] ERROR: TripleRateLimiter keys is empty or undefined');
     }
   } catch (e) {
     Logger.log(`[API_KEY] Error loading from apigem sheet: ${e.message}`);
@@ -533,19 +529,21 @@ function getApiKeyWithFallback(modelConfig) {
  * Получить полный статус системы тройного ограничения скорости
  */
 function getTripleRateLimiterStatus() {
+  const limiterInstance = initTripleRateLimiter();
+
   const status = {
-    limiter: tripleRateLimiter,
-    keysStatus: tripleRateLimiter.getKeysStatus(),
-    currentKey: tripleRateLimiter.getCurrentKey(),
-    currentKeyId: tripleRateLimiter.getCurrentKeyId(),
-    currentRPD: tripleRateLimiter.getCurrentKey() ? tripleRateLimiter.getCurrentKey().requestsThisDay : 0,
-    currentRPM: tripleRateLimiter.requestTimestampsMinute.length,
-    currentTPM: tripleRateLimiter.calculateCurrentTPM(),
+    limiter: limiterInstance,
+    keysStatus: limiterInstance.getKeysStatus(),
+    currentKey: limiterInstance.getCurrentKey(),
+    currentKeyId: limiterInstance.getCurrentKeyId(),
+    currentRPD: limiterInstance.getCurrentKey() ? limiterInstance.getCurrentKey().requestsThisDay : 0,
+    currentRPM: limiterInstance.requestTimestampsMinute.length,
+    currentTPM: limiterInstance.calculateCurrentTPM(),
     maxRPD: TRIPLE_RATE_LIMITS.MAX_RPD,
     maxRPM: TRIPLE_RATE_LIMITS.MAX_RPM,
     maxTPM: TRIPLE_RATE_LIMITS.MAX_TPM,
-    timeToNextMidnightPacific: tripleRateLimiter.getTimeToNextMidnightPacific(),
-    isNewDayPacific: tripleRateLimiter.isNewDayPacific(),
+    timeToNextMidnightPacific: limiterInstance.getTimeToNextMidnightPacific(),
+    isNewDayPacific: limiterInstance.isNewDayPacific(),
     summary: {
       totalKeys: TRIPLE_RATE_LIMITS.TOTAL_KEYS,
       totalDailyCapacity: TRIPLE_RATE_LIMITS.TOTAL_RPD,
@@ -688,11 +686,27 @@ class CacheManager {
  * ===== ОСНОВНАЯ ОБЁРТКА (обновлено для Triple Rate Limiting) =====
  */
 
-let tripleRateLimiter = new TripleRateLimiter();
+// Lazy init - инициализируется только при первом использовании
+let tripleRateLimiter = null;
 const cacheManager = new CacheManager();
 
-Logger.log('[INIT] TripleRateLimiter initialized at script load');
-Logger.log(`[INIT] Keys loaded: ${tripleRateLimiter.keys ? tripleRateLimiter.keys.length : 0}`);
+/**
+ * Инициализировать TripleRateLimiter при первом использовании
+ * (избежать ошибок при загрузке скрипта)
+ */
+function initTripleRateLimiter() {
+  if (!tripleRateLimiter) {
+    Logger.log('[INIT] Initializing TripleRateLimiter on first use...');
+    try {
+      tripleRateLimiter = new TripleRateLimiter();
+      Logger.log(`[INIT] Keys loaded: ${tripleRateLimiter.keys ? tripleRateLimiter.keys.length : 0}`);
+    } catch (e) {
+      Logger.log(`[INIT] ERROR initializing TripleRateLimiter: ${e.message}`);
+      throw e;
+    }
+  }
+  return tripleRateLimiter;
+}
 
 /**
  * ГЛАВНАЯ ФУНКЦИЯ: Выполнить Gemini запрос с тройной защитой от квот
@@ -711,17 +725,12 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     useRotation = true, // По умолчанию включаем ротацию
   } = options;
 
-  // 🔧 ШАГ 0: Убедиться что tripleRateLimiter инициализирован
-  if (!tripleRateLimiter || !tripleRateLimiter.keys || tripleRateLimiter.keys.length === 0) {
-    Logger.log('[TRIPLE_RATE_LIMIT] Reinitializing tripleRateLimiter (was missing or empty)...');
-    tripleRateLimiter = new TripleRateLimiter();
-
-    // Логируем статус после переинициализации
-    if (tripleRateLimiter.keys && tripleRateLimiter.keys.length > 0) {
-      Logger.log(`[TRIPLE_RATE_LIMIT] Reinitialized successfully. Keys loaded: ${tripleRateLimiter.keys.length}`);
-    } else {
-      Logger.log('[TRIPLE_RATE_LIMIT] ERROR: Reinitialization failed! No keys found.');
-    }
+  // 🔧 ШАГ 0: Убедиться что tripleRateLimiter инициализирован (lazy init)
+  try {
+    initTripleRateLimiter();
+  } catch (e) {
+    Logger.log(`[TRIPLE_RATE_LIMIT] ERROR during lazy initialization: ${e.message}`);
+    // Продолжаем, используя fallback на одиночный API ключ
   }
 
   // 1. GET API KEY (с 4-уровневой иерархией fallback)
@@ -749,7 +758,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
   // ✅ ПРАВИЛЬНАЯ ЛОГИКА:
   // useRotation из options + useRotation из apiKeyInfo ДОЛЖНЫ БЫТЬ true
   if (useRotation === true && apiKeyInfo.useRotation === true) {
-    limiter = tripleRateLimiter;
+    limiter = initTripleRateLimiter();
 
     // ESTIMATE TOKENS (перед checkLimits)
     let estimatedInputTokens = 0;
