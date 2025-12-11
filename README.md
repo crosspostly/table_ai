@@ -5,6 +5,8 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)]()
 
 > **🆕 v3.5.2**: Исправлена обратная совместимость OTA системы - старые клиенты теперь могут обновиться автоматически!
+> 
+> **🚀 НОВИНКА v2.1**: Triple-Metric Rate Limiting - увеличена дневная производительность с 20 до 120 запросов через ротацию 6 API ключей!
 
 ## 📌 О проекте
 
@@ -123,6 +125,70 @@ clasp push
 
 8. ✅ Клиентский код обновлён!
 ```
+
+---
+
+## ⚡ Triple-Metric Rate Limiting (v2.1)
+
+### 🚀 Что это даёт?
+
+**ПРОБЛЕМА РЕШЕНА:** Увеличена дневная производительность с **20 до 120 запросов**!
+
+### Лимиты Google AI Studio (Free Tier):
+- **RPD** (Requests Per Day): 20 запросов/сутки ← САМЫЙ ЖЁСТКИЙ!
+- **RPM** (Requests Per Minute): 10 запросров/минуту  
+- **TPM** (Tokens Per Minute): 250,000 токенов/минуту
+
+### 🔄 Multi-Key Rotation Solution:
+```javascript
+Key 1: 20 RPD
+Key 2: 20 RPD  
+Key 3: 20 RPD
+Key 4: 20 RPD
+Key 5: 20 RPD
+Key 6: 20 RPD
+─────────────
+TOTAL: 120 RPD в день! 🚀
+```
+
+### ⚙️ Как настроить:
+
+**1. Создать лист `api_gem` в лицензионной таблице:**
+| A        | B                              | C      |
+|----------|--------------------------------|--------|
+| api_key_1 | sk-proj-xxxx...full-key...   | ACTIVE |
+| api_key_2 | sk-proj-yyyy...full-key...   | ACTIVE |
+| api_key_3 | sk-proj-zzzz...full-key...   | ACTIVE |
+| api_key_4 | sk-proj-wwww...full-key...   | ACTIVE |
+| api_key_5 | sk-proj-uuuu...full-key...   | ACTIVE |
+| api_key_6 | sk-proj-vvvv...full-key...   | ACTIVE |
+
+**2. Проверить статус в Console:**
+```javascript
+logTripleRateLimiterStatus()
+```
+
+### 📊 Мониторинг в листе API_METRICS:
+Автоматически логируются:
+- Какой ключ использовался (KeyId)
+- Текущее использование (CurrentRPD/RPM/TPM) 
+- Лимиты (MaxRPD/RPM/TPM)
+- Статус всех ключей (AllKeysStatus)
+
+### 🌍 Pacific Timezone:
+Сброс RPD лимитов происходит в **полночь Pacific Time** (не UTC или московское время), как требует Google.
+
+### ⚡ Ожидаемый результат:
+```
+19:02:38 ✅ key_1 Request 1  (RPD: 1/20)
+19:29:21 ✅ key_2 Request 6  (RPD: 1/20) ← Автопереключение!
+20:00:00 ✅ key_3 Request 11 (RPD: 1/20) ← Автопереключение!
+...
+20:50:00 ✅ key_6 Request 115 (RPD: 20/20)
+20:50:15 ❌ Request 121 → ALL_KEYS_EXHAUSTED
+```
+
+**ИТОГО:** 120 успешных + 0 неудачных = идеально! 🚀
 
 ---
 

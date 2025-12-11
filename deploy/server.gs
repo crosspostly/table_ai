@@ -16,9 +16,505 @@ const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
 const TOKENS_SHEET_NAME = 'Tokens';
 const BINDINGS_SHEET_NAME = 'Bindings';
 
+// ⭐ Triple Rate Limiting Configuration (Google AI Studio Free Tier)
+const TRIPLE_RATE_LIMITS = {
+  // Requests Per Day (КРИТИЧНЫЙ - самый жёсткий)
+  MAX_RPD: 20,
+  MAX_RPD_WARNING: 15, // 75%
+
+  // Requests Per Minute
+  MAX_RPM: 10,
+  MAX_RPM_WARNING: 8, // 80%
+
+  // Tokens Per Minute
+  MAX_TPM: 250_000,
+  MAX_TPM_WARNING: 200_000, // 80%
+
+  // API Keys Management
+  API_KEYS_SHEET_NAME: 'api_gem',
+  TOTAL_KEYS: 6,
+  TOTAL_RPD: 120, // 6 × 20
+};
+
 // ═════════════════════════════════════════════════════════════════
 // ⭐ OTA CONFIGURATION (ТОЛЬКО НА СЕРВЕРЕ!)
 // ═════════════════════════════════════════════════════════════════
+
+/**
+ * ===== TRIPLE RATE LIMITER (v2.1) =====
+ * Управляет тремя типами лимитов одновременно: RPD, RPM, TPM
+ * С автоматической ротацией 6 API ключей
+ */
+class TripleRateLimiter {
+  constructor() {
+    // Реальные лимиты Google AI Studio (Free Tier)
+    this.MAX_RPD = TRIPLE_RATE_LIMITS.MAX_RPD;
+    this.MAX_RPM = TRIPLE_RATE_LIMITS.MAX_RPM;
+    this.MAX_TPM = TRIPLE_RATE_LIMITS.MAX_TPM;
+
+    this.RPD_WARNING = TRIPLE_RATE_LIMITS.MAX_RPD_WARNING;
+    this.TPM_WARNING = TRIPLE_RATE_LIMITS.MAX_TPM_WARNING;
+
+    // Хранилище времени запросов
+    this.requestTimestampsMinute = []; // За последнюю минуту
+    this.requestTimestampsDay = []; // За последний день
+    this.tokenTimestamps = []; // Времена логирования токенов
+    this.tokenAmounts = []; // Реальные объёмы токенов
+
+    // Список API ключей (ротация)
+    this.keys = [];
+    this.currentKeyIndex = 0;
+
+    // Дата последнего сброса RPD счётчика (Midnight Pacific)
+    this.lastRPDResetDateMidnight = this.getTodayMidnightPacific();
+
+    // Загрузить ключи из листа
+    this.loadKeys();
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // ЗАГРУЗИТЬ КЛЮЧИ ИЗ ЛИСТА api_gem
+  // ────────────────────────────────────────────────────────────
+
+  loadKeys() {
+    try {
+      const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
+      const sheet = ss.getSheetByName(TRIPLE_RATE_LIMITS.API_KEYS_SHEET_NAME);
+
+      if (!sheet) {
+        Logger.log('[TRIPLE_RATE_LIMIT] API keys sheet not found: ' + TRIPLE_RATE_LIMITS.API_KEYS_SHEET_NAME);
+        return;
+      }
+
+      this.keys = [];
+      const data = sheet.getDataRange().getValues();
+
+      // Пропускаем заголовок, обрабатываем ключи
+      for (let i = 1; i < data.length; i++) {
+        const [keyId, apiKey, status] = data[i];
+
+        if (keyId && apiKey) {
+          this.keys.push({
+            id: keyId.toString(),
+            key: apiKey.toString(),
+            status: status ? status.toString().toUpperCase() : 'ACTIVE',
+            requestsThisDay: 0,
+            requestsThisMinute: 0,
+            tokensThisMinute: 0,
+          });
+        }
+      }
+
+      Logger.log(`[TRIPLE_RATE_LIMIT] Loaded ${this.keys.length} API keys`);
+      this.logKeysStatus();
+    } catch (error) {
+      Logger.log('[TRIPLE_RATE_LIMIT] Error loading keys: ' + error.toString());
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // ГЛАВНАЯ ПРОВЕРКА: checkLimits()
+  // ────────────────────────────────────────────────────────────
+
+  checkLimits(estimatedInputTokens = 0) {
+    const now = Date.now();
+
+    // Очистка старых timestamps
+    this.cleanTimestamps(now);
+
+    // Проверка нового дня (Pacific Time)
+    if (this.isNewDayPacific()) {
+      Logger.log('[TRIPLE_RATE_LIMIT] New day detected (Pacific). Resetting RPD counters...');
+      this.resetRPDForAllKeys();
+      this.lastRPDResetDateMidnight = this.getTodayMidnightPacific();
+    }
+
+    // 1️⃣ FIRST: Check RPD (Requests Per Day) - САМЫЙ ЖЁСТКИЙ
+    const rpdCheck = this.checkRPDLimits();
+    if (!rpdCheck.canMakeRequest) {
+      return rpdCheck;
+    }
+
+    // 2️⃣ THEN: Check RPM (Requests Per Minute)
+    const rpmCheck = this.checkRPMLimits();
+    if (!rpmCheck.canMakeRequest) {
+      return rpmCheck;
+    }
+
+    // 3️⃣ FINALLY: Check TPM (Tokens Per Minute)
+    const tpmCheck = this.checkTPMLimits(estimatedInputTokens);
+    if (!tpmCheck.canMakeRequest) {
+      return tpmCheck;
+    }
+
+    // ВСЁ OK
+    return {
+      canMakeRequest: true,
+      limitType: 'OK',
+      waitTime: 0,
+      currentRPD: this.getCurrentKey().requestsThisDay,
+      currentRPM: this.requestTimestampsMinute.length,
+      currentTPM: this.calculateCurrentTPM(),
+      maxRPD: this.MAX_RPD,
+      maxRPM: this.MAX_RPM,
+      maxTPM: this.MAX_TPM,
+    };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // PACIFIC TIMEZONE (для сброса дневного лимита)
+  // ────────────────────────────────────────────────────────────
+
+  getTodayMidnightPacific() {
+    const now = new Date();
+    const pacificTime = new Date(now.toLocaleString('en-US', {timeZone: 'America/Los_Angeles'}));
+
+    // Устанавливаем время на полночь Pacific
+    pacificTime.setHours(0, 0, 0, 0);
+    return pacificTime.getTime();
+  }
+
+  getTomorrowMidnightPacific() {
+    const today = new Date(this.getTodayMidnightPacific());
+    return today.getTime() + (24 * 60 * 60 * 1000);
+  }
+
+  isNewDayPacific() {
+    const currentMidnightPacific = this.getTodayMidnightPacific();
+    return currentMidnightPacific > this.lastRPDResetDateMidnight;
+  }
+
+  getTimeToNextMidnightPacific() {
+    return this.getTomorrowMidnightPacific() - Date.now();
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // ЛОГИРОВАНИЕ ЗАПРОСОВ И ТОКЕНОВ
+  // ────────────────────────────────────────────────────────────
+
+  logRequest() {
+    const now = Date.now();
+    this.requestTimestampsMinute.push(now);
+    this.requestTimestampsDay.push(now);
+
+    // Increment current key counters
+    const currentKey = this.getCurrentKey();
+    if (currentKey) {
+      currentKey.requestsThisDay++;
+      currentKey.requestsThisMinute++;
+    }
+
+    Logger.log(`[TRIPLE_RATE_LIMIT] Request logged. RPD: ${currentKey.requestsThisDay}, RPM: ${this.requestTimestampsMinute.length}`);
+  }
+
+  logTokens(inputTokens, outputTokens) {
+    const totalTokens = inputTokens + outputTokens;
+    const now = Date.now();
+
+    this.tokenTimestamps.push(now);
+    this.tokenAmounts.push(totalTokens);
+
+    // Increment current key token counter
+    const currentKey = this.getCurrentKey();
+    if (currentKey) {
+      currentKey.tokensThisMinute += totalTokens;
+    }
+
+    const currentTPM = this.calculateCurrentTPM();
+    const remainingTPM = Math.max(0, this.MAX_TPM - currentTPM);
+
+    Logger.log(`[TRIPLE_RATE_LIMIT] Tokens logged. TPM: ${currentTPM}, Remaining: ${remainingTPM}`);
+
+    return {
+      totalTokens: totalTokens,
+      currentTPM: currentTPM,
+      remainingTPM: remainingTPM,
+    };
+  }
+
+  cleanTimestamps(now) {
+    const oneMinuteAgo = now - (60 * 1000);
+    const oneDayAgo = now - (24 * 60 * 60 * 1000);
+
+    // Очистить старые timestamps
+    this.requestTimestampsMinute = this.requestTimestampsMinute.filter((ts) => ts > oneMinuteAgo);
+    this.requestTimestampsDay = this.requestTimestampsDay.filter((ts) => ts > oneDayAgo);
+    this.tokenTimestamps = this.tokenTimestamps.filter((ts) => ts > oneMinuteAgo);
+    this.tokenAmounts = this.tokenAmounts.filter((_, index) => this.tokenTimestamps[index] > oneMinuteAgo);
+
+    // Сбросить счётчики минут для всех ключей
+    this.keys.forEach((key) => {
+      key.requestsThisMinute = 0;
+      key.tokensThisMinute = 0;
+    });
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // УПРАВЛЕНИЕ КЛЮЧАМИ (KEY MANAGEMENT)
+  // ────────────────────────────────────────────────────────────
+
+  getCurrentKey() {
+    if (this.keys.length === 0) return null;
+    return this.keys[this.currentKeyIndex];
+  }
+
+  getCurrentKeyId() {
+    const currentKey = this.getCurrentKey();
+    return currentKey ? currentKey.id : 'NO_KEY';
+  }
+
+  switchToNextKey() {
+    const originalIndex = this.currentKeyIndex;
+    let attempts = 0;
+
+    while (attempts < this.keys.length) {
+      this.currentKeyIndex = (this.currentKeyIndex + 1) % this.keys.length;
+      const nextKey = this.getCurrentKey();
+
+      if (nextKey && nextKey.status === 'ACTIVE' && nextKey.requestsThisDay < this.MAX_RPD) {
+        Logger.log(`[TRIPLE_RATE_LIMIT] Switched to key: ${nextKey.id} (RPD: ${nextKey.requestsThisDay}/${this.MAX_RPD})`);
+        return true;
+      }
+
+      attempts++;
+    }
+
+    // Если вернулись к исходному ключу - все исчерпаны
+    this.currentKeyIndex = originalIndex;
+    Logger.log('[TRIPLE_RATE_LIMIT] All keys exhausted!');
+    return false;
+  }
+
+  resetRPDForAllKeys() {
+    this.keys.forEach((key) => {
+      key.requestsThisDay = 0;
+      key.requestsThisMinute = 0;
+      key.tokensThisMinute = 0;
+    });
+
+    // Перезагрузить ключи из листа (может измениться статус)
+    this.loadKeys();
+    Logger.log('[TRIPLE_RATE_LIMIT] RPD counters reset for all keys');
+  }
+
+  getKeysStatus() {
+    return this.keys.map((key, index) => ({
+      index: index,
+      id: key.id,
+      status: key.status,
+      requestsThisDay: key.requestsThisDay,
+      remainingRPD: Math.max(0, this.MAX_RPD - key.requestsThisDay),
+      isCurrent: index === this.currentKeyIndex ? '✓' : '',
+    }));
+  }
+
+  logKeysStatus() {
+    const status = this.getKeysStatus();
+    Logger.log('[TRIPLE_RATE_LIMIT] Keys Status:');
+    status.forEach((key) => {
+      Logger.log(`  ${key.isCurrent} Key ${key.index} (${key.id}): ${key.requestsThisDay}/${this.MAX_RPD} RPD | Status: ${key.status}`);
+    });
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // ПРОВЕРКИ ЛИМИТОВ (LIMIT CHECKS)
+  // ────────────────────────────────────────────────────────────
+
+  checkRPDLimits() {
+    const currentKey = this.getCurrentKey();
+
+    if (!currentKey) {
+      return {
+        canMakeRequest: false,
+        limitType: 'NO_KEYS',
+        waitTime: 0,
+        message: 'No API keys available',
+      };
+    }
+
+    if (currentKey.status !== 'ACTIVE') {
+      return {
+        canMakeRequest: false,
+        limitType: 'KEY_DISABLED',
+        waitTime: 0,
+        message: `Current key ${currentKey.id} is disabled`,
+      };
+    }
+
+    if (currentKey.requestsThisDay >= this.MAX_RPD) {
+      Logger.log(`[TRIPLE_RATE_LIMIT] RPD limit reached for ${currentKey.id}. Switching to next key...`);
+
+      const switched = this.switchToNextKey();
+      if (!switched) {
+        const timeToReset = this.getTimeToNextMidnightPacific();
+        const hoursToReset = Math.ceil(timeToReset / (1000 * 60 * 60));
+
+        return {
+          canMakeRequest: false,
+          limitType: 'ALL_KEYS_EXHAUSTED',
+          waitTime: timeToReset,
+          message: `All API keys exhausted. Wait until tomorrow (${hoursToReset}h) or change keys in ${TRIPLE_RATE_LIMITS.API_KEYS_SHEET_NAME}`,
+          currentRPD: currentKey.requestsThisDay,
+          currentRPM: this.requestTimestampsMinute.length,
+          currentTPM: this.calculateCurrentTPM(),
+          maxRPD: this.MAX_RPD,
+          maxRPM: this.MAX_RPM,
+          maxTPM: this.MAX_TPM,
+        };
+      }
+
+      // Переключились на новый ключ - рекурсивно проверим лимиты
+      return this.checkRPDLimits();
+    }
+
+    return {
+      canMakeRequest: true,
+      limitType: 'RPD_OK',
+    };
+  }
+
+  checkRPMLimits() {
+    if (this.requestTimestampsMinute.length >= this.MAX_RPM) {
+      // Найти самый старый запрос и вычислить время до конца окна
+      const oldestRequest = Math.min(...this.requestTimestampsMinute);
+      const waitTime = Math.max(0, 60000 - (Date.now() - oldestRequest) + 500);
+
+      Logger.log(`[TRIPLE_RATE_LIMIT] RPM limit: ${this.requestTimestampsMinute.length}/${this.MAX_RPM}. Waiting ${waitTime}ms...`);
+
+      return {
+        canMakeRequest: false,
+        limitType: 'RPM',
+        waitTime: waitTime,
+        currentRPD: this.getCurrentKey().requestsThisDay,
+        currentRPM: this.requestTimestampsMinute.length,
+        currentTPM: this.calculateCurrentTPM(),
+        maxRPD: this.MAX_RPD,
+        maxRPM: this.MAX_RPM,
+        maxTPM: this.MAX_TPM,
+      };
+    }
+
+    return {canMakeRequest: true, limitType: 'RPM_OK'};
+  }
+
+  checkTPMLimits(estimatedInputTokens) {
+    const currentTPM = this.calculateCurrentTPM();
+    const estimatedTotalTPM = currentTPM + estimatedInputTokens;
+
+    if (estimatedTotalTPM >= this.MAX_TPM) {
+      Logger.log(`[TRIPLE_RATE_LIMIT] TPM limit: ${currentTPM}/${this.MAX_TPM} (estimated: ${estimatedTotalTPM})`);
+
+      const waitTime = 60000; // Подождать минуту для сброса TPM
+      return {
+        canMakeRequest: false,
+        limitType: 'TPM',
+        waitTime: waitTime,
+        currentRPD: this.getCurrentKey().requestsThisDay,
+        currentRPM: this.requestTimestampsMinute.length,
+        currentTPM: currentTPM,
+        maxRPD: this.MAX_RPD,
+        maxRPM: this.MAX_RPM,
+        maxTPM: this.MAX_TPM,
+      };
+    }
+
+    return {canMakeRequest: true, limitType: 'TPM_OK'};
+  }
+
+  calculateCurrentTPM() {
+    const now = Date.now();
+    const oneMinuteAgo = now - (60 * 1000);
+
+    let totalTokens = 0;
+    for (let i = 0; i < this.tokenTimestamps.length; i++) {
+      if (this.tokenTimestamps[i] > oneMinuteAgo) {
+        totalTokens += this.tokenAmounts[i];
+      }
+    }
+
+    return totalTokens;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // УТИЛИТЫ
+  // ────────────────────────────────────────────────────────────
+
+  estimateTokens(text) {
+    // Приблизительно рассчитать количество токенов
+    // Формула: ~4 символа = 1 токен (Google рекомендует)
+    return Math.ceil(text.length / 4);
+  }
+}
+
+/**
+ * ===== ФУНКЦИЯ МОНИТОРИНГА TRIPLE RATE LIMITER =====
+ * Получить полный статус системы тройного ограничения скорости
+ */
+function getTripleRateLimiterStatus() {
+  const status = {
+    limiter: tripleRateLimiter,
+    keysStatus: tripleRateLimiter.getKeysStatus(),
+    currentKey: tripleRateLimiter.getCurrentKey(),
+    currentKeyId: tripleRateLimiter.getCurrentKeyId(),
+    currentRPD: tripleRateLimiter.getCurrentKey() ? tripleRateLimiter.getCurrentKey().requestsThisDay : 0,
+    currentRPM: tripleRateLimiter.requestTimestampsMinute.length,
+    currentTPM: tripleRateLimiter.calculateCurrentTPM(),
+    maxRPD: TRIPLE_RATE_LIMITS.MAX_RPD,
+    maxRPM: TRIPLE_RATE_LIMITS.MAX_RPM,
+    maxTPM: TRIPLE_RATE_LIMITS.MAX_TPM,
+    timeToNextMidnightPacific: tripleRateLimiter.getTimeToNextMidnightPacific(),
+    isNewDayPacific: tripleRateLimiter.isNewDayPacific(),
+    summary: {
+      totalKeys: TRIPLE_RATE_LIMITS.TOTAL_KEYS,
+      totalDailyCapacity: TRIPLE_RATE_LIMITS.TOTAL_RPD,
+      availableKeys: 0,
+      exhaustedKeys: 0,
+      currentUtilization: 0,
+    },
+  };
+
+  // Подсчитать статус ключей
+  status.keysStatus.forEach((key) => {
+    if (key.status === 'ACTIVE' && key.requestsThisDay < TRIPLE_RATE_LIMITS.MAX_RPD) {
+      status.summary.availableKeys++;
+    } else {
+      status.summary.exhaustedKeys++;
+    }
+  });
+
+  // Подсчитать общее использование
+  const totalRequestsToday = status.keysStatus.reduce((sum, key) => sum + key.requestsThisDay, 0);
+  status.summary.currentUtilization = Math.round((totalRequestsToday / TRIPLE_RATE_LIMITS.TOTAL_RPD) * 100);
+
+  return status;
+}
+
+/**
+ * Логировать подробный статус Triple Rate Limiter
+ *
+ * Используется в Console для отладки: Extensions → Apps Script → Console → logTripleRateLimiterStatus()
+ */
+/* exported logTripleRateLimiterStatus */
+function logTripleRateLimiterStatus() {
+  const status = getTripleRateLimiterStatus();
+
+  Logger.log('=== TRIPLE RATE LIMITER STATUS ===');
+  Logger.log(`Current Key: ${status.currentKeyId} (RPD: ${status.currentRPD}/${status.maxRPD})`);
+  Logger.log(`Rate Usage: RPM: ${status.currentRPM}/${status.maxRPM} | TPM: ${status.currentTPM}/${status.maxTPM}`);
+  Logger.log(`Keys Status: ${status.summary.availableKeys} available, ${status.summary.exhaustedKeys} exhausted`);
+  Logger.log(`Daily Utilization: ${status.summary.currentUtilization}% (${status.keysStatus.reduce((sum, key) => sum + key.requestsThisDay, 0)}/${TRIPLE_RATE_LIMITS.TOTAL_RPD})`);
+  Logger.log(`Next Reset: ${Math.round(status.timeToNextMidnightPacific / (1000 * 60 * 60))}h (Pacific Time)`);
+
+  if (status.isNewDayPacific) {
+    Logger.log('⚠️  New day detected - RPD counters will be reset on next request');
+  }
+
+  status.keysStatus.forEach((key) => {
+    Logger.log(`  ${key.isCurrent}[${key.status}] ${key.id}: ${key.requestsThisDay}/${TRIPLE_RATE_LIMITS.MAX_RPD} RPD`);
+  });
+
+  Logger.log('=== END STATUS ===');
+}
 
 // Публичный или приватный GitHub репо?
 // true = публичный (no authentication needed)
@@ -33,94 +529,17 @@ const REPO_IS_PUBLIC = true; // ← СЕРВЕР решает!
 // ===== Rate Limit & Cache Implementation =====
 
 /**
- * ===== RATE LIMIT MANAGER (новый блок) =====
- * Управление частотой вызовов к Gemini API
+ * ===== TRIPLE RATE LIMITER =====
+ * Полностью заменяет старый RateLimitManager
+ * Управляет частотой вызовов к Gemini API через RPD, RPM, TPM
  */
 
-const RATE_LIMIT_KEY = 'gemini_api_rate_limit_store';
 const METRICS_SHEET_NAME = 'API_METRICS';
-const MAX_REQUESTS_PER_MINUTE = 10;
-const RATE_LIMIT_WINDOW_MS = 60000; // 1 минута
 const MAX_CACHE_SIZE_KB = 500;
 const CACHE_TTL_MS = 3600000; // 1 час
 
-class RateLimitManager {
-  constructor() {
-    this.ps = PropertiesService.getUserProperties();
-  }
-
-  /**
-   * Получить данные о запросах за последнюю минуту
-   */
-  getRecentRequests_() {
-    const data = this.ps.getProperty(RATE_LIMIT_KEY);
-    const requests = data ? JSON.parse(data) : [];
-    const now = Date.now();
-
-    // Отфильтровать запросы старше 60 секунд
-    return requests.filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
-  }
-
-  /**
-   * Проверить, можно ли сделать запрос прямо сейчас
-   */
-  canMakeRequest() {
-    return this.getRecentRequests_().length < MAX_REQUESTS_PER_MINUTE;
-  }
-
-  /**
-   * Получить время ожидания (миллисекунды) перед следующим запросом
-   */
-  getWaitTime() {
-    const requests = this.getRecentRequests_();
-
-    if (requests.length < MAX_REQUESTS_PER_MINUTE) {
-      return 0;
-    }
-
-    // Найти самый старый запрос и вычислить время до конца окна
-    const oldestRequest = Math.min(...requests);
-    const waitTime = Math.max(0, RATE_LIMIT_WINDOW_MS - (Date.now() - oldestRequest) + 500);
-
-    return waitTime;
-  }
-
-  /**
-   * Ждать, если необходимо (блокирующая операция)
-   */
-  waitIfNeeded() {
-    const waitTime = this.getWaitTime();
-
-    if (waitTime > 0) {
-      Logger.log(`[RATE_LIMIT] Ожидание ${waitTime}ms перед следующим запросом...`);
-      Utilities.sleep(waitTime);
-    }
-
-    return waitTime;
-  }
-
-  /**
-   * Логировать новый API запрос
-   */
-  logRequest() {
-    const requests = this.getRecentRequests_();
-    requests.push(Date.now());
-    this.ps.setProperty(RATE_LIMIT_KEY, JSON.stringify(requests));
-  }
-
-  /**
-   * Очистить старые логи
-   */
-  cleanup() {
-    const requests = this.getRecentRequests_();
-    if (requests.length > 0) {
-      this.ps.setProperty(RATE_LIMIT_KEY, JSON.stringify(requests));
-    }
-  }
-}
-
 /**
- * ===== CACHE MANAGER (новый блок) =====
+ * ===== CACHE MANAGER (сохранён от старой версии) =====
  */
 
 class CacheManager {
@@ -184,19 +603,20 @@ class CacheManager {
 }
 
 /**
- * ===== ОСНОВНАЯ ОБЁРТКА (новый блок) =====
+ * ===== ОСНОВНАЯ ОБЁРТКА (обновлено для Triple Rate Limiting) =====
  */
 
-const rateLimiter = new RateLimitManager();
+const tripleRateLimiter = new TripleRateLimiter();
 const cacheManager = new CacheManager();
 
 /**
- * ГЛАВНАЯ ФУНКЦИЯ: Выполнить Gemini запрос с защитой от квот
+ * ГЛАВНАЯ ФУНКЦИЯ: Выполнить Gemini запрос с тройной защитой от квот
+ * С поддержкой RPD, RPM, TPM лимитов и ротацией 6 API ключей
  *
  * @param {Object} modelConfig - {model: "...", apiKey: "...", maxTokens: number, temperature: number}
  * @param {string|Object} prompt - Промпт или {text: "...", image: "..."}
  * @param {Object} options - {maxRetries: 3, timeout: 30000, skipCache: false}
- * @returns {Object} {success: true/false, data: "...", error: "...", waitTime: 0}
+ * @returns {Object} {success: true/false, data: "...", error: "...", waitTime: 0, tokensUsed: 0, keyId: "..."}
  */
 function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
   const {
@@ -205,7 +625,32 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     skipCache = false,
   } = options;
 
-  // 1. Проверить кэш (если не skipCache)
+  // 1. ESTIMATE TOKENS (перед checkLimits)
+  let estimatedInputTokens = 0;
+  if (typeof prompt === 'string') {
+    estimatedInputTokens = tripleRateLimiter.estimateTokens(prompt);
+    Logger.log(`[EXECUTE_GEMINI] Estimated input tokens: ${estimatedInputTokens}`);
+  }
+
+  // 2. CHECK LIMITS (RPD → RPM → TPM)
+  const limitsCheck = tripleRateLimiter.checkLimits(estimatedInputTokens);
+
+  // ЕСЛИ лимит превышен → подождать и повторить рекурсивно
+  if (!limitsCheck.canMakeRequest) {
+    Logger.log(`[EXECUTE_GEMINI] Rate limit: ${limitsCheck.limitType}`);
+    Logger.log(`[EXECUTE_GEMINI] Wait: ${limitsCheck.waitTime}ms`);
+
+    if (limitsCheck.message) {
+      Logger.log(`[EXECUTE_GEMINI] Message: ${limitsCheck.message}`);
+    }
+
+    Utilities.sleep(limitsCheck.waitTime);
+    return executeGeminiWithRateLimit(modelConfig, prompt, options); // Рекурсия!
+  }
+
+  // ✅ ЛИМИТЫ OK
+
+  // 3. Проверить кэш (если не skipCache)
   let cacheKey = null;
   if (!skipCache && typeof prompt === 'string') {
     cacheKey = CacheManager.createKey(modelConfig.model, prompt);
@@ -213,96 +658,202 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
 
     if (cached) {
       Logger.log(`[CACHE_HIT] Использован кэшированный результат для модели ${modelConfig.model}`);
+
+      // Логируем что использовали кэш
+      tripleRateLimiter.logRequest();
+      const tokenLog = tripleRateLimiter.logTokens(estimatedInputTokens, 0);
+
       return {
         success: true,
         data: cached,
         error: null,
         waitTime: 0,
         fromCache: true,
+        tokensUsed: tokenLog.totalTokens,
+        keyId: tripleRateLimiter.getCurrentKeyId(),
       };
     }
   }
 
-  // 2. Применить rate limiting
-  const waitTime = rateLimiter.waitIfNeeded();
+  // 4. LOG REQUEST (перед API call)
+  tripleRateLimiter.logRequest();
 
-  // 3. Выполнить запрос с повторами
+  // 5. GET CURRENT API KEY (с авторотацией)
+  const currentKey = tripleRateLimiter.getCurrentKey();
+  const finalApiKey = modelConfig.apiKey || (currentKey ? currentKey.key : null);
+  const keyId = tripleRateLimiter.getCurrentKeyId();
+
+  Logger.log(`[EXECUTE_GEMINI] Using key: ${keyId}`);
+
+  if (!finalApiKey) {
+    Logger.log('[EXECUTE_GEMINI] No API key available');
+    return {
+      success: false,
+      data: null,
+      error: 'No API key available',
+      waitTime: 0,
+      fromCache: false,
+      tokensUsed: 0,
+      keyId: keyId,
+    };
+  }
+
+  // 6. RETRY LOOP (для 429 ошибок)
   let lastError = null;
-
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      // Логировать запрос
-      rateLimiter.logRequest();
-
       // Выполнить API запрос
-      const result = callGeminiApi(modelConfig, prompt);
+      const modelConfigWithKey = {...modelConfig, apiKey: finalApiKey};
+      const result = callGeminiApi(modelConfigWithKey, prompt);
 
-      // 4. Сохранить в кэш
+      // 7. LOG ACTUAL TOKENS (из response)
+      let actualInputTokens = estimatedInputTokens;
+      let actualOutputTokens = 0;
+
+      try {
+        // Пытаемся получить точные токены из ответа API
+        if (result && result.includes('usageMetadata')) {
+          const usageMatch = result.match(/"usageMetadata":\s*{[^}]*"promptTokenCount":\s*(\d+)/);
+          const outputMatch = result.match(/"candidatesTokenCount":\s*(\d+)/);
+          if (usageMatch) {
+            actualInputTokens = parseInt(usageMatch[1]) || actualInputTokens;
+          }
+          if (outputMatch) {
+            actualOutputTokens = parseInt(outputMatch[1]) || 0;
+          }
+        }
+      } catch (e) {
+        Logger.log('[EXECUTE_GEMINI] Could not parse usageMetadata: ' + e.toString());
+      }
+
+      const tokenLog = tripleRateLimiter.logTokens(actualInputTokens, actualOutputTokens);
+
+      Logger.log(`[EXECUTE_GEMINI] Tokens - Input: ${actualInputTokens}, Output: ${actualOutputTokens}`);
+
+      // 8. Сохранить в кэш
       if (!skipCache && cacheKey && result) {
         cacheManager.set(cacheKey, result);
       }
 
-      // Логировать успех
+      // 9. LOG METRIC в API_METRICS
       logApiMetric({
         functionName: 'executeGeminiWithRateLimit',
         status: 'success',
         model: modelConfig.model,
-        tokens: result.length, // approximation
+        inputTokens: actualInputTokens,
+        outputTokens: actualOutputTokens,
+        totalTokens: tokenLog.totalTokens,
+        keyId: keyId,
+        keysStatus: tripleRateLimiter.getKeysStatus(),
+        currentRPD: limitsCheck.currentRPD,
+        currentRPM: limitsCheck.currentRPM,
+        currentTPM: tokenLog.currentTPM,
+        maxRPD: limitsCheck.maxRPD,
+        maxRPM: limitsCheck.maxRPM,
+        maxTPM: limitsCheck.maxTPM,
         error: '',
-        waitTime: waitTime,
+        waitTime: 0,
+        attempt: attempt + 1,
       });
 
       return {
         success: true,
         data: result,
         error: null,
-        waitTime: waitTime,
+        waitTime: 0,
         fromCache: false,
+        tokensUsed: tokenLog.totalTokens,
+        keyId: keyId,
         attempt: attempt + 1,
       };
     } catch (error) {
       lastError = error;
       const errorMsg = error.toString();
 
-      // Если ошибка 429 (Quota Exceeded)
+      // ЕСЛИ 429 → переключить ключ
       if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota')) {
-        const backoffDelay = Math.pow(2, attempt + 2) * 1000; // 4s, 8s, 16s
+        Logger.log('[EXECUTE_GEMINI] 429 error. Switching to next key...');
 
-        Logger.log(`[RATE_LIMIT_429] Попытка ${attempt + 1}/${maxRetries}. Ожидание ${backoffDelay}ms...`);
-        Utilities.sleep(backoffDelay);
+        const switched = tripleRateLimiter.switchToNextKey();
+        if (!switched) {
+          Logger.log('[EXECUTE_GEMINI] All keys exhausted!');
 
-        continue; // Повторить попытку
+          // Логируем неудачу
+          logApiMetric({
+            functionName: 'executeGeminiWithRateLimit',
+            status: 'failed',
+            model: modelConfig.model,
+            inputTokens: actualInputTokens,
+            outputTokens: actualOutputTokens,
+            totalTokens: tokenLog.totalTokens,
+            keyId: keyId,
+            keysStatus: tripleRateLimiter.getKeysStatus(),
+            currentRPD: limitsCheck.currentRPD,
+            currentRPM: limitsCheck.currentRPM,
+            currentTPM: tripleRateLimiter.calculateCurrentTPM(),
+            maxRPD: limitsCheck.maxRPD,
+            maxRPM: limitsCheck.maxRPM,
+            maxTPM: limitsCheck.maxTPM,
+            error: 'All API keys exhausted',
+            waitTime: 0,
+            attempt: attempt + 1,
+          });
+
+          throw new Error('All API keys exhausted. Wait until tomorrow.');
+        }
+
+        // Обновим ключ для следующей попытки
+        const newCurrentKey = tripleRateLimiter.getCurrentKey();
+        if (newCurrentKey) {
+          finalApiKey = newCurrentKey.key;
+        }
+        continue; // Повторить с новым ключом
       }
 
       // Для других ошибок - не повторять
-      throw error;
+      break;
     }
   }
 
-  // 5. Все попытки исчерпаны
+  // ВСЕ ПОПЫТКИ ИСЧЕРПАНЫ
   const errorMsg = lastError?.toString() || 'Unknown error';
 
+  // Логируем неудачу
   logApiMetric({
     functionName: 'executeGeminiWithRateLimit',
     status: 'failed',
     model: modelConfig.model,
-    tokens: 0,
+    inputTokens: estimatedInputTokens,
+    outputTokens: 0,
+    totalTokens: estimatedInputTokens,
+    keyId: keyId,
+    keysStatus: tripleRateLimiter.getKeysStatus(),
+    currentRPD: limitsCheck.currentRPD,
+    currentRPM: limitsCheck.currentRPM,
+    currentTPM: tripleRateLimiter.calculateCurrentTPM(),
+    maxRPD: limitsCheck.maxRPD,
+    maxRPM: limitsCheck.maxRPM,
+    maxTPM: limitsCheck.maxTPM,
     error: errorMsg,
-    waitTime: waitTime,
+    waitTime: 0,
+    attempt: maxRetries,
   });
 
   return {
     success: false,
     data: null,
     error: errorMsg,
-    waitTime: waitTime,
+    waitTime: 0,
     fromCache: false,
+    tokensUsed: 0,
+    keyId: keyId,
     attempt: maxRetries,
   };
 }
 
 /**
- * Логировать метрики API в Google Sheets
+ * Логировать метрики API в Google Sheets (обновлено для Triple Rate Limiting)
+ * Поддерживает расширенные метрики: RPD, RPM, TPM, Key Rotation
  */
 function logApiMetric(metric) {
   try {
@@ -312,7 +863,31 @@ function logApiMetric(metric) {
     if (!sheet) {
       try {
         sheet = ss.insertSheet(METRICS_SHEET_NAME);
-        sheet.appendRow(['Timestamp', 'Function', 'Status', 'Model', 'Tokens', 'Error', 'Wait Time (ms)']);
+
+        // Создать заголовки для расширенных метрик
+        const headers = [
+          'Timestamp',
+          'Function',
+          'Status',
+          'Model',
+          'InputTokens',
+          'OutputTokens',
+          'TotalTokens',
+          'KeyId', // NEW: какой ключ использовался
+          'CurrentRPD', // NEW: сколько запросов сегодня для этого ключа
+          'CurrentRPM', // NEW: сколько запросов в эту минуту
+          'CurrentTPM', // NEW: сколько токенов в эту минуту
+          'MaxRPD', // NEW: максимум (20)
+          'MaxRPM', // NEW: максимум (10)
+          'MaxTPM', // NEW: максимум (250k)
+          'Error',
+          'WaitTime',
+          'Attempt',
+          'AllKeysStatus', // NEW: JSON со статусом всех ключей
+        ];
+
+        sheet.appendRow(headers);
+        Logger.log('[METRICS] Created new sheet with extended headers for Triple Rate Limiting');
       } catch (e) {
         Logger.log('[METRICS] Could not create sheet: ' + e.message);
       }
@@ -320,15 +895,33 @@ function logApiMetric(metric) {
 
     if (sheet) {
       const now = new Date().toISOString();
-      sheet.appendRow([
+
+      // Подготовить значения для строки
+      const row = [
         now,
-        metric.functionName,
-        metric.status,
+        metric.functionName || '',
+        metric.status || '',
         metric.model || '',
-        metric.tokens,
-        metric.error,
-        metric.waitTime,
-      ]);
+        metric.inputTokens || 0,
+        metric.outputTokens || 0,
+        metric.totalTokens || 0,
+        metric.keyId || 'NO_KEY',
+        metric.currentRPD || 0,
+        metric.currentRPM || 0,
+        metric.currentTPM || 0,
+        metric.maxRPD || TRIPLE_RATE_LIMITS.MAX_RPD,
+        metric.maxRPM || TRIPLE_RATE_LIMITS.MAX_RPM,
+        metric.maxTPM || TRIPLE_RATE_LIMITS.MAX_TPM,
+        metric.error || '',
+        metric.waitTime || 0,
+        metric.attempt || 1,
+        metric.keysStatus ? JSON.stringify(metric.keysStatus) : '',
+      ];
+
+      sheet.appendRow(row);
+
+      // Логировать в Console для отладки
+      Logger.log(`[METRICS] Logged ${metric.functionName} - ${metric.status} - Key: ${metric.keyId} - RPD: ${metric.currentRPD}/${metric.maxRPD}`);
     }
   } catch (e) {
     Logger.log(`[METRICS_ERROR] Не удалось логировать метрику: ${e}`);
@@ -336,19 +929,10 @@ function logApiMetric(metric) {
 }
 
 /**
- * Вспомогательная функция для вызова Gemini API
+ * Вспомогательная функция для вызова Gemini API (обновлено для Triple Rate Limiting)
+ * Note: Основная логика rate limiting теперь в executeGeminiWithRateLimit()
  */
 function callGeminiApi(modelConfig, prompt) {
-  // ✅ ДОБАВИТЬ проверку глобального rate limit
-  if (!rateLimiter.canMakeRequest()) {
-    const waitTime = rateLimiter.getWaitTime();
-    Logger.log(`[RATE_LIMIT] Превышен лимит ${MAX_REQUESTS_PER_MINUTE} req/min. Ожидание ${waitTime}ms...`);
-    Utilities.sleep(waitTime);
-  }
-
-  // Логировать запрос в rate limiter
-  rateLimiter.logRequest();
-
   // Определяем URL
   const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/';
   const model = modelConfig.model || 'gemini-2.5-flash-lite';
