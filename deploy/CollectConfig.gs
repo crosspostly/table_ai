@@ -464,8 +464,8 @@ function refreshCellWithConfig() {
 
     ui.alert('🚀 Запуск...', 'Выполняю запрос через сервер...', ui.ButtonSet.OK);
 
-    // ONLY server execution (NO fallback)
-    const serverResult = callCollectConfigServer_(config, sheetName, cellAddress);
+    // ONLY server execution (NO fallback) - WITH CACHE SKIP FOR EXPLICIT REFRESH
+    const serverResult = callCollectConfigServer_(config, sheetName, cellAddress, true);
 
     if (serverResult && serverResult.ok) {
       ui.alert('✅ Готово!', `Результат записан в ${cellAddress}`, ui.ButtonSet.OK);
@@ -550,9 +550,10 @@ function serverDeleteTemplate(templateName) {
  * @param {Object} config - CollectConfig configuration
  * @param {string} sheetName - Target sheet name
  * @param {string} cellAddress - Target cell address
+ * @param {boolean} skipCache - Skip cache on explicit refresh
  * @return {Object} Server response
  */
-function callCollectConfigServer_(config, sheetName, cellAddress) {
+function callCollectConfigServer_(config, sheetName, cellAddress, skipCache = false) {
   // ═══════════════════════════════════════════════════════════════
   // VALIDATION OF SETTINGS (detailed error messages)
   // ═══════════════════════════════════════════════════════════════
@@ -592,6 +593,7 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
     email: licenseEmail,
     token: licenseToken,
     scriptId: scriptId, // ⭐ Для привязки
+    skipCache: skipCache === true, // ⭐ Передаём флаг пропуска кэша
     // spreadsheetId уже есть выше для работы
   };
 
@@ -604,6 +606,7 @@ function callCollectConfigServer_(config, sheetName, cellAddress) {
   };
 
   addCollectLog(`📤 Отправка запроса на сервер: ${serverUrl}`, 'INFO');
+  addCollectLog(`📋 skipCache: ${skipCache === true ? 'ДА (пропускаем кэш)' : 'НЕТ'}`, 'INFO');
   addCollectLog(`📋 Payload config.systemPrompt: ${JSON.stringify(config.systemPrompt || null)}`, 'DEBUG');
   addCollectLog(`📋 Payload config.prompt_table: ${JSON.stringify(config.prompt_table || null)}`, 'DEBUG');
   addCollectLog(`📋 Payload config.userData: ${config.userData ? config.userData.length + ' источников' : 'нет'}`, 'DEBUG');
