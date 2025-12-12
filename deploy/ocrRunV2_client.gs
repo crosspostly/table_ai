@@ -414,51 +414,58 @@ function cleanTextForUrlsV2_(s){
 }
 
 function gmOcrFromBlobV2_(blob, lang){
-  // Получаем пользовательский API ключ (если настроен)
-  var userApiKey = (typeof getGeminiApiKey === 'function') ? getGeminiApiKey() : '';
-  
-  // Отправляем на сервер для обработки (используем существующий gm_image action)
-  var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
-  var token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';
-  
-  var imageData = {
-    mimeType: blob.getContentType() || 'image/png',
-    data: Utilities.base64Encode(blob.getBytes())
-  };
-  
-  var payload = { 
-    action: 'gm_image', 
-    email: email, 
-    token: token, 
-    userApiKey: userApiKey,
-    images: [imageData],
-    lang: lang || 'ru', 
-    delimiter: '____'
-  };
-  
-  var resp = UrlFetchApp.fetch(SERVER_URL, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  });
-  
-  var code = resp.getResponseCode();
-  var data = JSON.parse(resp.getContentText());
-  
-  if (code !== 200 || !data || !data.ok) {
-    throw new Error((data && data.error) || ('HTTP_' + code));
+  try {
+    // Получаем пользовательский API ключ (если настроен)
+    var userApiKey = (typeof getGeminiApiKey === 'function') ? getGeminiApiKey() : '';
+    
+    // Отправляем на сервер для обработки (используем существующий gm_image action)
+    var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
+    var token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';
+    
+    var imageData = {
+      mimeType: blob.getContentType() || 'image/png',
+      data: Utilities.base64Encode(blob.getBytes())
+    };
+    
+    var payload = { 
+      action: 'gm_image', 
+      email: email, 
+      token: token, 
+      userApiKey: userApiKey,
+      images: [imageData],
+      lang: lang || 'ru', 
+      delimiter: '____'
+    };
+    
+    var resp = UrlFetchApp.fetch(SERVER_URL, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    
+    var code = resp.getResponseCode();
+    var data = JSON.parse(resp.getContentText());
+    
+    if (code !== 200 || !data || !data.ok) {
+      throw new Error((data && data.error) || ('HTTP_' + code));
+    }
+    
+    var text = data.data || '';
+    
+    // Разбиваем результат (на случай если было несколько изображений)
+    var parts = splitBySeparatorV2_(text);
+    if (parts && parts.length) {
+      return parts[0];
+    }
+    
+    return String(text || '').trim();
+  } catch (error) {
+    // ✅ КРИТИЧЕСКИ ВАЖНО: Перехватываем ошибки UrlFetchApp.fetch
+    // Возвращаем понятное сообщение вместо зависания UI
+    var errorMsg = error.message || error.toString();
+    throw new Error('gmOcrFromBlobV2_ error: ' + errorMsg);
   }
-  
-  var text = data.data || '';
-  
-  // Разбиваем результат (на случай если было несколько изображений)
-  var parts = splitBySeparatorV2_(text);
-  if (parts && parts.length) {
-    return parts[0];
-  }
-  
-  return String(text || '').trim();
 }
 
 function serverGmOcrBatchV2_(images, lang){
@@ -497,4 +504,3 @@ function fetchImageToBlobWithHeadersV2_(url) {
     return null;
   }
 }
-
