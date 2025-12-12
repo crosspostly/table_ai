@@ -9,7 +9,7 @@ const RATE_LIMIT_PER_SEC = 3; // max запросов/сек на токен
 const AUTO_UPDATE_CHECK_INTERVAL = 6;
 
 // ⭐ OTA UPDATES
-const SERVER_VERSION = '3.5.2';
+const SERVER_VERSION = '3.5.3';
 
 // ⭐ LICENSE SHEET ID (для prompt_table)
 const LICENSE_SHEET_ID = '1u9rNx0Zwk4Y1cKHiquwu2jH3elpX7VUSJVgkq_Tb3-s';
@@ -447,6 +447,47 @@ class TripleRateLimiter {
 }
 
 /**
+ * ===== ФУНКЦИЯ ЗАГРУЗКИ ВСЕХ API КЛЮЧЕЙ ИЗ ЛИСТА =====
+ * Загружает все активные ключи из листа api_gem
+ * @returns {Array} Массив объектов {id, key, status}
+ */
+function getAllApiKeysFromSheet() {
+  try {
+    const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
+    const sheet = ss.getSheetByName(TRIPLE_RATE_LIMITS.API_KEYS_SHEET_NAME);
+
+    if (!sheet) {
+      Logger.log('[API_KEYS] api_gem sheet not found');
+      return [];
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const keys = [];
+
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const name = String(row[0] || '').trim();
+      const key = String(row[1] || '').trim();
+      const status = String(row[2] || 'ACTIVE').trim().toUpperCase();
+
+      if (key && status === 'ACTIVE') {
+        keys.push({
+          id: name,
+          key: key,
+          status: status,
+        });
+      }
+    }
+
+    Logger.log(`[API_KEYS] Loaded ${keys.length} active keys from api_gem`);
+    return keys;
+  } catch (e) {
+    Logger.log(`[API_KEYS] Error: ${e.message}`);
+    return [];
+  }
+}
+
+/**
  * ===== ФУНКЦИЯ ПОЛУЧЕНИЯ API КЛЮЧА С ИЕРАРХИЧЕСКИМ FALLBACK =====
  * Приоритет: modelConfig.apiKey → User Properties → Script Properties → API_GEM Sheet
  */
@@ -494,37 +535,24 @@ function getApiKeyWithFallback(modelConfig) {
 
   // Приоритет 3: API_GEM Sheet (rotation mode) - ТОЛЬКО как последний fallback
   try {
-    Logger.log('[API_KEY] Checking tripleRateLimiter for api_gem keys...');
-
-    if (tripleRateLimiter) {
-      Logger.log(`[API_KEY] tripleRateLimiter exists. Keys count: ${tripleRateLimiter.keys ? tripleRateLimiter.keys.length : 'UNDEFINED'}`);
-
-      if (tripleRateLimiter.keys && tripleRateLimiter.keys.length > 0) {
-        const firstActiveKey = tripleRateLimiter.getCurrentKey();
-
-        if (firstActiveKey) {
-          Logger.log(`[API_KEY] Using key from apigem sheet: ${firstActiveKey.id}`);
-          return {
-            key: firstActiveKey.key,
-            source: 'apiGemSheet',
-            id: firstActiveKey.id,
-            useRotation: true, // ← ОБЯЗАТЕЛЬНО true (ротация!)
-          };
-        } else {
-          Logger.log('[API_KEY] ERROR: getCurrentKey() returned null even though keys.length > 0');
-        }
-      } else {
-        Logger.log('[API_KEY] ERROR: tripleRateLimiter.keys is empty or undefined');
+    if (tripleRateLimiter && tripleRateLimiter.keys && tripleRateLimiter.keys.length > 0) {
+      const firstActiveKey = tripleRateLimiter.getCurrentKey();
+      if (firstActiveKey) {
+        Logger.log(`[API_KEY] Using key from api_gem sheet (${firstActiveKey.id})`);
+        return {
+          key: firstActiveKey.key,
+          source: 'apiGemSheet',
+          id: firstActiveKey.id,
+          useRotation: true, // ← ОБЯЗАТЕЛЬНО true (ротация!)
+        };
       }
-    } else {
-      Logger.log('[API_KEY] ERROR: tripleRateLimiter is undefined');
     }
   } catch (e) {
-    Logger.log(`[API_KEY] Error loading from apigem sheet: ${e.message}`);
+    Logger.log(`[API_KEY] Error loading from api_gem sheet: ${e.message}`);
   }
 
   // Не найдено ни одного ключа
-  Logger.log('[API_KEY] ERROR: No API keys found! Checked: request, User Properties, Script Properties, apigem sheet');
+  Logger.log('[API_KEY] ERROR: No API keys found!');
   return null;
 }
 
@@ -688,11 +716,8 @@ class CacheManager {
  * ===== ОСНОВНАЯ ОБЁРТКА (обновлено для Triple Rate Limiting) =====
  */
 
-let tripleRateLimiter = new TripleRateLimiter();
+const tripleRateLimiter = new TripleRateLimiter();
 const cacheManager = new CacheManager();
-
-Logger.log('[INIT] TripleRateLimiter initialized at script load');
-Logger.log(`[INIT] Keys loaded: ${tripleRateLimiter.keys ? tripleRateLimiter.keys.length : 0}`);
 
 /**
  * ГЛАВНАЯ ФУНКЦИЯ: Выполнить Gemini запрос с тройной защитой от квот
@@ -700,29 +725,16 @@ Logger.log(`[INIT] Keys loaded: ${tripleRateLimiter.keys ? tripleRateLimiter.key
  *
  * @param {Object} modelConfig - {model: "...", apiKey: "...", maxTokens: number, temperature: number}
  * @param {string|Object} prompt - Промпт или {text: "...", image: "..."}
- * @param {Object} options - {maxRetries: 3, timeout: 30000, skipCache: false}
+ * @param {Object} options - {maxRetries: null (auto), timeout: 30000, skipCache: false}
  * @returns {Object} {success: true/false, data: "...", error: "...", waitTime: 0, tokensUsed: 0, keyId: "..."}
  */
 function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
   const {
-    maxRetries = 3,
+    maxRetries = null, // null = автоматически использовать количество доступных ключей
     timeout = 30000,
     skipCache = false,
     useRotation = true, // По умолчанию включаем ротацию
   } = options;
-
-  // 🔧 ШАГ 0: Убедиться что tripleRateLimiter инициализирован
-  if (!tripleRateLimiter || !tripleRateLimiter.keys || tripleRateLimiter.keys.length === 0) {
-    Logger.log('[TRIPLE_RATE_LIMIT] Reinitializing tripleRateLimiter (was missing or empty)...');
-    tripleRateLimiter = new TripleRateLimiter();
-
-    // Логируем статус после переинициализации
-    if (tripleRateLimiter.keys && tripleRateLimiter.keys.length > 0) {
-      Logger.log(`[TRIPLE_RATE_LIMIT] Reinitialized successfully. Keys loaded: ${tripleRateLimiter.keys.length}`);
-    } else {
-      Logger.log('[TRIPLE_RATE_LIMIT] ERROR: Reinitialization failed! No keys found.');
-    }
-  }
 
   // 1. GET API KEY (с 4-уровневой иерархией fallback)
   const apiKeyInfo = getApiKeyWithFallback(modelConfig);
@@ -791,7 +803,7 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     const cached = cacheManager.get(cacheKey);
 
     if (cached) {
-      Logger.log(`[CACHE_HIT] Использован кэшированный результат для модели ${modelConfig.model}`);
+      Logger.log(`[CACHE] Using cached result for model ${modelConfig.model}`);
 
       // Логируем что использовали кэш (только если есть limiter)
       if (limiter) {
@@ -809,6 +821,8 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         keyId: apiKeyInfo.id,
       };
     }
+  } else if (skipCache) {
+    Logger.log('[CACHE] Skipping cache (skipCache=true)');
   }
 
   // 4. LOG REQUEST (перед API call)
@@ -816,12 +830,25 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
     limiter.logRequest();
   }
 
-  // 5. RETRY LOOP (для 429 ошибок)
+  // 5. CALCULATE DYNAMIC maxRetries (based on available keys count)
+  let effectiveMaxRetries = maxRetries;
+  if (effectiveMaxRetries === null && limiter && limiter.keys) {
+    // Автоматически: пробуем все доступные ACTIVE ключи
+    const activeKeysCount = limiter.keys.filter((k) => k.status === 'ACTIVE').length;
+    effectiveMaxRetries = Math.max(activeKeysCount, 1);
+    Logger.log(`[EXECUTE_GEMINI] Auto maxRetries: ${effectiveMaxRetries} (based on ${activeKeysCount} active keys)`);
+  } else if (effectiveMaxRetries === null) {
+    // Если нет limiter, используем дефолтное значение
+    effectiveMaxRetries = 3;
+  }
+
+  // 6. RETRY LOOP (для quota/overload/429 ошибок с ротацией ключей)
   let lastError = null;
   let currentApiKey = apiKeyInfo.key;
   let currentKeyId = apiKeyInfo.id;
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  for (let attempt = 0; attempt < effectiveMaxRetries; attempt++) {
+    Logger.log(`[GEMINI] Attempt ${attempt + 1}/${effectiveMaxRetries} using key: ${currentKeyId}`);
     try {
       // Выполнить API запрос
       const modelConfigWithKey = {...modelConfig, apiKey: currentApiKey};
@@ -858,7 +885,10 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
         cacheManager.set(cacheKey, result);
       }
 
-      // 8. LOG METRIC в API_METRICS
+      // 8. LOG SUCCESS
+      Logger.log(`[GEMINI] ✅ Success with key: ${currentKeyId}`);
+
+      // 9. LOG METRIC в API_METRICS
       logApiMetric({
         functionName: 'executeGeminiWithRateLimit',
         status: 'success',
@@ -893,13 +923,20 @@ function executeGeminiWithRateLimit(modelConfig, prompt, options = {}) {
       lastError = error;
       const errorMsg = error.toString();
 
-      // ЕСЛИ 429 → переключить ключ (ТОЛЬКО если используем ротацию)
-      if ((errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota')) && limiter) {
-        Logger.log('[EXECUTE_GEMINI] 429 error. Switching to next key...');
+      // ЕСЛИ quota/overload/429 → переключить ключ (ТОЛЬКО если используем ротацию)
+      const isQuotaError = errorMsg.includes('429') ||
+                           errorMsg.includes('quota') ||
+                           errorMsg.includes('Quota') ||
+                           errorMsg.includes('overloaded') ||
+                           errorMsg.includes('RESOURCE_EXHAUSTED');
+
+      if (isQuotaError && limiter) {
+        Logger.log(`[GEMINI] ❌ Attempt ${attempt + 1} failed with key ${currentKeyId}: ${errorMsg}`);
+        Logger.log('[GEMINI] Quota/overload error - trying next key...');
 
         const switched = limiter.switchToNextKey();
         if (!switched) {
-          Logger.log('[EXECUTE_GEMINI] All keys exhausted!');
+          Logger.log(`[GEMINI] All ${limiter.keys.length} keys failed!`);
 
           // Логируем неудачу
           logApiMetric({
@@ -1176,23 +1213,21 @@ function doPost(_e) {
       Logger.log('temperature: ' + temperature);
       Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
 
-      // API key priority: use user key first, otherwise fallback to default
-      let finalApiKey = userApiKey;
-      let keySource = 'USER';
+      // ✅ РОТАЦИЯ: Если пользователь предоставил ключ → используем его (без ротации)
+      // Если нет → передаём null, чтобы serverGM_ использовал ротацию из api_gem
+      const finalApiKey = userApiKey && userApiKey.trim() ? userApiKey : null;
+      const keySource = userApiKey ? 'USER' : 'SHEET_ROTATION';
 
-      if (!userApiKey) {
-        // Try to get default API key from script properties
-        const defaultApiKey = getDefaultGeminiKey_();
-        if (defaultApiKey) {
-          finalApiKey = defaultApiKey;
-          keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
-        } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
+      // Проверяем доступность ключей только если нет пользовательского ключа
+      if (!finalApiKey) {
+        const sheetKey = getApiKeyFromSheet();
+        if (!sheetKey || !sheetKey.key) {
+          Logger.log('ERROR: No API key available in api_gem sheet');
           return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
         }
+        Logger.log('Using SHEET_ROTATION mode with ' + tripleRateLimiter.keys.length + ' keys available');
       } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
+        Logger.log('Using USER API key, length: ' + finalApiKey.length);
       }
 
       // rate limit
@@ -1201,7 +1236,7 @@ function doPost(_e) {
         return json_({ok: false, error: 'RATE_LIMIT'}, 429);
       }
 
-      Logger.log('Calling serverGM_ with ' + keySource + ' API key');
+      Logger.log('Calling serverGM_ with ' + keySource + ' mode');
       const t0 = Date.now();
       let ok = true; let err = null; let text = '';
       try {
@@ -1246,23 +1281,21 @@ function doPost(_e) {
       Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
       Logger.log('delimiter: ' + (delimiter || 'NONE'));
 
-      // API key priority: use user key first, otherwise fallback to default
-      let finalApiKey = userApiKey;
-      let keySource = 'USER';
+      // ✅ РОТАЦИЯ: Если пользователь предоставил ключ → используем его (без ротации)
+      // Если нет → передаём null, чтобы serverGMImage_ использовал ротацию из api_gem
+      const finalApiKey = userApiKey && userApiKey.trim() ? userApiKey : null;
+      const keySource = userApiKey ? 'USER' : 'SHEET_ROTATION';
 
-      if (!userApiKey) {
-        // Try to get default API key from script properties
-        const defaultApiKey = getDefaultGeminiKey_();
-        if (defaultApiKey) {
-          finalApiKey = defaultApiKey;
-          keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
-        } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
+      // Проверяем доступность ключей только если нет пользовательского ключа
+      if (!finalApiKey) {
+        const sheetKey = getApiKeyFromSheet();
+        if (!sheetKey || !sheetKey.key) {
+          Logger.log('ERROR: No API key available in api_gem sheet');
           return json_({ok: false, error: 'NO_API_KEY_AVAILABLE'}, 400);
         }
+        Logger.log('Using SHEET_ROTATION mode with ' + tripleRateLimiter.keys.length + ' keys available');
       } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
+        Logger.log('Using USER API key, length: ' + finalApiKey.length);
       }
 
       if (!Array.isArray(images) || images.length === 0) {
@@ -1275,7 +1308,7 @@ function doPost(_e) {
         return json_({ok: false, error: 'RATE_LIMIT'}, 429);
       }
 
-      Logger.log('Calling serverGMImage_ with ' + keySource + ' API key');
+      Logger.log('Calling serverGMImage_ with ' + keySource + ' mode');
       const t1 = Date.now();
       let ok2 = true;
       let err2 = null;
@@ -1329,9 +1362,9 @@ function doPost(_e) {
           return json_(lic, 403);
         }
 
-        const defaultKey = getDefaultGeminiKey_();
+        const defaultKeyObj = getApiKeyFromSheet();
 
-        if (!defaultKey) {
+        if (!defaultKeyObj || !defaultKeyObj.key) {
           Logger.log('❌ No default key configured');
           return json_({
             ok: false,
@@ -1343,8 +1376,8 @@ function doPost(_e) {
         Logger.log('✅ Returning default Gemini key');
         return json_({
           ok: true,
-          apiKey: defaultKey,
-          source: 'server_default',
+          apiKey: defaultKeyObj.key,
+          source: 'apiGemSheet',
         });
       }
 
@@ -1493,6 +1526,7 @@ function doPost(_e) {
       const sheetName = (data.sheetName || '').toString();
       const cellAddress = (data.cellAddress || '').toString();
       const userApiKey = (data.apiKey || '').toString();
+      const skipCache = data.skipCache === true;
       const logs = [];
 
       Logger.log('config: ' + (config ? 'SET' : 'NOT SET'));
@@ -1502,25 +1536,18 @@ function doPost(_e) {
       Logger.log('sheetName: ' + sheetName);
       Logger.log('cellAddress: ' + cellAddress);
       Logger.log('userApiKey: ' + (userApiKey ? 'SET (length: ' + userApiKey.length + ')' : 'NOT SET'));
+      Logger.log('[COLLECT_CONFIG] skipCache: ' + skipCache);
 
-      // API key priority: use user key first, otherwise fallback to default
-      let finalApiKey = userApiKey;
-      let keySource = 'USER';
+      // Resolve API key: user key → sheet key
+      const finalApiKey = resolveApiKey(userApiKey);
+      const keySource = userApiKey ? 'USER' : 'SHEET';
 
-      if (!userApiKey) {
-        // Try to get default API key from script properties
-        const defaultApiKey = getDefaultGeminiKey_();
-        if (defaultApiKey) {
-          finalApiKey = defaultApiKey;
-          keySource = 'DEFAULT';
-          Logger.log('Using DEFAULT API key, length: ' + defaultApiKey.length);
-        } else {
-          Logger.log('ERROR: No API key available (neither user nor default)');
-          return json_({ok: false, error: 'NO_API_KEY_AVAILABLE', logs: logs}, 400);
-        }
-      } else {
-        Logger.log('Using USER API key, length: ' + userApiKey.length);
+      if (!finalApiKey) {
+        Logger.log('ERROR: No API key available');
+        return json_({ok: false, error: 'NO_API_KEY_AVAILABLE', logs: logs}, 400);
       }
+
+      Logger.log('Using ' + keySource + ' API key, length: ' + finalApiKey.length);
 
       // Validate required fields
       if (!config) return json_({ok: false, error: 'NO_CONFIG', logs: logs}, 400);
@@ -1541,8 +1568,9 @@ function doPost(_e) {
       let err = null;
       let result = '';
       try {
-        result = serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, finalApiKey, logs);
-        Logger.log('serverCollectConfigExecute_ completed successfully, result length: ' + result.length);
+        result = serverCollectConfigExecute_(
+          config, spreadsheetId, sheetName, cellAddress, finalApiKey, logs, skipCache);
+        Logger.log('serverCollectConfigExecute_ completed, result length: ' + result.length);
       } catch (ex) {
         ok = false;
         err = String(ex && ex.message || ex);
@@ -1692,22 +1720,28 @@ function getScriptIdFromBindingsForOTA_(email) {
 
 // ===== License =====
 // ===== Gemini (server-side) =====
-function serverGM_(prompt, maxTokens, temperature, apiKey) {
+function serverGM_(prompt, maxTokens, temperature, apiKey, skipCache = false) {
   Logger.log('=== serverGM_ START (Wrapped) ===');
+  Logger.log('[GEMINI] skipCache: ' + skipCache);
+  Logger.log('[GEMINI] apiKey provided: ' + (apiKey ? 'YES (user key)' : 'NO (will use rotation)'));
 
+  // ✅ РОТАЦИЯ: Если apiKey === null → используем ротацию из api_gem
+  // Если apiKey задан → используем его напрямую (без ротации)
   const modelConfig = {
     model: 'gemini-2.5-flash-lite',
-    apiKey: apiKey,
+    apiKey: apiKey || undefined, // undefined = let getApiKeyWithFallback handle it
     maxTokens: maxTokens,
     temperature: temperature,
   };
 
-  const result = executeGeminiWithRateLimit(modelConfig, prompt, {maxRetries: 3});
+  // maxRetries: null = автоматически использовать все доступные ключи
+  const result = executeGeminiWithRateLimit(modelConfig, prompt, {maxRetries: null, skipCache: skipCache});
 
   if (!result.success) {
     throw new Error(result.error);
   }
 
+  Logger.log(`[serverGM_] Used key: ${result.keyId}, attempt: ${result.attempt}`);
   return result.data;
 }
 
@@ -1715,7 +1749,7 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
   Logger.log('=== serverGMImage_ START (Wrapped) ===');
   Logger.log('images count: ' + images.length);
   Logger.log('lang: ' + lang);
-  Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET'));
+  Logger.log('apiKey: ' + (apiKey ? 'SET (length: ' + apiKey.length + ')' : 'NOT SET (will use rotation)'));
   Logger.log('delimiter: ' + (delimiter || 'NONE'));
 
   // images: [{ mimeType, data(base64) }, ...]
@@ -1723,10 +1757,9 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
     Logger.log('ERROR: No images provided');
     throw new Error('NO_IMAGES');
   }
-  if (!apiKey) {
-    Logger.log('ERROR: No API key provided');
-    throw new Error('NO_CLIENT_KEY');
-  }
+
+  // ✅ РОТАЦИЯ: apiKey может быть null - тогда используем ротацию из api_gem
+  Logger.log('[GEMINI_IMAGE] Using rotation mode: ' + (!apiKey ? 'YES' : 'NO'));
 
   let instruction;
   if (delimiter && delimiter.length) {
@@ -1756,7 +1789,7 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
   // Use Rate Limited Executor
   const modelConfig = {
     model: 'gemini-2.5-flash-lite',
-    apiKey: apiKey,
+    apiKey: apiKey || undefined, // undefined = let getApiKeyWithFallback handle it
     maxTokens: 4096,
     temperature: 0,
   };
@@ -1765,12 +1798,14 @@ function serverGMImage_(images, lang, apiKey, delimiter) {
     contents: [{parts: parts}],
   };
 
-  const result = executeGeminiWithRateLimit(modelConfig, promptObj, {maxRetries: 3});
+  // maxRetries: null = автоматически использовать все доступные ключи
+  const result = executeGeminiWithRateLimit(modelConfig, promptObj, {maxRetries: null});
 
   if (!result.success) {
     throw new Error(result.error);
   }
 
+  Logger.log(`[serverGMImage_] Used key: ${result.keyId}, attempt: ${result.attempt}`);
   return result.data;
 }
 
@@ -1922,6 +1957,73 @@ function fetchFileContent_(fileName) {
 // ===== Gemini API Key Management =====
 
 /**
+ * Load Gemini API keys from api_gem sheet in LICENSE_SHEET_ID
+ * Returns first active key or null if none found
+ * @return {Object|null} Object with {key, source, id} or null
+ */
+function getApiKeyFromSheet() {
+  try {
+    const ss = SpreadsheetApp.openById(LICENSE_SHEET_ID);
+    const sheet = ss.getSheetByName('api_gem');
+
+    if (!sheet) {
+      Logger.log('[API_KEY] api_gem sheet not found in LICENSE_SHEET_ID');
+      return null;
+    }
+
+    const data = sheet.getDataRange().getValues();
+
+    // Read rows starting from row 1 (row 0 is header)
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const name = String(row[0] || '').trim();
+      const key = String(row[1] || '').trim();
+      const status = String(row[2] || 'ACTIVE').trim();
+
+      // Return first active key
+      if (key && status === 'ACTIVE') {
+        Logger.log('[API_KEY] Using key from api_gem: ' + name);
+        return {
+          key: key,
+          source: 'apiGemSheet',
+          id: name,
+        };
+      }
+    }
+
+    Logger.log('[API_KEY] No active keys found in api_gem sheet');
+    return null;
+  } catch (e) {
+    Logger.log('[API_KEY] Error loading from api_gem: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * Resolve which API key to use (client key → sheet key)
+ * @param {string} userApiKey - User's personal API key (may be null/undefined)
+ * @return {string|null} API key to use or null if none available
+ */
+function resolveApiKey(userApiKey) {
+  // 1. If client provided their own key, use it
+  if (userApiKey && userApiKey.trim()) {
+    Logger.log('[API_KEY] Using key from client');
+    return userApiKey;
+  }
+
+  // 2. If not, get from api_gem sheet in LICENSE_SHEET_ID
+  const sheetKey = getApiKeyFromSheet();
+
+  if (sheetKey && sheetKey.key) {
+    return sheetKey.key;
+  }
+
+  // 3. Nothing available
+  Logger.log('[API_KEY] No API key available!');
+  return null;
+}
+
+/**
  * Получить Gemini API ключ по умолчанию (из свойств сервера)
  * @return {string|null} API ключ или null
  */
@@ -1975,10 +2077,12 @@ function setDefaultGeminiKey_(apiKey) {
  * @param {string} cellAddress - Target cell address
  * @param {string} apiKey - Gemini API key
  * @param {Array} logs - Array to collect log entries
+ * @param {boolean} skipCache - Skip cache on explicit refresh
  * @return {string} AI response text
  */
-function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, apiKey, logs) {
+function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddress, apiKey, logs, skipCache = false) {
   logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🚀 Начало выполнения CollectConfig на сервере'});
+  logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '[COLLECT_CONFIG] skipCache: ' + (skipCache ? 'ДА (пропускаем кэш)' : 'НЕТ')});
   logs.push({timestamp: new Date().toISOString(), level: 'DEBUG', message: '🔧 Config: ' + JSON.stringify({
     systemPrompt: config.systemPrompt,
     userDataCount: config.userData ? config.userData.length : 0,
@@ -2039,7 +2143,7 @@ function serverCollectConfigExecute_(config, spreadsheetId, sheetName, cellAddre
     const temperature = config.temperature || 0.7;
 
     logs.push({timestamp: new Date().toISOString(), level: 'INFO', message: '🤖 Отправка запроса в Gemini...'});
-    const aiResult = serverGM_(finalPrompt, maxTokens, temperature, apiKey);
+    const aiResult = serverGM_(finalPrompt, maxTokens, temperature, apiKey, skipCache);
 
     if (!aiResult || aiResult.startsWith('Error:')) {
       throw new Error('Ошибка AI: ' + aiResult);
@@ -2476,9 +2580,9 @@ function test_serverGMImage_withDummyPng() {
     data: Utilities.base64Encode(dummy.getBytes()),
   };
 
-  const key = getDefaultGeminiKey_(); // уже есть
-  if (!key) throw new Error('NO_DEFAULT_GEMINI_KEY');
+  const keyObj = getApiKeyFromSheet();
+  if (!keyObj || !keyObj.key) throw new Error('NO_DEFAULT_GEMINI_KEY');
 
-  const res = serverGMImage_([img], 'ru', key, '____');
+  const res = serverGMImage_([img], 'ru', keyObj.key, '____');
   Logger.log('OK, len=' + (res || '').length);
-}ы
+}
