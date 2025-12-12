@@ -612,24 +612,46 @@ function callCollectConfigServer_(config, sheetName, cellAddress, skipCache = fa
   addCollectLog(`📋 Payload config.userData: ${config.userData ? config.userData.length + ' источников' : 'нет'}`, 'DEBUG');
   addCollectLog(`📋 SpreadsheetId: ${spreadsheetId}`, 'DEBUG');
 
-  const response = UrlFetchApp.fetch(serverUrl, options);
-  const responseCode = response.getResponseCode();
-  const responseText = response.getContentText();
-
-  addCollectLog(`📥 Ответ сервера: HTTP ${responseCode}`, 'INFO');
-
-  if (responseCode >= 400) {
-    throw new Error(`HTTP ${responseCode}: ${responseText}`);
-  }
-
-  let result;
   try {
-    result = JSON.parse(responseText);
-  } catch (parseError) {
-    throw new Error(`Ошибка парсинга ответа сервера: ${parseError.message}`);
-  }
+    const response = UrlFetchApp.fetch(serverUrl, options);
+    const responseCode = response.getResponseCode();
+    const responseText = response.getContentText();
 
-  return result;
+    addCollectLog(`📥 Ответ сервера: HTTP ${responseCode}`, 'INFO');
+
+    if (responseCode >= 400) {
+      return {
+        ok: false,
+        error: `HTTP ${responseCode}: ${responseText}`,
+        logs: [],
+      };
+    }
+
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      addCollectLog(`❌ Ошибка парсинга JSON: ${parseError.message}`, 'ERROR');
+      return {
+        ok: false,
+        error: `Ошибка парсинга ответа сервера: ${parseError.message}`,
+        logs: [],
+      };
+    }
+
+    return result;
+  } catch (fetchError) {
+    // ✅ КРИТИЧЕСКИ ВАЖНО: Перехватываем ошибки UrlFetchApp.fetch
+    // (network timeout, DNS error, connection refused и т.д.)
+    const errorMsg = fetchError.message || fetchError.toString();
+    addCollectLog(`❌ Ошибка подключения к серверу: ${errorMsg}`, 'ERROR');
+    addCollectLog('💡 Проверьте: доступен ли SERVER_URL? Есть ли интернет?', 'ERROR');
+    return {
+      ok: false,
+      error: `Ошибка подключения к серверу: ${errorMsg}`,
+      logs: [],
+    };
+  }
 }
 
 /**
@@ -678,20 +700,27 @@ function callCollectConfigPreview_(sheetName, cellAddress, tableId) {
     timeout: 30, // 30 seconds timeout
   };
 
-  const response = UrlFetchApp.fetch(serverUrl, options);
-  const responseCode = response.getResponseCode();
+  try {
+    const response = UrlFetchApp.fetch(serverUrl, options);
+    const responseCode = response.getResponseCode();
 
-  if (responseCode >= 400) {
-    throw new Error(`HTTP ${responseCode}`);
+    if (responseCode >= 400) {
+      throw new Error(`HTTP ${responseCode}`);
+    }
+
+    const result = JSON.parse(response.getContentText());
+
+    if (!result.ok) {
+      throw new Error(result.error || 'UNKNOWN_ERROR');
+    }
+
+    return result.data || '';
+  } catch (error) {
+    // ✅ КРИТИЧЕСКИ ВАЖНО: Перехватываем ошибки UrlFetchApp.fetch
+    // Возвращаем понятное сообщение вместо зависания UI
+    const errorMsg = error.message || error.toString();
+    throw new Error(`Ошибка подключения к серверу для preview: ${errorMsg}`);
   }
-
-  const result = JSON.parse(response.getContentText());
-
-  if (!result.ok) {
-    throw new Error(result.error || 'UNKNOWN_ERROR');
-  }
-
-  return result.data || '';
 }
 
 /**
