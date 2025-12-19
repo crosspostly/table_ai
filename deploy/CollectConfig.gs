@@ -464,9 +464,8 @@ function refreshCellWithConfig() {
       return;
     }
 
-    ui.alert('🚀 Запуск...', 'Выполняю запрос через сервер...', ui.ButtonSet.OK);
-
-    // ONLY server execution (NO fallback) - WITH CACHE SKIP FOR EXPLICIT REFRESH
+    // ✅ ONLY server execution (NO fallback) - WITH CACHE SKIP FOR EXPLICIT REFRESH
+    // ✅ НИКАКОГО ui.alert() ДО ЗАВЕРШЕНИЯ СНЕдИ
     const serverResult = callCollectConfigServer_(config, sheetName, cellAddress, true);
 
     if (serverResult && serverResult.ok) {
