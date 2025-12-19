@@ -376,6 +376,7 @@ function updateCellsBatch(cellsToUpdate, batchName) {
 
 /**
  * 🔄 ОБНОВИТЬ ОДНУ ЯЧЕЙКУ (с записью Success)
+ * ⭐ ВСЕГДА ПРОПУСКАЕМ КЕШ (skipCache = true)
  */
 function updateSingleCell(sheetName, cellName) {
   try {
@@ -389,11 +390,10 @@ function updateSingleCell(sheetName, cellName) {
       };
     }
 
-    // Use server-based execution with skipCache=false to enable caching (EXCEPT for explicit refresh)
-    // skipCache=true should only be used when user explicitly clicks "Refresh"
-    const result = callCollectConfigServer_(config, sheetName, cellName, false);
+    // ⭐ ВСЕГДА ПРОПУСКАЕМ КЕШ ДЛЯ БАТЧ-ОПЕРАЦИЙ (skipCache = true)
+    const result = callCollectConfigServer_(config, sheetName, cellName, true);
 
-    addLog(`🔄 ${sheetName}!${cellName}: skipCache=false (caching enabled)`, 'DEBUG');
+    addLog(`🔄 ${sheetName}!${cellName}: skipCache=true (полное обновление)`, 'DEBUG');
 
     if (result && result.ok) {
       updateLastRunWithStatus(sheetName, cellName, true); // ⭐ Пишем TRUE
@@ -706,7 +706,7 @@ function BatchStartComplete(batchName, successCount, errorCount, totalCells) {
     Logger.log(`   📈 Успешность: ${successRate}%`);
 
     // Логируем состояние кеша и ротации ключей
-    Logger.log('💾 Кеширование: ВКЛЮЧЕНО (skipCache=false)');
+    Logger.log('💾 Кеширование: ОТКЛЮЧЕНО (skipCache=true)');
     Logger.log('🔑 Ротация ключей: АКТИВНА (до 6 попыток)');
     Logger.log(`⏱️ Временная логика: АКТИВНА (< ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} мин)`);
 
@@ -718,7 +718,7 @@ function BatchStartComplete(batchName, successCount, errorCount, totalCells) {
     addLog(`⏰ Время: ${timestamp}`, 'INFO');
     addLog(`📊 Обновлено: ${successCount}, Ошибки: ${errorCount}, Пропущено: ${skippedCount}`, 'INFO');
     addLog(`📈 Успешность: ${successRate}%`, 'INFO');
-    addLog('💾 Кеширование: ВКЛЮЧЕНО | 🔑 Ротация: АКТИВНА | ⏱️ Таймер: АКТИВЕН', 'INFO');
+    addLog('💾 Кеширование: ОТКЛЮЧЕНО | 🔑 Ротация: АКТИВНА | ⏱️ Таймер: АКТИВЕН', 'INFO');
     addLog('==========================================', 'INFO');
 
     // Если есть ConfigData, записываем итоговую статистику
@@ -735,7 +735,7 @@ function BatchStartComplete(batchName, successCount, errorCount, totalCells) {
         logSheet.getRange(nextRow, 5).setValue(skippedCount);
         logSheet.getRange(nextRow, 6).setValue(totalProcessed);
         logSheet.getRange(nextRow, 7).setValue(successRate + '%');
-        logSheet.getRange(nextRow, 8).setValue('Кеш:ВКЛ | Ключи:АКТ | Таймер:АКТ');
+        logSheet.getRange(nextRow, 8).setValue('Кеш:ОТК | Ключи:АКТ | Таймер:АКТ');
 
         addLog(`📝 Статистика записана в BatchLogs (строка ${nextRow})`, 'DEBUG');
       }
