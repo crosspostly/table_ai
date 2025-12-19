@@ -5,174 +5,56 @@
  * ============================================================================
  */
 
-/**
- * 🎯 КОНФИГУРАЦИЯ BATCH-ОПЕРАЦИЙ
- * Редактируй ТОЛЬКО эту часть!
- */
 const BATCH_OPERATIONS = {
-  etap1: {
-    name: '📋 обновить Презентация',
-    startRow: 2,
-    endRow: 9,
-  },
-  etap2_1: {
-    name: '📦 обновить Рефлексия (часть 1)',
-    startRow: 10,
-    endRow: 23,
-  },
-  etap2_2: {
-    name: '🎯 обновить Рефлексия (часть 2)',
-    startRow: 24,
-    endRow: 36,
-  },
-  faza1: {
-    name: '🎯 обновить Фаза 1',
-    startRow: 37,
-    endRow: 41,
-  },
-  archetype: {
-    name: '🎯 обновить Архетип',
-    startRow: 42,
-    endRow: 42,
-  },
-  common_ca: {
-    name: '🎯 обновить ЦА (общая)',
-    startRow: 43,
-    endRow: 45,
-  },
-  faza2: {
-    name: '🎯 обновить Фаза 2',
-    startRow: 46,
-    endRow: 53,
-  },
-  faza3: {
-    name: '🎯 обновить фаза 3',
-    startRow: 54,
-    endRow: 58,
-  },
-  brendDesign: {
-    name: '🎯 обновить Бренд-Дизайн',
-    startRow: 59,
-    endRow: 62,
-  },
-  resume: {
-    name: '🎯 обновить Итог распаковки',
-    startRow: 63,
-    endRow: 65,
-  },
-  analizConc: {
-    name: '🎯 обновить Анализ конкурентов',
-    startRow: 66,
-    endRow: 67,
-  },
-  analizCA: {
-    name: '🎯 обновить Анализ ЦА',
-    startRow: 68,
-    endRow: 77,
-  },
+  etap1: {name: '📋 обновить Презентация', startRow: 2, endRow: 9},
+  etap2_1: {name: '📦 обновить Рефлексия (часть 1)', startRow: 10, endRow: 23},
+  etap2_2: {name: '🎯 обновить Рефлексия (часть 2)', startRow: 24, endRow: 36},
+  faza1: {name: '🎯 обновить Фаза 1', startRow: 37, endRow: 41},
+  archetype: {name: '🎯 обновить Архетип', startRow: 42, endRow: 42},
+  common_ca: {name: '🎯 обновить ЦА (общая)', startRow: 43, endRow: 45},
+  faza2: {name: '🎯 обновить Фаза 2', startRow: 46, endRow: 53},
+  faza3: {name: '🎯 обновить фаза 3', startRow: 54, endRow: 58},
+  brendDesign: {name: '🎯 обновить Бренд-Дизайн', startRow: 59, endRow: 62},
+  resume: {name: '🎯 обновить Итог распаковки', startRow: 63, endRow: 65},
+  analizConc: {name: '🎯 обновить Анализ конкурентов', startRow: 66, endRow: 67},
+  analizCA: {name: '🎯 обновить Анализ ЦА', startRow: 68, endRow: 77},
 };
 
-/**
- * 🔒 ГЛОБАЛЬНЫЙ СЕМАФОР
- */
 const GLOBAL_CONFIG = {
   MAX_CONCURRENT_REQUESTS: 2,
   ACTIVE_REQUESTS: 0,
   QUEUE: [],
-  SKIP_FRESH_MINUTES: 10, // ⭐ Пропускать успешные ячейки < 10 минут
-  AUTO_RETRY_ENABLED: true, // ⭐ Включить авто-повтор
-  AUTO_RETRY_DELAY_MINUTES: 1, // ⭐ Повтор через 15 минут
-  MAX_AUTO_RETRIES: 3, // ⭐ Максимум 3 автоповтора
+  SKIP_FRESH_MINUTES: 10,
+  AUTO_RETRY_ENABLED: true,
+  AUTO_RETRY_DELAY_MINUTES: 1,
+  MAX_AUTO_RETRIES: 3,
 };
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🎯 ФУНКЦИИ ДЛЯ МЕНЮ (копируй-вставь!)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function etap1() {BatchStart(BATCH_OPERATIONS.etap1);}
+function etap2_1() {BatchStart(BATCH_OPERATIONS.etap2_1);}
+function etap2_2() {BatchStart(BATCH_OPERATIONS.etap2_2);}
+function faza1() {BatchStart(BATCH_OPERATIONS.faza1);}
+function archetype() {BatchStart(BATCH_OPERATIONS.archetype);}
+function common_ca() {BatchStart(BATCH_OPERATIONS.common_ca);}
+function faza2() {BatchStart(BATCH_OPERATIONS.faza2);}
+function faza3() {BatchStart(BATCH_OPERATIONS.faza3);}
+function brendDesign() {BatchStart(BATCH_OPERATIONS.brendDesign);}
+function resume() {BatchStart(BATCH_OPERATIONS.resume);}
+function analizConc() {BatchStart(BATCH_OPERATIONS.analizConc);}
+function analizCA() {BatchStart(BATCH_OPERATIONS.analizCA);}
 
-function etap1() {
-  BatchStart(BATCH_OPERATIONS.etap1);
-}
-
-function etap2_1() {
-  BatchStart(BATCH_OPERATIONS.etap2_1);
-}
-
-function etap2_2() {
-  BatchStart(BATCH_OPERATIONS.etap2_2);
-}
-
-function faza1() {
-  BatchStart(BATCH_OPERATIONS.faza1);
-}
-
-function archetype() {
-  BatchStart(BATCH_OPERATIONS.archetype);
-}
-
-function common_ca() {
-  BatchStart(BATCH_OPERATIONS.common_ca);
-}
-
-function faza2() {
-  BatchStart(BATCH_OPERATIONS.faza2);
-}
-
-function faza3() {
-  BatchStart(BATCH_OPERATIONS.faza3);
-}
-
-function brendDesign() {
-  BatchStart(BATCH_OPERATIONS.brendDesign);
-}
-
-function resume() {
-  BatchStart(BATCH_OPERATIONS.resume);
-}
-
-function analizConc() {
-  BatchStart(BATCH_OPERATIONS.analizConc);
-}
-
-function analizCA() {
-  BatchStart(BATCH_OPERATIONS.analizCA);
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🔥 ВНУТРЕННЯЯ ЛОГИКА (не трогай!)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * 🚀 Запуск батча
- */
 function BatchStart(config) {
-  enqueueTask(() => {
-    batchUpdateWrapper(config.name, config.startRow, config.endRow);
-  }, config.name);
+  enqueueTask(() => {batchUpdateWrapper(config.name, config.startRow, config.endRow);}, config.name);
 }
 
-/**
- * 🔒 Добавить в очередь
- */
 function enqueueTask(taskFn, taskName) {
-  GLOBAL_CONFIG.QUEUE.push({
-    fn: taskFn,
-    name: taskName,
-    timestamp: new Date(),
-  });
+  GLOBAL_CONFIG.QUEUE.push({fn: taskFn, name: taskName, timestamp: new Date()});
   processQueue();
 }
 
-/**
- * 🔥 Обработчик очереди
- */
 function processQueue() {
-  if (GLOBAL_CONFIG.ACTIVE_REQUESTS >= GLOBAL_CONFIG.MAX_CONCURRENT_REQUESTS) {
-    return;
-  }
-
-  if (GLOBAL_CONFIG.QUEUE.length === 0) {
-    return;
-  }
+  if (GLOBAL_CONFIG.ACTIVE_REQUESTS >= GLOBAL_CONFIG.MAX_CONCURRENT_REQUESTS) return;
+  if (GLOBAL_CONFIG.QUEUE.length === 0) return;
 
   const task = GLOBAL_CONFIG.QUEUE.shift();
   GLOBAL_CONFIG.ACTIVE_REQUESTS++;
@@ -193,7 +75,10 @@ function processQueue() {
 }
 
 /**
- * ⭐ ОСНОВНАЯ ФУНКЦИЯ БАТЧА (с проверкой Success)
+ * 🔧 ИСПРАВЛЕННАЯ ЛОГИКА ПРОПУСКА
+ * 1. Пропускаем пустые строки
+ * 2. ТОЛЬКО ЕСЛИ Success=TRUE И < 10 минут → ПРОПУСКАЕМ
+ * 3. Всё остальное (успешные > 10 мин ИЛИ ошибки) → ОБНОВЛЯЕМ
  */
 function batchUpdateWrapper(batchName, startRow, endRow) {
   try {
@@ -205,72 +90,77 @@ function batchUpdateWrapper(batchName, startRow, endRow) {
       return;
     }
 
-    // ⭐ Проверяем структуру (добавляем колонку H если нет)
     ensureConfigDataStructure(configSheet);
 
     const rowCount = endRow - startRow + 1;
-    const range = configSheet.getRange(startRow, 1, rowCount, 8); // ⭐ Читаем 8 колонок (A-H)
+    const range = configSheet.getRange(startRow, 1, rowCount, 8);
     const data = range.getValues();
 
     const cellsToUpdate = [];
+    let skippedCount = 0;
     const now = new Date();
     const skipThresholdMs = GLOBAL_CONFIG.SKIP_FRESH_MINUTES * 60 * 1000;
 
     for (let i = 0; i < data.length; i++) {
       const sheet = String(data[i][0] || '').trim();
       const cell = String(data[i][1] || '').trim();
-      const lastRunStr = data[i][6]; // Колонка G (lastRun)
-      const lastSuccess = data[i][7]; // ⭐ Колонка H (Success)
+      const lastRunStr = data[i][6];
+      const lastSuccess = data[i][7];
 
-      if (!sheet || !cell) {
-        continue;
-      }
+      // ШАГИ ЛОГИКИ:
+      // 1. Пропускаем пустые
+      if (!sheet || !cell) continue;
 
-      // ⭐ НОВАЯ ЛОГИКА: пропускаем только УСПЕШНЫЕ и СВЕЖИЕ
+      // 2. ⭐ КЛЮЧЕВАЯ ЛОГИКА: ТОЛЬКО Success=TRUE И < 10 мин → ПРОПУСКАЕМ
       if (lastRunStr && lastSuccess === true) {
         try {
           const lastRun = new Date(lastRunStr);
           const diffMs = now - lastRun;
 
           if (diffMs < skipThresholdMs) {
+            // Свежая успешная - ПРОПУСКАЕМ
             const minutesAgo = Math.floor(diffMs / 60000);
             addLog(`⏭️ Пропуск ${sheet}!${cell} (✅ успешно ${minutesAgo} мин назад)`, 'INFO');
-            continue; // ⭐ ПРОПУСКАЕМ только успешные < 10 минут
+            skippedCount++;
+            continue; // ❌ ВАЖНО: continue отправляет на следующую итерацию
+          } else {
+            // Success=TRUE но > 10 мин - ОБНОВЛЯЕМ
+            const minutesAgo = Math.floor(diffMs / 60000);
+            addLog(`🔄 ${sheet}!${cell} добавлен (✅ успешно ${minutesAgo} мин назад, нужен апдейт)`, 'INFO');
           }
         } catch (e) {
-          // Если ошибка парсинга даты - обновляем
+          addLog(`⚠️ ${sheet}!${cell} - ошибка парсинга даты`, 'WARN');
         }
       } else if (lastRunStr && lastSuccess === false) {
-        // ⭐ Была ошибка - НЕ пропускаем
+        // 3. Success=FALSE (была ошибка) - ОБНОВЛЯЕМ
         try {
           const lastRun = new Date(lastRunStr);
           const minutesAgo = Math.floor((now - lastRun) / 60000);
-          addLog(`🔄 ${sheet}!${cell} добавлен (❌ ошибка ${minutesAgo} мин назад)`, 'INFO');
+          addLog(`🔄 ${sheet}!${cell} добавлен (❌ ошибка ${minutesAgo} мин назад, повтор)`, 'INFO');
         } catch (e) {}
+      } else if (!lastRunStr) {
+        // 4. Нет времени выполнения (первое обновление) - ОБНОВЛЯЕМ
+        addLog(`🆕 ${sheet}!${cell} добавлен (первое обновление)`, 'INFO');
       }
 
-      cellsToUpdate.push({
-        sheet: sheet,
-        cell: cell,
-        configRow: startRow + i,
-      });
+      // ✅ ДОБАВЛЯЕМ ЯЧЕЙКУ В ОЧЕРЕДЬ (все ячейки, которые не пропущены выше)
+      cellsToUpdate.push({sheet: sheet, cell: cell, configRow: startRow + i});
     }
 
     console.log(`📋 ${batchName}: Найдено ${cellsToUpdate.length} ячеек для обновления`);
-    addLog(`🔄 ${batchName}: Найдено ${cellsToUpdate.length} ячеек (пропущено успешных: ${rowCount - cellsToUpdate.length})`, 'INFO');
+    addLog(`🔄 ${batchName}: Найдено ${cellsToUpdate.length} ячеек (пропущено ${skippedCount} свежих)`, 'INFO');
 
     if (cellsToUpdate.length === 0) {
       SpreadsheetApp.getUi().alert(
-        '⏭️ Все ячейки успешно обновлены\n\n' +
+        '⏭️ Все ячейки успешны\n\n' +
         `Диапазон: строки ${startRow}-${endRow}\n` +
-        `Все ячейки успешно обновлены менее ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} минут назад.`,
+        `Все ${rowCount} ячеек успешны менее ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} минут назад.`
       );
       return;
     }
 
     const result = updateCellsBatch(cellsToUpdate, batchName);
 
-    // ⭐ АВТО-RETRY: Если есть ошибки и включен авто-повтор
     if (GLOBAL_CONFIG.AUTO_RETRY_ENABLED && result.errorCount > 0) {
       scheduleAutoRetry(batchName, startRow, endRow);
     }
@@ -280,14 +170,10 @@ function batchUpdateWrapper(batchName, startRow, endRow) {
   }
 }
 
-/**
- * ⭐ БАТЧ-ОБНОВЛЕНИЕ ЯЧЕЕК
- */
 function updateCellsBatch(cellsToUpdate, batchName) {
   let successCount = 0;
   let errorCount = 0;
   const errors = [];
-
   const POOL_SIZE = 3;
   const RETRY_COUNT = 0;
   const DELAY = 800;
@@ -352,12 +238,9 @@ function updateCellsBatch(cellsToUpdate, batchName) {
 
   addLog(`📊 ${batchName}: ✅ ${successCount}, ❌ ${errorCount}`, 'INFO');
   addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'INFO');
-  // ⭐ ДЕТАЛЬНАЯ СТАТИСТИКА БАТЧА
   BatchStartComplete(batchName, successCount, errorCount, cellsToUpdate.length);
 
   const msg = `${batchName}\n✅ ${successCount}\n❌ ${errorCount}`;
-
-  // ⭐ Добавляем информацию об авто-повторе
   let finalMsg = msg;
   if (GLOBAL_CONFIG.AUTO_RETRY_ENABLED && errorCount > 0) {
     finalMsg += `\n\n⏰ Авто-повтор через ${GLOBAL_CONFIG.AUTO_RETRY_DELAY_MINUTES} минут`;
@@ -374,40 +257,27 @@ function updateCellsBatch(cellsToUpdate, batchName) {
   return {successCount, errorCount};
 }
 
-/**
- * 🔄 ОБНОВИТЬ ОДНУ ЯЧЕЙКУ (с записью Success)
- * ⭐ ВСЕГДА ПРОПУСКАЕМ КЕШ (skipCache = true)
- */
 function updateSingleCell(sheetName, cellName) {
   try {
     const config = loadCollectConfig(sheetName, cellName);
-
     if (!config) {
-      updateLastRunWithStatus(sheetName, cellName, false); // ⭐ Пишем FALSE
-      return {
-        success: false,
-        error: 'Конфигурация не найдена для ' + sheetName + '!' + cellName,
-      };
+      updateLastRunWithStatus(sheetName, cellName, false);
+      return {success: false, error: 'Конфигурация не найдена для ' + sheetName + '!' + cellName};
     }
 
-    // ⭐ ВСЕГДА ПРОПУСКАЕМ КЕШ ДЛЯ БАТЧ-ОПЕРАЦИЙ (skipCache = true)
     const result = callCollectConfigServer_(config, sheetName, cellName, true);
-
     addLog(`🔄 ${sheetName}!${cellName}: skipCache=true (полное обновление)`, 'DEBUG');
 
     if (result && result.ok) {
-      updateLastRunWithStatus(sheetName, cellName, true); // ⭐ Пишем TRUE
+      updateLastRunWithStatus(sheetName, cellName, true);
       return {success: true};
     }
 
-    updateLastRunWithStatus(sheetName, cellName, false); // ⭐ Пишем FALSE
-    return {
-      success: false,
-      error: result?.error || 'Неизвестная ошибка',
-    };
+    updateLastRunWithStatus(sheetName, cellName, false);
+    return {success: false, error: result?.error || 'Неизвестная ошибка'};
   } catch (error) {
     const msg = error.message || String(error);
-    updateLastRunWithStatus(sheetName, cellName, false); // ⭐ Пишем FALSE
+    updateLastRunWithStatus(sheetName, cellName, false);
 
     if (msg.includes('<!DOCTYPE') || msg.includes('is not valid JSON')) {
       return {success: false, error: 'LICENSE_OR_SERVER'};
@@ -417,29 +287,18 @@ function updateSingleCell(sheetName, cellName) {
   }
 }
 
-/**
- * ⭐ ОБНОВИТЬ lastRun И Success (ПИШЕТ В ConfigData)
- */
 function updateLastRunWithStatus(sheetName, cellAddress, success) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const configSheet = ss.getSheetByName('ConfigData');
-
-    if (!configSheet) {
-      return;
-    }
+    if (!configSheet) return;
 
     const data = configSheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === sheetName && data[i][1] === cellAddress) {
         const row = i + 1;
-
-        // ⭐ Колонка G: lastRun (время)
         configSheet.getRange(row, 7).setValue(new Date().toISOString());
-
-        // ⭐ Колонка H: Success (TRUE или FALSE)
         configSheet.getRange(row, 8).setValue(success);
-
         addLog(`📝 ConfigData: ${sheetName}!${cellAddress} → ${success ? '✅ TRUE' : '❌ FALSE'}`, 'DEBUG');
         return;
       }
@@ -449,21 +308,11 @@ function updateLastRunWithStatus(sheetName, cellAddress, success) {
   }
 }
 
-/**
- * ⭐ ПРОВЕРКА И СОЗДАНИЕ КОЛОНКИ Success
- */
 function ensureConfigDataStructure(configSheet) {
   try {
     const headers = configSheet.getRange(1, 1, 1, 8).getValues()[0];
-
-    // Проверяем, есть ли колонка H (Success)
     if (!headers[7] || headers[7] !== 'Success') {
-      // Добавляем заголовок
-      configSheet.getRange(1, 8).setValue('Success')
-        .setFontWeight('bold')
-        .setBackground('#4285f4')
-        .setFontColor('white');
-
+      configSheet.getRange(1, 8).setValue('Success').setFontWeight('bold').setBackground('#4285f4').setFontColor('white');
       addLog('✅ Добавлена колонка H (Success) в ConfigData', 'INFO');
     }
   } catch (error) {
@@ -471,18 +320,10 @@ function ensureConfigDataStructure(configSheet) {
   }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ⏰ АВТО-RETRY СИСТЕМА
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * ⏰ Запланировать авто-повтор
- */
 function scheduleAutoRetry(batchName, startRow, endRow) {
   try {
     const props = PropertiesService.getScriptProperties();
     const retryKey = `RETRY_${batchName}_${startRow}_${endRow}`;
-
     const currentRetries = parseInt(props.getProperty(retryKey) || '0');
 
     if (currentRetries >= GLOBAL_CONFIG.MAX_AUTO_RETRIES) {
@@ -495,11 +336,7 @@ function scheduleAutoRetry(batchName, startRow, endRow) {
     deleteAutoRetryTriggers(batchName);
 
     const triggerTime = new Date(Date.now() + GLOBAL_CONFIG.AUTO_RETRY_DELAY_MINUTES * 60 * 1000);
-
-    ScriptApp.newTrigger('autoRetryExecutor')
-      .timeBased()
-      .at(triggerTime)
-      .create();
+    ScriptApp.newTrigger('autoRetryExecutor').timeBased().at(triggerTime).create();
 
     const triggerData = {
       batchName: batchName,
@@ -511,16 +348,12 @@ function scheduleAutoRetry(batchName, startRow, endRow) {
     };
 
     props.setProperty(`TRIGGER_DATA_${batchName}`, JSON.stringify(triggerData));
-
     addLog(`⏰ ${batchName}: Авто-повтор ${currentRetries + 1}/${GLOBAL_CONFIG.MAX_AUTO_RETRIES} на ${triggerTime.toLocaleString('ru-RU')}`, 'INFO');
   } catch (error) {
     addLog(`❌ Ошибка планирования: ${error.message}`, 'ERROR');
   }
 }
 
-/**
- * ⚙️ Исполнитель авто-повтора
- */
 function autoRetryExecutor() {
   try {
     const props = PropertiesService.getScriptProperties();
@@ -530,21 +363,16 @@ function autoRetryExecutor() {
       if (key.startsWith('TRIGGER_DATA_')) {
         const triggerData = JSON.parse(allProps[key]);
         addLog(`🔄 Авто-повтор: ${triggerData.batchName} (попытка ${triggerData.attempt})`, 'INFO');
-
         batchUpdateWrapper(triggerData.batchName, triggerData.startRow, triggerData.endRow);
         props.deleteProperty(key);
       }
     }
-
     cleanupOldTriggers();
   } catch (error) {
     addLog(`❌ Ошибка autoRetryExecutor: ${error.message}`, 'ERROR');
   }
 }
 
-/**
- * 🗑️ Удалить триггеры
- */
 function deleteAutoRetryTriggers(_batchName) {
   try {
     const triggers = ScriptApp.getProjectTriggers();
@@ -556,9 +384,6 @@ function deleteAutoRetryTriggers(_batchName) {
   } catch (error) {}
 }
 
-/**
- * 🧹 Очистить старые триггеры
- */
 function cleanupOldTriggers() {
   try {
     const triggers = ScriptApp.getProjectTriggers();
@@ -577,46 +402,33 @@ function cleanupOldTriggers() {
   } catch (error) {}
 }
 
-/**
- * 🔧 Сбросить счётчики
- */
 function resetAutoRetryCounters() {
   try {
     const props = PropertiesService.getScriptProperties();
     const allProps = props.getProperties();
     let count = 0;
-
     for (const key in allProps) {
       if (key.startsWith('RETRY_') || key.startsWith('TRIGGER_DATA_')) {
         props.deleteProperty(key);
         count++;
       }
     }
-
     addLog(`🔧 Сброшено: ${count}`, 'INFO');
     SpreadsheetApp.getUi().alert(`✅ Сброшено счётчиков: ${count}`);
   } catch (error) {}
 }
 
-/**
- * 🔧 Показать статус
- */
 function showAutoRetryStatus() {
   try {
     const props = PropertiesService.getScriptProperties();
     const allProps = props.getProperties();
     const status = [];
-
     for (const key in allProps) {
       if (key.startsWith('TRIGGER_DATA_')) {
         const data = JSON.parse(allProps[key]);
-        status.push(
-          `${data.batchName}: попытка ${data.attempt}/${GLOBAL_CONFIG.MAX_AUTO_RETRIES}\n` +
-          `Запланировано: ${new Date(data.executeAt).toLocaleString('ru-RU')}`,
-        );
+        status.push(`${data.batchName}: попытка ${data.attempt}/${GLOBAL_CONFIG.MAX_AUTO_RETRIES}\nЗапланировано: ${new Date(data.executeAt).toLocaleString('ru-RU')}`);
       }
     }
-
     if (status.length === 0) {
       SpreadsheetApp.getUi().alert('ℹ️ Нет запланированных авто-повторов');
     } else {
@@ -624,28 +436,19 @@ function showAutoRetryStatus() {
     }
   } catch (error) {}
 }
-/**
- * 🔓 ОТКРЕПИТЬ ВСЕ ЛИСТЫ
- * Открепляет все frozen panes со всех листов
- */
+
 function unfreezeAllSheets() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheets = ss.getSheets();
-
     let count = 0;
-
     for (let i = 0; i < sheets.length; i++) {
       const sheet = sheets[i];
-
-      // Открепляем все frozen panes
       sheet.setFrozenRows(0);
       sheet.setFrozenColumns(0);
-
       addLog(`🔓 ${sheet.getName()}: открепления`, 'INFO');
       count++;
     }
-
     SpreadsheetApp.getUi().alert(`✅ Откреплено листов: ${count}`);
     addLog(`✅ Успешно откреплено ${count} листов`, 'INFO');
   } catch (error) {
@@ -653,95 +456,32 @@ function unfreezeAllSheets() {
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
   }
 }
-/**
- * 🔓 ОТКРЕПИТЬ ВСЕ ЛИСТЫ В ТАБЛИЦЕ
- * Просто запусти эту функцию в редакторе Apps Script
- */
-function unfreezeAllSheets() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheets = ss.getSheets();
 
-  let count = 0;
-
-  for (let i = 0; i < sheets.length; i++) {
-    const sheet = sheets[i];
-    const sheetName = sheet.getName();
-
-    // Открепляем строки и колонки
-    sheet.setFrozenRows(0);
-    sheet.setFrozenColumns(0);
-
-    console.log(`✅ ${sheetName}: откреплено`);
-    count++;
-  }
-
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`✅ ИТОГО: откреплено ${count} листов`);
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-}
-
-/**
- * ⭐ ДЕТАЛЬНАЯ СТАТИСТИКА БАТЧА
- * Логирует полную статистику работы батча для финальной проверки
- */
 function BatchStartComplete(batchName, successCount, errorCount, totalCells) {
   try {
     const now = new Date();
     const timestamp = now.toLocaleTimeString('ru-RU');
-
-    // Рассчитываем статистику
-    const skippedCount = totalCells - successCount - errorCount;
     const totalProcessed = successCount + errorCount;
     const successRate = totalProcessed > 0 ? ((successCount / totalProcessed) * 100).toFixed(1) : '0.0';
 
-    // Детальное логирование для финальной проверки
     Logger.log('==========================================');
     Logger.log(`🎯 BATCH COMPLETE: ${batchName}`);
     Logger.log(`⏰ Время: ${timestamp}`);
     Logger.log('📊 Статистика:');
     Logger.log(`   ✅ Обновлено: ${successCount}`);
     Logger.log(`   ❌ Ошибки: ${errorCount}`);
-    Logger.log(`   ⏭️ Пропущено: ${skippedCount}`);
-    Logger.log(`   📋 Всего обработано: ${totalProcessed}/${totalCells}`);
+    Logger.log(`   📋 Обработано: ${totalProcessed}/${totalCells}`);
     Logger.log(`   📈 Успешность: ${successRate}%`);
-
-    // Логируем состояние кеша и ротации ключей
     Logger.log('💾 Кеширование: ОТКЛЮЧЕНО (skipCache=true)');
-    Logger.log('🔑 Ротация ключей: АКТИВНА (до 6 попыток)');
-    Logger.log(`⏱️ Временная логика: АКТИВНА (< ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} мин)`);
-
+    Logger.log(`⏱️ Временная логика: АКТИВНА (пропуск < ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} мин только успешных)`);
     Logger.log('==========================================');
 
-    // Также добавляем в системный лог
     addLog('==========================================', 'INFO');
     addLog(`🎯 BATCH COMPLETE: ${batchName}`, 'INFO');
-    addLog(`⏰ Время: ${timestamp}`, 'INFO');
-    addLog(`📊 Обновлено: ${successCount}, Ошибки: ${errorCount}, Пропущено: ${skippedCount}`, 'INFO');
+    addLog(`📊 ✅: ${successCount} | ❌: ${errorCount} | Обработано: ${totalProcessed}/${totalCells}`, 'INFO');
     addLog(`📈 Успешность: ${successRate}%`, 'INFO');
-    addLog('💾 Кеширование: ОТКЛЮЧЕНО | 🔑 Ротация: АКТИВНА | ⏱️ Таймер: АКТИВЕН', 'INFO');
+    addLog('💾 Кеш: ОТК | Логика: ✅ ИСПРАВЛЕНА', 'INFO');
     addLog('==========================================', 'INFO');
-
-    // Если есть ConfigData, записываем итоговую статистику
-    try {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      const logSheet = ss.getSheetByName('BatchLogs');
-
-      if (logSheet) {
-        const nextRow = logSheet.getLastRow() + 1;
-        logSheet.getRange(nextRow, 1).setValue(timestamp);
-        logSheet.getRange(nextRow, 2).setValue(batchName);
-        logSheet.getRange(nextRow, 3).setValue(successCount);
-        logSheet.getRange(nextRow, 4).setValue(errorCount);
-        logSheet.getRange(nextRow, 5).setValue(skippedCount);
-        logSheet.getRange(nextRow, 6).setValue(totalProcessed);
-        logSheet.getRange(nextRow, 7).setValue(successRate + '%');
-        logSheet.getRange(nextRow, 8).setValue('Кеш:ОТК | Ключи:АКТ | Таймер:АКТ');
-
-        addLog(`📝 Статистика записана в BatchLogs (строка ${nextRow})`, 'DEBUG');
-      }
-    } catch (e) {
-      addLog(`⚠️ Не удалось записать в BatchLogs: ${e.message}`, 'WARN');
-    }
   } catch (error) {
     addLog(`❌ Ошибка в BatchStartComplete: ${error.message}`, 'ERROR');
   }
