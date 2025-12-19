@@ -201,7 +201,7 @@ function batchUpdateWrapper(batchName, startRow, endRow) {
     const configSheet = ss.getSheetByName('ConfigData');
 
     if (!configSheet) {
-      SpreadsheetApp.getUi().alert('❌ Лист "ConfigData" не найден');
+      addLog('❌ Лист "ConfigData" не найден', 'ERROR');
       return;
     }
 
@@ -260,10 +260,10 @@ function batchUpdateWrapper(batchName, startRow, endRow) {
     addLog(`🔄 ${batchName}: Найдено ${cellsToUpdate.length} ячеек (пропущено успешных: ${rowCount - cellsToUpdate.length})`, 'INFO');
 
     if (cellsToUpdate.length === 0) {
-      SpreadsheetApp.getUi().alert(
-        '⏭️ Все ячейки успешно обновлены\n\n' +
-        `Диапазон: строки ${startRow}-${endRow}\n` +
+      addLog(
+        `⏭️ Все ячейки успешно обновлены. Диапазон: строки ${startRow}-${endRow}. ` +
         `Все ячейки успешно обновлены менее ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} минут назад.`,
+        'INFO',
       );
       return;
     }
@@ -276,7 +276,6 @@ function batchUpdateWrapper(batchName, startRow, endRow) {
     }
   } catch (error) {
     addLog(`❌ Ошибка: ${error.message}`, 'ERROR');
-    SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
   }
 }
 
@@ -646,38 +645,10 @@ function unfreezeAllSheets() {
       count++;
     }
 
-    SpreadsheetApp.getUi().alert(`✅ Откреплено листов: ${count}`);
     addLog(`✅ Успешно откреплено ${count} листов`, 'INFO');
   } catch (error) {
-    addLog(`❌ Ошибка: ${error.message}`, 'ERROR');
-    SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
+    addLog(`❌ Ошибка открепления листов: ${error.message}`, 'ERROR');
   }
-}
-/**
- * 🔓 ОТКРЕПИТЬ ВСЕ ЛИСТЫ В ТАБЛИЦЕ
- * Просто запусти эту функцию в редакторе Apps Script
- */
-function unfreezeAllSheets() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheets = ss.getSheets();
-
-  let count = 0;
-
-  for (let i = 0; i < sheets.length; i++) {
-    const sheet = sheets[i];
-    const sheetName = sheet.getName();
-
-    // Открепляем строки и колонки
-    sheet.setFrozenRows(0);
-    sheet.setFrozenColumns(0);
-
-    console.log(`✅ ${sheetName}: откреплено`);
-    count++;
-  }
-
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`✅ ИТОГО: откреплено ${count} листов`);
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
 /**
