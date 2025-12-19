@@ -76,9 +76,10 @@ function getLogs(limit = 100) {
 // eslint-disable-next-line no-unused-vars
 function showLogsDialog() {
   try {
+    addLog('📝 Показ логов (последние 100 записей)', 'INFO');
     SpreadsheetApp.getUi().alert('📝 Логи (последние 100)', getLogs(100), SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка показа логов: ' + e.message);
+    addLog('❌ Ошибка показа логов: ' + e.message, 'ERROR');
   }
 }
 // eslint-disable-next-line no-unused-vars
@@ -90,7 +91,6 @@ function exportLogsToSheet() {
     const logs = cache.get(LOGS_CACHE_KEY);
     if (!logs) {
       addLog('❌ Нет логов для экспорта', 'WARN');
-      SpreadsheetApp.getUi().alert('Информация', 'Логи отсутствуют.', SpreadsheetApp.getUi().ButtonSet.OK);
       return;
     }
     const logEntries = JSON.parse(logs);
@@ -101,10 +101,8 @@ function exportLogsToSheet() {
     sheet.getRange(1, 1, 1, 3).setFontWeight('bold').setBackground('#E8F0FE');
     sheet.autoResizeColumns(1, 3);
     addLog('✅ Логи экспортированы в лист "Логи"', 'INFO');
-    SpreadsheetApp.getUi().alert('Информация', 'Готово: логи экспортированы в "Логи".', SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
     addLog('❌ Ошибка экспорта логов: ' + e.message, 'ERROR');
-    SpreadsheetApp.getUi().alert('Ошибка экспорта логов: ' + e.message);
   }
 }
 // eslint-disable-next-line no-unused-vars
@@ -112,9 +110,8 @@ function clearLogs() {
   try {
     CacheService.getScriptCache().remove(LOGS_CACHE_KEY);
     addLog('✅ Логи очищены', 'INFO');
-    SpreadsheetApp.getUi().alert('Информация', 'Логи очищены.', SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка очистки логов: ' + e.message);
+    addLog('❌ Ошибка очистки логов: ' + e.message, 'ERROR');
   }
 }
 
@@ -141,12 +138,10 @@ function cleanupOldTriggers() {
     });
     const summary = '✅ Очистка: удалено ' + deleted + ', оставлено ' + kept;
     addLog(summary, 'INFO');
-    SpreadsheetApp.getUi().alert(summary);
     return summary;
   } catch (e) {
     const msg = '❌ Ошибка очистки триггеров: ' + e.message;
     addLog(msg, 'ERROR');
-    SpreadsheetApp.getUi().alert(msg);
     return msg;
   }
 }
@@ -155,13 +150,15 @@ function showActiveTriggersDialog() {
   try {
     const triggers = ScriptApp.getProjectTriggers();
     if (triggers.length === 0) {
+      addLog('📋 Активных триггеров нет', 'INFO');
       SpreadsheetApp.getUi().alert('Активные триггеры', 'Нет активных триггеров', SpreadsheetApp.getUi().ButtonSet.OK);
       return;
     }
     const list = triggers.map((t, i) => (i+1)+'. '+t.getHandlerFunction()+' ('+t.getEventType()+')').join('\n');
+    addLog(`📋 Активных триггеров: ${triggers.length}`, 'INFO');
     SpreadsheetApp.getUi().alert('Активные триггеры', 'Всего: '+triggers.length+'\n\n'+list, SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка показа триггеров: ' + e.message);
+    addLog('❌ Ошибка показа триггеров: ' + e.message, 'ERROR');
   }
 }
 
@@ -314,10 +311,12 @@ function prepareChainFromPromptBox() {
   const prompt = ss.getSheetByName('Prompt_box');
   const pack = ss.getSheetByName('Распаковка');
   if (!prompt) {
-    SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Prompt_box" не найден', SpreadsheetApp.getUi().ButtonSet.OK); return;
+    addLog('❌ Ошибка: Лист "Prompt_box" не найден', 'ERROR');
+    return;
   }
   if (!pack) {
-    SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Распаковка" не найден', SpreadsheetApp.getUi().ButtonSet.OK); return;
+    addLog('❌ Ошибка: Лист "Распаковка" не найден', 'ERROR');
+    return;
   }
 
   const lastRow = Math.max(2, prompt.getLastRow());
@@ -335,7 +334,8 @@ function prepareChainFromPromptBox() {
   }
 
   if (!mappings.length) {
-    SpreadsheetApp.getUi().alert('Информация', 'Нет целевых ячеек в Prompt_box!B, ничего не сделано.', SpreadsheetApp.getUi().ButtonSet.OK); return;
+    addLog('⚠️ Информация: Нет целевых ячеек в Prompt_box!B, ничего не сделано.', 'WARN');
+    return;
   }
 
   const phrase = getCompletionPhrase() || COMPLETION_PHRASE;
@@ -356,14 +356,14 @@ function prepareChainFromPromptBox() {
     addLog('📝 Формула установлена → Распаковка!' + m.targetA1 + ' из Prompt_box!F' + m.promptRow, 'INFO');
   }
 
-  SpreadsheetApp.getUi().alert('✅ Готово: формулы расставлены по целям из Prompt_box!B.\\n' +
-    'Первая ячейка запустится при заполнении соответствующего A-столбца, далее — по фразе готовности.');
+  addLog('✅ Готово: формулы расставлены по целям из Prompt_box!B. Первая ячейка запустится при заполнении соответствующего A-столбца, далее — по фразе готовности.', 'SUCCESS');
 }
 function prepareChainForA3() {
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName('Распаковка');
   if (!sheet) {
-    SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Распаковка" не найден', SpreadsheetApp.getUi().ButtonSet.OK); return;
+    addLog('❌ Ошибка: Лист "Распаковка" не найден', 'ERROR');
+    return;
   }
   const row = 3;
   const startCol = 2; // B
@@ -387,17 +387,18 @@ function prepareChainForA3() {
     target.setFormula(formula);
     addLog('📝 Формула ' + target.getA1Notation() + ' установлена', 'DEBUG');
   }
-  SpreadsheetApp.getUi().alert('Готово', '✅ Готово: формулы B3..G3 проставлены.\nЗаполните A3 — шаги пойдут по очереди.', SpreadsheetApp.getUi().ButtonSet.OK);
+  addLog('✅ Готово: формулы B3..G3 проставлены. Заполните A3 — шаги пойдут по очереди.', 'SUCCESS');
 }
 // eslint-disable-next-line no-unused-vars
 function clearChainForA3() {
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName('Распаковка');
   if (!sheet) {
-    SpreadsheetApp.getUi().alert('Ошибка', 'Лист "Распаковка" не найден', SpreadsheetApp.getUi().ButtonSet.OK); return;
+    addLog('❌ Ошибка: Лист "Распаковка" не найден', 'ERROR');
+    return;
   }
   sheet.getRange(3, 2, 1, 6).clearContent(); // B3..G3
-  SpreadsheetApp.getUi().alert('Информация', '🧹 Очищено: B3..G3', SpreadsheetApp.getUi().ButtonSet.OK);
+  addLog('🧹 Информация: Очищено B3..G3', 'INFO');
 }
 // ====== КЭШ ДЛЯ GM ======
 function gmCacheKey_(prompt, maxTokens, temperature) {
@@ -496,7 +497,7 @@ function testServerConnection() {
   // Экспортируем логи для просмотра
   exportLogsToSheet();
 
-  SpreadsheetApp.getUi().alert('Тестирование завершено', 'Результаты в листе "Логи"', SpreadsheetApp.getUi().ButtonSet.OK);
+  addLog('✅ Тестирование завершено. Результаты в листе "Логи"', 'SUCCESS');
 }
 
 // eslint-disable-next-line no-unused-vars
