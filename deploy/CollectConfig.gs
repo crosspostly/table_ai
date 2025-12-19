@@ -190,10 +190,12 @@ function saveAndExecuteCollectConfig(sheetName, cellAddress, config) {
 
     // ═══════════════════════════════════════════════════════════════
     // ТОЛЬКО СЕРВЕРНОЕ ВЫПОЛНЕНИЕ (БЕЗ FALLBACK)
+    // ✅ ВСЕГДА ПРОПУСКАЕМ КЕШ (skipCache = true)
     // ═══════════════════════════════════════════════════════════════
     addCollectLog('📡 Отправка запроса на сервер...', 'INFO');
+    addCollectLog('📋 Кеш ПРОПУСКАЕТСЯ (полное обновление)', 'INFO');
 
-    const serverResult = callCollectConfigServer_(config, sheetName, cellAddress);
+    const serverResult = callCollectConfigServer_(config, sheetName, cellAddress, true);
 
     if (!serverResult || !serverResult.ok) {
       const errorMsg = serverResult && serverResult.error ? serverResult.error : 'Сервер вернул ошибку';
