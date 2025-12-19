@@ -193,7 +193,12 @@ function processQueue() {
 }
 
 /**
- * ⭐ ОСНОВНАЯ ФУНКЦИЯ БАТЧА (с проверкой Success)
+ * ⭐ ОСНОВНАЯ ФУНКЦИЯ БАТЧА
+ * 🔧 ИСПРАВЛЕННАЯ ЛОГИКА "10 МИНУТ":
+ * 1. Success=TRUE И < 10 минут → ПРОПУСКАЕМ
+ * 2. Success=TRUE И > 10 минут → ОБНОВЛЯЕМ
+ * 3. Success=FALSE → ВСЕГДА обновляем
+ * 4. Нет lastRun → ПЕРВОЕ обновление, обновляем
  */
 function batchUpdateWrapper(batchName, startRow, endRow) {
   try {
@@ -205,77 +210,129 @@ function batchUpdateWrapper(batchName, startRow, endRow) {
       return;
     }
 
-    // ⭐ Проверяем структуру (добавляем колонку H если нет)
     ensureConfigDataStructure(configSheet);
 
     const rowCount = endRow - startRow + 1;
-    const range = configSheet.getRange(startRow, 1, rowCount, 8); // ⭐ Читаем 8 колонок (A-H)
+    const range = configSheet.getRange(startRow, 1, rowCount, 8);
     const data = range.getValues();
 
     const cellsToUpdate = [];
+    let skippedCount = 0;
     const now = new Date();
     const skipThresholdMs = GLOBAL_CONFIG.SKIP_FRESH_MINUTES * 60 * 1000;
+
+    // 🔍 DEBUG: Логируем начальные значения
+    addLog('🔍 DEBUG: НАЧАЛО ПРОВЕРКИ ЛОГИКИ "10 МИНУТ"', 'DEBUG');
+    addLog(`🔍 DEBUG: skipThresholdMs = ${skipThresholdMs} ms (${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} минут)`, 'DEBUG');
+    addLog(`🔍 DEBUG: now = ${now.toISOString()}`, 'DEBUG');
+    addLog(`🔍 DEBUG: Проверяем ${rowCount} строк (${startRow}-${endRow})`, 'DEBUG');
 
     for (let i = 0; i < data.length; i++) {
       const sheet = String(data[i][0] || '').trim();
       const cell = String(data[i][1] || '').trim();
-      const lastRunStr = data[i][6]; // Колонка G (lastRun)
-      const lastSuccess = data[i][7]; // ⭐ Колонка H (Success)
+      const lastRunStr = data[i][6]; // Колонка G (lastRun) - ISO строка времени
+      const lastSuccess = data[i][7]; // Колонка H (Success) - TRUE/FALSE
 
+      // 🔍 DEBUG: Логируем каждую строку
+      addLog(`🔍 DEBUG: ROW ${i + 1}: sheet='${sheet}', cell='${cell}', lastRunStr='${lastRunStr}', lastSuccess=${lastSuccess}`, 'DEBUG');
+
+      // ШАГ 1: Пропускаем пустые строки
       if (!sheet || !cell) {
+        addLog(`🔍 DEBUG: ROW ${i + 1}: ПУСТАЯ СТРОКА - ПРОПУСКАЕМ`, 'DEBUG');
         continue;
       }
 
-      // ⭐ НОВАЯ ЛОГИКА: пропускаем только УСПЕШНЫЕ и СВЕЖИЕ
+      // ШАГ 2: КЛЮЧЕВАЯ ЛОГИКА - проверяем Success=TRUE и время
+      let shouldSkip = false; // Флаг: пропускать эту ячейку?
+
       if (lastRunStr && lastSuccess === true) {
+        // ✅ Есть время выполнения И это был УСПЕХ
         try {
           const lastRun = new Date(lastRunStr);
           const diffMs = now - lastRun;
+          const minutesAgo = Math.floor(diffMs / 60000);
+          const secondsAgo = Math.floor((diffMs % 60000) / 1000);
+
+          // 🔍 DEBUG: Логируем расчёты времени
+          addLog(`🔍 DEBUG: ROW ${i + 1}: Расчёт времени:`, 'DEBUG');
+          addLog(`🔍 DEBUG:   lastRun = ${lastRun.toISOString()}`, 'DEBUG');
+          addLog(`🔍 DEBUG:   now = ${now.toISOString()}`, 'DEBUG');
+          addLog(`🔍 DEBUG:   diffMs = ${diffMs} ms`, 'DEBUG');
+          addLog(`🔍 DEBUG:   minutesAgo = ${minutesAgo}м ${secondsAgo}с`, 'DEBUG');
+          addLog(`🔍 DEBUG:   skipThresholdMs = ${skipThresholdMs} ms`, 'DEBUG');
+          addLog(`🔍 DEBUG:   diffMs < skipThresholdMs? ${diffMs < skipThresholdMs}`, 'DEBUG');
 
           if (diffMs < skipThresholdMs) {
-            const minutesAgo = Math.floor(diffMs / 60000);
-            addLog(`⏭️ Пропуск ${sheet}!${cell} (✅ успешно ${minutesAgo} мин назад)`, 'INFO');
-            continue; // ⭐ ПРОПУСКАЕМ только успешные < 10 минут
+            // ✅ Свежая успешная (< 10 мин) - ПРОПУСКАЕМ
+            shouldSkip = true;
+            skippedCount++;
+            addLog(`⏭️ ПРОПУСК: ${sheet}!${cell} (✅ успешно ${minutesAgo}м ${secondsAgo}с назад - ещё свежее!)`, 'INFO');
+            addLog(`🔍 DEBUG: ROW ${i + 1}: ПРОПУСКАЕМ (shouldSkip=true, skippedCount=${skippedCount})`, 'DEBUG');
+          } else {
+            // ✅ Старая успешная (> 10 мин) - ОБНОВЛЯЕМ
+            addLog(`🔄 ДОБАВЛЕН: ${sheet}!${cell} (✅ успешно ${minutesAgo}м ${secondsAgo}с назад - нужен апдейт!)`, 'INFO');
+            addLog(`🔍 DEBUG: ROW ${i + 1}: ДОБАВЛЯЕМ (shouldSkip=false, успешно > ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} мин)`, 'DEBUG');
           }
         } catch (e) {
-          // Если ошибка парсинга даты - обновляем
+          // ❌ Ошибка парсинга даты - ОБНОВЛЯЕМ
+          addLog(`⚠️ ОШИБКА ПАРСИНГА: ${sheet}!${cell} (ошибка разбора даты: ${e.message}, обновляем)`, 'WARN');
+          addLog(`🔍 DEBUG: ROW ${i + 1}: ОШИБКА ПАРСИНГА - добавляем для обновления`, 'DEBUG');
         }
       } else if (lastRunStr && lastSuccess === false) {
-        // ⭐ Была ошибка - НЕ пропускаем
+        // ✅ Есть время выполнения, но это была ОШИБКА - ВСЕГДА ОБНОВЛЯЕМ
         try {
           const lastRun = new Date(lastRunStr);
           const minutesAgo = Math.floor((now - lastRun) / 60000);
-          addLog(`🔄 ${sheet}!${cell} добавлен (❌ ошибка ${minutesAgo} мин назад)`, 'INFO');
-        } catch (e) {}
+          const secondsAgo = Math.floor(((now - lastRun) % 60000) / 1000);
+          addLog(`🔄 ДОБАВЛЕН: ${sheet}!${cell} (❌ ошибка ${minutesAgo}м ${secondsAgo}с назад - повторный попыт!)`, 'INFO');
+          addLog(`🔍 DEBUG: ROW ${i + 1}: ДОБАВЛЯЕМ (Success=FALSE, нужен повторный попыт)`, 'DEBUG');
+        } catch (e) {
+          addLog(`🔄 ДОБАВЛЕН: ${sheet}!${cell} (❌ ошибка - повторный попыт)`, 'INFO');
+          addLog(`🔍 DEBUG: ROW ${i + 1}: ДОБАВЛЯЕМ (Success=FALSE, ошибка парсинга времени)`, 'DEBUG');
+        }
+      } else if (!lastRunStr) {
+        // ✅ НЕТ времени выполнения - ПЕРВОЕ ОБНОВЛЕНИЕ - ОБНОВЛЯЕМ
+        addLog(`🆕 ДОБАВЛЕН: ${sheet}!${cell} (🆕 первое обновление!)`, 'INFO');
+        addLog(`🔍 DEBUG: ROW ${i + 1}: ДОБАВЛЯЕМ (нет lastRun - первое обновление)`, 'DEBUG');
+      } else {
+        // ❓ Неизвестное состояние - логируем и обновляем
+        addLog(`❓ ДОБАВЛЕН: ${sheet}!${cell} (неизвестное состояние: lastRunStr=${lastRunStr}, lastSuccess=${lastSuccess})`, 'WARN');
+        addLog(`🔍 DEBUG: ROW ${i + 1}: ДОБАВЛЯЕМ (неизвестное состояние)`, 'DEBUG');
       }
 
-      cellsToUpdate.push({
-        sheet: sheet,
-        cell: cell,
-        configRow: startRow + i,
-      });
+      // ШАГ 3: Добавляем в очередь ТОЛЬКО если не был пропущен
+      if (!shouldSkip) {
+        cellsToUpdate.push({
+          sheet: sheet,
+          cell: cell,
+          configRow: startRow + i,
+        });
+        addLog(`🔍 DEBUG: ROW ${i + 1}: ДОБАВЛЕНО в cellsToUpdate (общее количество: ${cellsToUpdate.length})`, 'DEBUG');
+      }
     }
 
+    // 🔍 ИТОГОВЫЙ DEBUG
+    addLog('🔍 DEBUG: КОНЕЦ ПРОВЕРКИ', 'DEBUG');
+    addLog(`🔍 DEBUG: Итого: cellsToUpdate.length = ${cellsToUpdate.length}, skippedCount = ${skippedCount}`, 'DEBUG');
+
     console.log(`📋 ${batchName}: Найдено ${cellsToUpdate.length} ячеек для обновления`);
-    addLog(`🔄 ${batchName}: Найдено ${cellsToUpdate.length} ячеек (пропущено успешных: ${rowCount - cellsToUpdate.length})`, 'INFO');
+    addLog(`🔄 ${batchName}: Найдено ${cellsToUpdate.length} ячеек (пропущено ${skippedCount} свежих успешных)`, 'INFO');
 
     if (cellsToUpdate.length === 0) {
-      SpreadsheetApp.getUi().alert(
-        '⏭️ Все ячейки успешно обновлены\n\n' +
-        `Диапазон: строки ${startRow}-${endRow}\n` +
-        `Все ячейки успешно обновлены менее ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} минут назад.`,
-      );
+      addLog(`⏭️ Все ячейки успешно обновлены менее ${GLOBAL_CONFIG.SKIP_FRESH_MINUTES} минут назад!`, 'INFO');
+      // УДАЛИТЬ ui.alert! Заменить на логирование
+      // SpreadsheetApp.getUi().alert('...');
       return;
     }
 
     const result = updateCellsBatch(cellsToUpdate, batchName);
 
-    // ⭐ АВТО-RETRY: Если есть ошибки и включен авто-повтор
     if (GLOBAL_CONFIG.AUTO_RETRY_ENABLED && result.errorCount > 0) {
       scheduleAutoRetry(batchName, startRow, endRow);
     }
   } catch (error) {
-    addLog(`❌ Ошибка: ${error.message}`, 'ERROR');
+    addLog(`❌ Ошибка в batchUpdateWrapper: ${error.message}`, 'ERROR');
+    addLog(`🔍 DEBUG: Stack trace: ${error.stack}`, 'DEBUG');
     SpreadsheetApp.getUi().alert('❌ Ошибка: ' + error.message);
   }
 }
