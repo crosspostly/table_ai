@@ -1,4 +1,3 @@
-// ============================================================================
 // OCR RUNNER V2 - ПОЛНАЯ ВЕРСИЯ С ПОДДЕРЖКОЙ ВСЕХ VK URL ВАРИАЦИЙ
 // ============================================================================
 // Standalone OCR runner (do not touch review.gs)
@@ -9,8 +8,10 @@
 // - Параметр ?z= (КРИТИЧНО!)
 // - Все типы контента (альбомы, темы, отзывы, фото, видео, товары, документы)
 
+
 var OCR2_BATCH_LIMIT = 50;
 var OCR2_CHUNK_SIZE = 8;
+
 
 function ocrRun() {
   var ui = SpreadsheetApp.getUi();
@@ -18,10 +19,12 @@ function ocrRun() {
   var sh = ss.getSheetByName('Отзывы');
   if (!sh) { ui.alert('Лист "Отзывы" не найден'); return; }
 
+
   var lastRow = Math.max(2, sh.getLastRow());
   var processed = 0, empty = 0, errors = 0, skipped = 0;
   var overwrite = (typeof getOcrOverwrite_ === 'function') ? getOcrOverwrite_() : false;
   log_('▶️ V2 start: rows=' + lastRow + ', overwrite=' + overwrite + ', limit=' + OCR2_BATCH_LIMIT, 'INFO');
+
 
   for (var r = 2; r <= lastRow; r++) {
     try {
@@ -32,19 +35,24 @@ function ocrRun() {
       try { rich = rangeA.getRichTextValue(); richUrl = firstLinkFromRichV2_(rich); } catch (_) {}
       log_('V2 row ' + r + ': A-text="' + String(textVal).slice(0,120) + '" richUrl="' + richUrl + '" formula="' + String(formula).slice(0,120) + '"', 'DEBUG');
 
+
       if (!textVal && !formula && !richUrl) { empty++; continue; }
+
 
       var bVal = String(sh.getRange(r, 2).getDisplayValue() || '').trim();
       if (!overwrite && bVal) { skipped++; continue; }
+
 
       var sources = extractSourcesV2_(textVal, formula, richUrl);
       log_('V2 row ' + r + ': sources=' + (sources.map(function(s){return s.kind+':' + (s.id||s.url||'');}).join(' | ') || 'none'), 'DEBUG');
       if (!sources.length) { log_('⚠️ V2: нет источников в A' + r, 'WARN'); empty++; continue; }
 
+
       var writeRow = bVal ? findNextWriteRowV2_(sh, r) : r;
       var remainingCap = OCR2_BATCH_LIMIT;
       var batchImages = [];
       var texts = [];
+
 
       for (var i = 0; i < sources.length && remainingCap > 0; i++) {
         var src = sources[i];
@@ -64,7 +72,9 @@ function ocrRun() {
         } catch (e) { errors++; log_('❌ V2 collect error row ' + r + ': ' + e.message, 'ERROR'); }
       }
 
+
       if (!texts.length && !batchImages.length) { log_('V2 row ' + r + ': nothing collected', 'DEBUG'); empty++; continue; }
+
 
       var remainingOut = Math.max(0, OCR2_BATCH_LIMIT - texts.length);
       if (batchImages.length && remainingOut > 0) {
@@ -112,7 +122,9 @@ function ocrRun() {
         }
       }
 
+
       if (!texts.length) { log_('V2 row ' + r + ': texts empty after OCR', 'DEBUG'); empty++; continue; }
+
 
       if (texts.length > 1) { sh.insertRowsAfter(writeRow, texts.length - 1); lastRow += (texts.length - 1); }
       var matrix = texts.map(function(x){ return [x]; });
@@ -126,12 +138,15 @@ function ocrRun() {
     }
   }
 
+
   ui.alert('OCR V2 завершён', 'Строк обработано: ' + processed + '\nПропущено (B уже заполнено): ' + skipped + '\nПустых: ' + empty + '\nОшибок: ' + errors + '\n\nЛимит: ' + OCR2_BATCH_LIMIT + ' за запуск.', ui.ButtonSet.OK);
 }
+
 
 // ============================================================================
 // HELPERS
 // ============================================================================
+
 
 function log_(msg, level) { 
   try { 
@@ -139,6 +154,7 @@ function log_(msg, level) {
     else console.log((level||'INFO')+': '+msg); 
   } catch (_) {} 
 }
+
 
 function findNextWriteRowV2_(sh, r) {
   try {
@@ -154,6 +170,7 @@ function findNextWriteRowV2_(sh, r) {
     return row;
   } catch (e) { return r; }
 }
+
 
 function firstLinkFromRichV2_(rich) {
   try {
@@ -175,11 +192,14 @@ function firstLinkFromRichV2_(rich) {
   return '';
 }
 
+
 function extractSourcesV2_(textVal, formula, richUrl) {
   var list = [];
   function push(u){ if (!u) return; var n = normalizeUrlV2_(u); if (!n) return; list.push(classifyV2_(n)); }
 
+
   if (richUrl) push(richUrl);
+
 
   if (formula) {
     var f = String(formula).trim();
@@ -189,18 +209,20 @@ function extractSourcesV2_(textVal, formula, richUrl) {
     if (mHyp) push(mHyp[2]);
   }
 
+
   try {
     var cleaned = cleanTextForUrlsV2_(String(textVal||''));
     (cleaned.match(/https?:\/\/[^\s<>\)\]"]+/g) || []).forEach(function(s){ push(s.replace(/[),. ;]+$/, '')); });
-    // ОБНОВЛЕНО: Добавлена поддержка vk.ru, m.vk.com и всех вариаций
     (cleaned.match(/(?:^|\s)(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com|drive\.google\.com|docs\.google\.com|yadi\.sk|disk\.yandex\.(?:ru|com)|dropbox\.com|script\.google\.com|script\.googleusercontent\.com)\/[^\s<>\)\]"]+/gi) || [])
       .forEach(function(s){ push(String(s).trim()); });
   } catch (e) { log_('V2 extract: text scan error: ' + e.message, 'WARN'); }
+
 
   var seen = {};
   list = list.filter(function(s){ var k = s.kind+':' + (s.url||s.id); if (seen[k]) return false; seen[k]=true; return true; });
   return list;
 }
+
 
 function normalizeUrlV2_(u){
   try {
@@ -214,11 +236,61 @@ function normalizeUrlV2_(u){
   } catch(e){ return String(u||''); }
 }
 
+
 // ============================================================================
-// CLASSIFY V2 - ПОЛНАЯ ВЕРСИЯ С ПОДДЕРЖКОЙ ВСЕХ VK URL ВАРИАЦИЙ
+// CLASSIFY V2 - ПОЛНАЯ ВЕРСИЯ С ПОДДЕРЖКОЙ ВСЕХ VK URL ВАРИАЦИЙ (ИСПРАВЛЕННАЯ)
 // ============================================================================
 
+
 function classifyV2_(u){
+  // ⭐ ПЕРВЫЙ ПРИОРИТЕТ: Параметр ?z= (КРИТИЧНО!)
+  // Проверяем ПЕРЕД всем остальным
+  if (/\?z=/i.test(u)) {
+    var zParam = getParamV2_(u, 'z');
+    if (zParam) {
+      zParam = decodeURIComponent(zParam);
+      log_('V2 classify: ?z= detected, zParam="' + zParam + '"', 'DEBUG');
+      
+      // Проверяем что в параметре z
+      if (/album-?\d+_\d+/i.test(zParam)) {
+        var albumMatch = zParam.match(/album-?\d+_\d+/i)[0];
+        return { kind: 'vk-album', url: 'https://vk.com/' + albumMatch };
+      }
+      if (/topic-?\d+_\d+/i.test(zParam)) {
+        var topicMatch = zParam.match(/topic-?\d+_\d+/i)[0];
+        return { kind: 'vk-topic', url: 'https://vk.com/' + topicMatch };
+      }
+      if (/photo-?\d+_\d+/i.test(zParam)) {
+        var photoMatch = zParam.match(/photo-?\d+_\d+/i)[0];
+        return { kind: 'vk-photo', url: 'https://vk.com/' + photoMatch };
+      }
+      if (/reviews-?\d+/i.test(zParam)) {
+        var reviewsMatch = zParam.match(/reviews-?\d+/i)[0];
+        return { kind: 'vk-reviews', url: 'https://vk.com/' + reviewsMatch };
+      }
+      if (/video-?\d+_\d+/i.test(zParam)) {
+        var videoMatch = zParam.match(/video-?\d+_\d+/i)[0];
+        return { kind: 'vk-video', url: 'https://vk.com/' + videoMatch };
+      }
+      if (/market-?\d+_\d+/i.test(zParam)) {
+        var marketMatch = zParam.match(/market-?\d+_\d+/i)[0];
+        return { kind: 'vk-market', url: 'https://vk.com/' + marketMatch };
+      }
+      if (/doc-?\d+_\d+/i.test(zParam)) {
+        var docMatch = zParam.match(/doc-?\d+_\d+/i)[0];
+        return { kind: 'vk-doc', url: 'https://vk.com/' + docMatch };
+      }
+      if (/poll-?\d+_\d+/i.test(zParam)) {
+        var pollMatch = zParam.match(/poll-?\d+_\d+/i)[0];
+        return { kind: 'vk-poll', url: 'https://vk.com/' + pollMatch };
+      }
+      if (/audio-?\d+_\d+/i.test(zParam)) {
+        var audioMatch = zParam.match(/audio-?\d+_\d+/i)[0];
+        return { kind: 'vk-audio', url: 'https://vk.com/' + audioMatch };
+      }
+    }
+  }
+
   // Базовые типы VK
   if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/reviews-\d+/i.test(u)) return { kind: 'vk-reviews', url: u };
   if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/album-?\d+_\d+/i.test(u)) return { kind: 'vk-album', url: u };
@@ -229,13 +301,13 @@ function classifyV2_(u){
   if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/doc-?\d+_\d+/i.test(u)) return { kind: 'vk-doc', url: u };
   if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/poll-?\d+_\d+/i.test(u)) return { kind: 'vk-poll', url: u };
   if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/audio-?\d+_\d+/i.test(u)) return { kind: 'vk-audio', url: u };
-  
-  // ЛИЧНЫЕ СТРАНИЦЫ И ФОТО ПРОФИЛЕЙ
-  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/id\d+(?:\/photo[s]?)?(?:\?|$|\/)/ i.test(u)) return { kind: 'vk-profile-photos', url: u };
-  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/[a-z_][a-z0-9_]*(?:\/photo[s]?)?(?:\?|$|\/)/ i.test(u)) return { kind: 'vk-profile-photos', url: u };
-  
-  // СООБЩЕСТВА И ПАБЛИКИ
-  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/(?:club|public)\d+(?:\/photo[s]?)?(?:\?|$|\/)/ i.test(u)) return { kind: 'vk-community-photos', url: u };
+
+  // ЛИЧНЫЕ СТРАНИЦЫ И ФОТО ПРОФИЛЕЙ (ИСПРАВЛЕНО: флаг i в конце)
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/id\d+(?:\/photo[s]?)?(?:\?|$|\/)/i.test(u)) return { kind: 'vk-profile-photos', url: u };
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/[a-z_][a-z0-9_]*(?:\/photo[s]?)?(?:\?|$|\/)/i.test(u)) return { kind: 'vk-profile-photos', url: u };
+
+  // СООБЩЕСТВА И ПАБЛИКИ (ИСПРАВЛЕНО: флаг i в конце)
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/(?:club|public)\d+(?:\/photo[s]?)?(?:\?|$|\/)/i.test(u)) return { kind: 'vk-community-photos', url: u };
 
   // Parser webapp URLs
   if (/script\.google(?:usercontent)?\.com\//i.test(u)) {
@@ -259,21 +331,9 @@ function classifyV2_(u){
   if (/yadi\.sk\//i.test(u) || /disk\.yandex\.(?:ru|com)\//i.test(u)) return { kind: 'yadisk', url: u };
   if (/dropbox\.com\//i.test(u)) return { kind: 'dropbox-file', url: u };
   
-  // ПОДДЕРЖКА ПАРАМЕТРА ?z= (КРИТИЧНО!)
-  if (/\?z=/i.test(u)) {
-    var zParam = getParamV2_(u, 'z');
-    if (zParam) {
-      zParam = decodeURIComponent(zParam);
-      // Проверяем что в параметре z
-      if (/album-?\d+_\d+/i.test(zParam)) return { kind: 'vk-album', url: 'https://vk.com/' + zParam.match(/album-?\d+_\d+/i)[0] };
-      if (/topic-?\d+_\d+/i.test(zParam)) return { kind: 'vk-topic', url: 'https://vk.com/' + zParam.match(/topic-?\d+_\d+/i)[0] };
-      if (/photo-?\d+_\d+/i.test(zParam)) return { kind: 'vk-photo', url: 'https://vk.com/' + zParam.match(/photo-?\d+_\d+/i)[0] };
-      if (/reviews-?\d+/i.test(zParam)) return { kind: 'vk-reviews', url: 'https://vk.com/' + zParam.match(/reviews-?\d+/i)[0] };
-    }
-  }
-  
   return { kind: 'url', url: u };
 }
+
 
 function getParamV2_(url, name){ 
   try { 
@@ -284,6 +344,7 @@ function getParamV2_(url, name){
     return ''; 
   } 
 }
+
 
 function detectDriveLinkV2_(url){
   try {
@@ -297,6 +358,7 @@ function detectDriveLinkV2_(url){
     return null;
   } catch(e){ return null; }
 }
+
 
 function collectFromSourceV2_(src, cap){
   if (src.kind === 'vk-webjson') return collectVkWebJsonV2_(src.url, cap);
@@ -332,6 +394,7 @@ function collectFromSourceV2_(src, cap){
   return { images: [], texts: [], hasMore:false, nextOffset:0 };
 }
 
+
 function collectVkWebJsonV2_(url, cap){
   var resp = UrlFetchApp.fetch(url, { muteHttpExceptions:true, followRedirects:true });
   var code = resp.getResponseCode(); if (code >= 300) throw new Error('VK webjson HTTP '+code);
@@ -355,11 +418,13 @@ function collectVkWebJsonV2_(url, cap){
   return { images: images, texts: texts, hasMore: false, nextOffset: 0 };
 }
 
+
 function getVkParserBaseV2_(){
   try { if (typeof getVkParserUrl_ === 'function') return String(getVkParserUrl_()).replace(/\/$/, ''); } catch(e){}
   try { if (typeof VK_PARSER_URL !== 'undefined' && VK_PARSER_URL) return String(VK_PARSER_URL).replace(/\/$/, ''); } catch(e){}
   throw new Error('Не задан VK_PARSER_URL');
 }
+
 
 function collectVkAlbumViaWebV2_(albumUrl, offset, limit){
   var base = getVkParserBaseV2_(); var take = Math.max(1, Math.min(OCR2_BATCH_LIMIT, limit||OCR2_BATCH_LIMIT));
@@ -387,6 +452,7 @@ function collectVkAlbumViaWebV2_(albumUrl, offset, limit){
   return { images: imgs, texts: [], hasMore: !!(data && data.hasMore), nextOffset: (data && data.nextOffset != null) ? data.nextOffset : 0 };
 }
 
+
 function collectVkDiscussionViaWebV2_(topicUrl, offset, limit){
   var base = getVkParserBaseV2_(); var take = Math.max(1, Math.min(OCR2_BATCH_LIMIT, limit||OCR2_BATCH_LIMIT));
   var req = base + '?action=parseDiscussion&url=' + encodeURIComponent(topicUrl) + '&limit=' + take + '&offset=' + (offset||0);
@@ -399,6 +465,7 @@ function collectVkDiscussionViaWebV2_(topicUrl, offset, limit){
   if (!texts.length) log_('V2 VK topic: 0 texts from web-app for url=' + topicUrl, 'WARN');
   return { images: [], texts: texts, hasMore: !!(data && data.hasMore), nextOffset: (data && data.nextOffset != null) ? data.nextOffset : 0 };
 }
+
 
 function collectVkReviewsViaWebV2_(reviewsUrl, offset, limit){
   var base = getVkParserBaseV2_(); var take = Math.max(1, Math.min(OCR2_BATCH_LIMIT, limit||OCR2_BATCH_LIMIT));
@@ -413,12 +480,14 @@ function collectVkReviewsViaWebV2_(reviewsUrl, offset, limit){
   return { images: [], texts: texts, hasMore: !!(data && data.hasMore), nextOffset: (data && data.nextOffset != null) ? data.nextOffset : 0 };
 }
 
+
 function enumerateDriveFolderImagesV2_(folderId, offset, limit){
   var folder = DriveApp.getFolderById(folderId); var it = folder.getFiles();
   var images = []; var imgIndex = 0;
   while (it.hasNext()) { var f = it.next(); var mt = String(f.getMimeType()||'').toLowerCase(); if (mt.indexOf('image/') !== 0) continue; if (imgIndex < (offset||0)) { imgIndex++; continue; } var blob=f.getBlob(); images.push({ mimeType: blob.getContentType()||'image/png', data: Utilities.base64Encode(blob.getBytes()) }); imgIndex++; if (images.length >= limit) break; }
   var hasMore = it.hasNext(); var nextOffset = (offset||0) + images.length; log_('V2 Drive folder: collected ' + images.length + ' images (offset='+(offset||0)+', limit='+limit+')', 'DEBUG'); return { images: images, texts: [], hasMore: hasMore, nextOffset: nextOffset };
 }
+
 
 function collectYandexPublicV2_(publicUrl, offset, limit){
   var base='https://cloud-api.yandex.net/v1/disk/public/resources'; var download='https://cloud-api.yandex.net/v1/disk/public/resources/download'; var images=[];
@@ -430,7 +499,9 @@ function collectYandexPublicV2_(publicUrl, offset, limit){
   return { images: images, texts: [], hasMore:false, nextOffset:(offset||0)+images.length };
 }
 
+
 function toDropboxDirectV2_(u){ try { var url = u.replace('www.dropbox.com','dl.dropboxusercontent.com'); if (url.indexOf('?dl=0')>=0) url=url.replace('?dl=0','?dl=1'); if (url.indexOf('?dl=1')<0 && url.indexOf('?')<0) url += '?dl=1'; return url; } catch(e){ return u; } }
+
 
 function serverGmOcrSingleV2_(image, lang){
   if (!image || !image.data) {
@@ -444,6 +515,7 @@ function serverGmOcrSingleV2_(image, lang){
   return String(text || '').trim();
 }
 
+
 function splitBySeparatorV2_(text){
   var s = String(text||'').trim();
   if (!s) return [];
@@ -453,6 +525,7 @@ function splitBySeparatorV2_(text){
   return parts2.length > 1 ? parts2 : [s];
 }
 
+
 function cleanTextForUrlsV2_(s){
   try {
     var t = String(s||'');
@@ -461,6 +534,7 @@ function cleanTextForUrlsV2_(s){
     return t;
   } catch (e) { return String(s||''); }
 }
+
 
 function gmOcrFromBlobV2_(blob, lang){
   try {
@@ -510,6 +584,7 @@ function gmOcrFromBlobV2_(blob, lang){
   }
 }
 
+
 function serverGmOcrBatchV2_(images, lang){
   try {
     var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
@@ -525,6 +600,7 @@ function serverGmOcrBatchV2_(images, lang){
     throw new Error('serverGmOcrBatchV2_ error: ' + e.message + ' (This function needs LicenseEmail/Token to work)');
   }
 }
+
 
 function fetchImageToBlobWithHeadersV2_(url) {
   try {
