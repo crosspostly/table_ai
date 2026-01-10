@@ -1,8 +1,16 @@
+// ============================================================================
+// OCR RUNNER V2 - ПОЛНАЯ ВЕРСИЯ С ПОДДЕРЖКОЙ ВСЕХ VK URL ВАРИАЦИЙ
+// ============================================================================
 // Standalone OCR runner (do not touch review.gs)
-
+// Обработка:
+// - Все доменные вариации (vk.com, vk.ru, m.vk.com, www.vk.com)
+// - Личные страницы (/id123, /username, /photos, /photo)
+// - Сообщества (/club, /public, /communityname)
+// - Параметр ?z= (КРИТИЧНО!)
+// - Все типы контента (альбомы, темы, отзывы, фото, видео, товары, документы)
 
 var OCR2_BATCH_LIMIT = 50;
-var OCR2_CHUNK_SIZE = 8; // разовая порция картинок на один запрос к модели (уменьшает риск усечения ответа)
+var OCR2_CHUNK_SIZE = 8;
 
 function ocrRun() {
   var ui = SpreadsheetApp.getUi();
@@ -67,7 +75,6 @@ function ocrRun() {
             var out = serverGmOcrBatchV2_(sub, 'ru');
             var arr = splitBySeparatorV2_(out);
             if (!arr || !arr.length) {
-              // хард-фоллбек: по одному в чанке
               log_('V2 row ' + r + ': chunk ' + (p/OCR2_CHUNK_SIZE) + ' empty → fallback per-image (' + sub.length + ' imgs)', 'WARN');
               for (var si = 0; si < sub.length && remainingOut > 0; si++) {
                 try {
@@ -90,7 +97,6 @@ function ocrRun() {
           }
         } catch (e2) {
           errors++; log_('❌ V2 OCR batch error row ' + r + ': ' + e2.message, 'ERROR');
-          // fallback по одному
           try {
             var fallbackCount = Math.min(remainingOut, batchImages.length);
             for (var j = 0; j < fallbackCount; j++) {
@@ -123,8 +129,16 @@ function ocrRun() {
   ui.alert('OCR V2 завершён', 'Строк обработано: ' + processed + '\nПропущено (B уже заполнено): ' + skipped + '\nПустых: ' + empty + '\nОшибок: ' + errors + '\n\nЛимит: ' + OCR2_BATCH_LIMIT + ' за запуск.', ui.ButtonSet.OK);
 }
 
-// ---------- Helpers ----------
-function log_(msg, level) { try { if (typeof addLog === 'function') addLog(msg, level || 'INFO'); else console.log((level||'INFO')+': '+msg); } catch (_) {} }
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function log_(msg, level) { 
+  try { 
+    if (typeof addLog === 'function') addLog(msg, level || 'INFO'); 
+    else console.log((level||'INFO')+': '+msg); 
+  } catch (_) {} 
+}
 
 function findNextWriteRowV2_(sh, r) {
   try {
@@ -177,12 +191,12 @@ function extractSourcesV2_(textVal, formula, richUrl) {
 
   try {
     var cleaned = cleanTextForUrlsV2_(String(textVal||''));
-    (cleaned.match(/https?:\/\/[^\s<>\)\]"]+/g) || []).forEach(function(s){ push(s.replace(/[),.;]+$/, '')); });
-    (cleaned.match(/(?:^|\s)(?:vk\.com|drive\.google\.com|docs\.google\.com|yadi\.sk|disk\.yandex\.(?:ru|com)|dropbox\.com|script\.google\.com|script\.googleusercontent\.com)\/[^\s<>\)\]"]+/gi) || [])
+    (cleaned.match(/https?:\/\/[^\s<>\)\]"]+/g) || []).forEach(function(s){ push(s.replace(/[),. ;]+$/, '')); });
+    // ОБНОВЛЕНО: Добавлена поддержка vk.ru, m.vk.com и всех вариаций
+    (cleaned.match(/(?:^|\s)(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com|drive\.google\.com|docs\.google\.com|yadi\.sk|disk\.yandex\.(?:ru|com)|dropbox\.com|script\.google\.com|script\.googleusercontent\.com)\/[^\s<>\)\]"]+/gi) || [])
       .forEach(function(s){ push(String(s).trim()); });
   } catch (e) { log_('V2 extract: text scan error: ' + e.message, 'WARN'); }
 
-  // uniq
   var seen = {};
   list = list.filter(function(s){ var k = s.kind+':' + (s.url||s.id); if (seen[k]) return false; seen[k]=true; return true; });
   return list;
@@ -191,23 +205,39 @@ function extractSourcesV2_(textVal, formula, richUrl) {
 function normalizeUrlV2_(u){
   try {
     var s = String(u||'').trim(); if (!s) return '';
-    // убрать любые html-теги, если затесались
     s = cleanTextForUrlsV2_(s);
-    // убрать явные угловые скобки по краям
     s = s.replace(/^<+|>+$/g, '');
     if (/^https?:\/\//i.test(s)) return s;
     if (/^www\./i.test(s)) return 'https://'+s;
-    if (/^(vk\.com|drive\.google\.com|yadi\.sk|disk\.yandex\.(?:ru|com)|dropbox\.com|script\.google\.com|script\.googleusercontent\.com)\//i.test(s)) return 'https://'+s;
+    if (/^(vk\.(?:com|ru)|m\.vk\.com|drive\.google\.com|yadi\.sk|disk\.yandex\.(?:ru|com)|dropbox\.com|script\.google\.com|script\.googleusercontent\.com)\/./i.test(s)) return 'https://'+s;
     return s;
   } catch(e){ return String(u||''); }
 }
 
+// ============================================================================
+// CLASSIFY V2 - ПОЛНАЯ ВЕРСИЯ С ПОДДЕРЖКОЙ ВСЕХ VK URL ВАРИАЦИЙ
+// ============================================================================
+
 function classifyV2_(u){
-  // direct VK
-  if (/vk\.com\/reviews-\d+/i.test(u)) return { kind: 'vk-reviews', url: u };
-  if (/vk\.com\/album-?\d+_\d+/i.test(u)) return { kind: 'vk-album', url: u };
-  if (/vk\.com\/topic-?\d+_\d+/i.test(u)) return { kind: 'vk-topic', url: u };
-  // parser webapp URLs
+  // Базовые типы VK
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/reviews-\d+/i.test(u)) return { kind: 'vk-reviews', url: u };
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/album-?\d+_\d+/i.test(u)) return { kind: 'vk-album', url: u };
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/topic-?\d+_\d+/i.test(u)) return { kind: 'vk-topic', url: u };
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/photo-?\d+_\d+/i.test(u)) return { kind: 'vk-photo', url: u };
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/video-?\d+_\d+/i.test(u)) return { kind: 'vk-video', url: u };
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/market-?\d+_\d+/i.test(u)) return { kind: 'vk-market', url: u };
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/doc-?\d+_\d+/i.test(u)) return { kind: 'vk-doc', url: u };
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/poll-?\d+_\d+/i.test(u)) return { kind: 'vk-poll', url: u };
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/audio-?\d+_\d+/i.test(u)) return { kind: 'vk-audio', url: u };
+  
+  // ЛИЧНЫЕ СТРАНИЦЫ И ФОТО ПРОФИЛЕЙ
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/id\d+(?:\/photo[s]?)?(?:\?|$|\/)/ i.test(u)) return { kind: 'vk-profile-photos', url: u };
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/[a-z_][a-z0-9_]*(?:\/photo[s]?)?(?:\?|$|\/)/ i.test(u)) return { kind: 'vk-profile-photos', url: u };
+  
+  // СООБЩЕСТВА И ПАБЛИКИ
+  if (/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com)\/(?:club|public)\d+(?:\/photo[s]?)?(?:\?|$|\/)/ i.test(u)) return { kind: 'vk-community-photos', url: u };
+
+  // Parser webapp URLs
   if (/script\.google(?:usercontent)?\.com\//i.test(u)) {
     var act = getParamV2_(u, 'action');
     var inner = getParamV2_(u, 'url');
@@ -217,28 +247,50 @@ function classifyV2_(u){
       if (/^parseDiscussion$/i.test(act)) return { kind: 'vk-topic', url: innerUrl };
       if (/^parseReviews$/i.test(act)) return { kind: 'vk-reviews', url: innerUrl };
     }
-    // иначе попробуем забрать JSON как готовый результат
     return { kind: 'vk-webjson', url: u };
   }
+  
   // Google Drive
   var gd = detectDriveLinkV2_(u);
   if (gd && gd.type === 'folder') return { kind: 'drive-folder', id: gd.id };
   if (gd && gd.type === 'file') return { kind: 'drive-file', id: gd.id };
+  
   // Yandex / Dropbox
-  if (/yadi\.sk\//i.test(u) || /disk\.yandex\.(ru|com)\//i.test(u)) return { kind: 'yadisk', url: u };
+  if (/yadi\.sk\//i.test(u) || /disk\.yandex\.(?:ru|com)\//i.test(u)) return { kind: 'yadisk', url: u };
   if (/dropbox\.com\//i.test(u)) return { kind: 'dropbox-file', url: u };
+  
+  // ПОДДЕРЖКА ПАРАМЕТРА ?z= (КРИТИЧНО!)
+  if (/\?z=/i.test(u)) {
+    var zParam = getParamV2_(u, 'z');
+    if (zParam) {
+      zParam = decodeURIComponent(zParam);
+      // Проверяем что в параметре z
+      if (/album-?\d+_\d+/i.test(zParam)) return { kind: 'vk-album', url: 'https://vk.com/' + zParam.match(/album-?\d+_\d+/i)[0] };
+      if (/topic-?\d+_\d+/i.test(zParam)) return { kind: 'vk-topic', url: 'https://vk.com/' + zParam.match(/topic-?\d+_\d+/i)[0] };
+      if (/photo-?\d+_\d+/i.test(zParam)) return { kind: 'vk-photo', url: 'https://vk.com/' + zParam.match(/photo-?\d+_\d+/i)[0] };
+      if (/reviews-?\d+/i.test(zParam)) return { kind: 'vk-reviews', url: 'https://vk.com/' + zParam.match(/reviews-?\d+/i)[0] };
+    }
+  }
+  
   return { kind: 'url', url: u };
 }
 
-function getParamV2_(url, name){ try { var re = new RegExp('[?&]'+name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')+'=([^&#]*)','i'); var m = String(url).match(re); return m?m[1]:''; } catch(e){ return ''; } }
+function getParamV2_(url, name){ 
+  try { 
+    var re = new RegExp('[?&]'+name.replace(/[.*+?^${}()|[\]\\\\]/g, '\\\\$&')+'=([^&#]*)','i'); 
+    var m = String(url).match(re); 
+    return m?m[1]:''; 
+  } catch(e){ 
+    return ''; 
+  } 
+}
 
 function detectDriveLinkV2_(url){
   try {
     var u = String(url||'');
-    var m1 = u.match(/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([a-zA-Z0-9_-]+)/); if (m1) return { type:'folder', id:m1[1] };
+    var m1 = u.match(/drive\.google\.com\/drive\/(?:u\/\d+\/)? folders\/([a-zA-Z0-9_-]+)/); if (m1) return { type:'folder', id:m1[1] };
     var m2 = u.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/); if (m2) return { type:'file', id:m2[1] };
     var m3 = u.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (m3) return { type:'file', id:m3[1] };
-    // docs.google.com/uc?export=download&id=... или open?id=...
     if (/docs\.google\.com\//i.test(u)) {
       var md = u.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (md) return { type:'file', id: md[1] };
     }
@@ -280,7 +332,6 @@ function collectFromSourceV2_(src, cap){
   return { images: [], texts: [], hasMore:false, nextOffset:0 };
 }
 
-// ----- VK via Web JSON (direct link to web-app/echo)
 function collectVkWebJsonV2_(url, cap){
   var resp = UrlFetchApp.fetch(url, { muteHttpExceptions:true, followRedirects:true });
   var code = resp.getResponseCode(); if (code >= 300) throw new Error('VK webjson HTTP '+code);
@@ -309,6 +360,7 @@ function getVkParserBaseV2_(){
   try { if (typeof VK_PARSER_URL !== 'undefined' && VK_PARSER_URL) return String(VK_PARSER_URL).replace(/\/$/, ''); } catch(e){}
   throw new Error('Не задан VK_PARSER_URL');
 }
+
 function collectVkAlbumViaWebV2_(albumUrl, offset, limit){
   var base = getVkParserBaseV2_(); var take = Math.max(1, Math.min(OCR2_BATCH_LIMIT, limit||OCR2_BATCH_LIMIT));
   var req = base + '?action=parseAlbum&url=' + encodeURIComponent(albumUrl) + '&limit=' + take + '&offset=' + (offset||0);
@@ -334,6 +386,7 @@ function collectVkAlbumViaWebV2_(albumUrl, offset, limit){
   }
   return { images: imgs, texts: [], hasMore: !!(data && data.hasMore), nextOffset: (data && data.nextOffset != null) ? data.nextOffset : 0 };
 }
+
 function collectVkDiscussionViaWebV2_(topicUrl, offset, limit){
   var base = getVkParserBaseV2_(); var take = Math.max(1, Math.min(OCR2_BATCH_LIMIT, limit||OCR2_BATCH_LIMIT));
   var req = base + '?action=parseDiscussion&url=' + encodeURIComponent(topicUrl) + '&limit=' + take + '&offset=' + (offset||0);
@@ -346,6 +399,7 @@ function collectVkDiscussionViaWebV2_(topicUrl, offset, limit){
   if (!texts.length) log_('V2 VK topic: 0 texts from web-app for url=' + topicUrl, 'WARN');
   return { images: [], texts: texts, hasMore: !!(data && data.hasMore), nextOffset: (data && data.nextOffset != null) ? data.nextOffset : 0 };
 }
+
 function collectVkReviewsViaWebV2_(reviewsUrl, offset, limit){
   var base = getVkParserBaseV2_(); var take = Math.max(1, Math.min(OCR2_BATCH_LIMIT, limit||OCR2_BATCH_LIMIT));
   var req = base + '?action=parseReviews&url=' + encodeURIComponent(reviewsUrl) + '&limit=' + take + '&offset=' + (offset||0);
@@ -359,7 +413,6 @@ function collectVkReviewsViaWebV2_(reviewsUrl, offset, limit){
   return { images: [], texts: texts, hasMore: !!(data && data.hasMore), nextOffset: (data && data.nextOffset != null) ? data.nextOffset : 0 };
 }
 
-// ----- Drive helpers (local)
 function enumerateDriveFolderImagesV2_(folderId, offset, limit){
   var folder = DriveApp.getFolderById(folderId); var it = folder.getFiles();
   var images = []; var imgIndex = 0;
@@ -367,7 +420,6 @@ function enumerateDriveFolderImagesV2_(folderId, offset, limit){
   var hasMore = it.hasNext(); var nextOffset = (offset||0) + images.length; log_('V2 Drive folder: collected ' + images.length + ' images (offset='+(offset||0)+', limit='+limit+')', 'DEBUG'); return { images: images, texts: [], hasMore: hasMore, nextOffset: nextOffset };
 }
 
-// ----- Yandex / Dropbox helpers (local)
 function collectYandexPublicV2_(publicUrl, offset, limit){
   var base='https://cloud-api.yandex.net/v1/disk/public/resources'; var download='https://cloud-api.yandex.net/v1/disk/public/resources/download'; var images=[];
   try {
@@ -377,9 +429,9 @@ function collectYandexPublicV2_(publicUrl, offset, limit){
   } catch (e) { log_('⚠️ Yandex error: ' + e.message, 'WARN'); }
   return { images: images, texts: [], hasMore:false, nextOffset:(offset||0)+images.length };
 }
+
 function toDropboxDirectV2_(u){ try { var url = u.replace('www.dropbox.com','dl.dropboxusercontent.com'); if (url.indexOf('?dl=0')>=0) url=url.replace('?dl=0','?dl=1'); if (url.indexOf('?dl=1')<0 && url.indexOf('?')<0) url += '?dl=1'; return url; } catch(e){ return u; } }
 
-// ----- OCR helpers
 function serverGmOcrSingleV2_(image, lang){
   if (!image || !image.data) {
     throw new Error('NO_IMAGE_DATA');
@@ -391,13 +443,12 @@ function serverGmOcrSingleV2_(image, lang){
   }
   return String(text || '').trim();
 }
+
 function splitBySeparatorV2_(text){
   var s = String(text||'').trim();
   if (!s) return [];
-  // основной способ: маркер ____ (четыре и более подчёркиваний) отдельной строкой или в тексте
   var parts = s.split(/\n?_{4,}\n?/g).map(function(x){ return String(x||'').trim(); }).filter(Boolean);
   if (parts.length > 1) return parts;
-  // запасной: параграфы
   var parts2 = s.split(/\n{2,}/g).map(function(x){ return String(x||'').trim(); }).filter(Boolean);
   return parts2.length > 1 ? parts2 : [s];
 }
@@ -405,9 +456,7 @@ function splitBySeparatorV2_(text){
 function cleanTextForUrlsV2_(s){
   try {
     var t = String(s||'');
-    // убрать все теги вида <...>
     t = t.replace(/<[^>]*>/g, ' ');
-    // простая декодировка HTML-сущностей для популярных случаев
     t = t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
     return t;
   } catch (e) { return String(s||''); }
@@ -415,10 +464,7 @@ function cleanTextForUrlsV2_(s){
 
 function gmOcrFromBlobV2_(blob, lang){
   try {
-    // Получаем пользовательский API ключ (если настроен)
     var userApiKey = (typeof getGeminiApiKey === 'function') ? getGeminiApiKey() : '';
-    
-    // Отправляем на сервер для обработки (используем существующий gm_image action)
     var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
     var token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';
     
@@ -452,8 +498,6 @@ function gmOcrFromBlobV2_(blob, lang){
     }
     
     var text = data.data || '';
-    
-    // Разбиваем результат (на случай если было несколько изображений)
     var parts = splitBySeparatorV2_(text);
     if (parts && parts.length) {
       return parts[0];
@@ -461,8 +505,6 @@ function gmOcrFromBlobV2_(blob, lang){
     
     return String(text || '').trim();
   } catch (error) {
-    // ✅ КРИТИЧЕСКИ ВАЖНО: Перехватываем ошибки UrlFetchApp.fetch
-    // Возвращаем понятное сообщение вместо зависания UI
     var errorMsg = error.message || error.toString();
     throw new Error('gmOcrFromBlobV2_ error: ' + errorMsg);
   }
@@ -472,7 +514,6 @@ function serverGmOcrBatchV2_(images, lang){
   try {
     var email = (typeof getLicenseEmail === 'function') ? getLicenseEmail() : '';
     var token = (typeof getLicenseToken === 'function') ? getLicenseToken() : '';
-    // Получаем пользовательский API ключ (если настроен)
     var userApiKey = (typeof getGeminiApiKey === 'function') ? getGeminiApiKey() : '';
     var payload = { action: 'gm_image', email: email, token: token, userApiKey: userApiKey, images: images, lang: lang || 'ru', delimiter: '____' };
     var resp = UrlFetchApp.fetch(SERVER_URL, { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true });
@@ -485,7 +526,6 @@ function serverGmOcrBatchV2_(images, lang){
   }
 }
 
-// Fetch image with browser-like headers to preserve query string semantics (VK CDN)
 function fetchImageToBlobWithHeadersV2_(url) {
   try {
     var opts = {
