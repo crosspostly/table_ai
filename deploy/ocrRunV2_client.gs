@@ -192,8 +192,9 @@ function extractSourcesV2_(textVal, formula, richUrl) {
   try {
     var cleaned = cleanTextForUrlsV2_(String(textVal||''));
     (cleaned.match(/https?:\/\/[^\s<>\)\]"]+/g) || []).forEach(function(s){ push(s.replace(/[),. ;]+$/, '')); });
-    // ОБНОВЛЕНО: Добавлена поддержка vk.ru, m.vk.com и всех вариаций
-    (cleaned.match(/(?:^|\s)(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com|drive\.google\.com|docs\.google\.com|yadi\.sk|disk\.yandex\.(?:ru|com)|dropbox\.com|script\.google\.com|script\.googleusercontent\.com)\/[^\s<>\)\]"]+/gi) || [])
+    // ИСПРАВЛЕНО: Улучшена regex для поддержки vk.ru, m.vk.com и других доменов
+    // Теперь работает с параметрами и разными форматами URL
+    (cleaned.match(/(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com|drive\.google\.com|docs\.google\.com|yadi\.sk|disk\.yandex\.(?:ru|com)|dropbox\.com|script\.google\.com|script\.googleusercontent\.com)[^\s<>\)\]"]*(?:\/[^\s<>\)\]"]*)?/gi) || [])
       .forEach(function(s){ push(String(s).trim()); });
   } catch (e) { log_('V2 extract: text scan error: ' + e.message, 'WARN'); }
 
@@ -209,7 +210,7 @@ function normalizeUrlV2_(u){
     s = s.replace(/^<+|>+$/g, '');
     if (/^https?:\/\//i.test(s)) return s;
     if (/^www\./i.test(s)) return 'https://'+s;
-    if (/^(vk\.(?:com|ru)|m\.vk\.com|drive\.google\.com|yadi\.sk|disk\.yandex\.(?:ru|com)|dropbox\.com|script\.google\.com|script\.googleusercontent\.com)\/./i.test(s)) return 'https://'+s;
+    if (/^(?:vk\.(?:com|ru)|m\.vk\.com|www\.vk\.com|drive\.google\.com|docs\.google\.com|yadi\.sk|disk\.yandex\.(?:ru|com)|dropbox\.com|script\.google\.com|script\.googleusercontent\.com)(?:\/|\?|$)/i.test(s)) return 'https://'+s;
     return s;
   } catch(e){ return String(u||''); }
 }
