@@ -37,24 +37,24 @@ function importSocialPosts() {
   
   try {
     // 1. Telegram Strict Detection
-    if (/(t\.me|telegram\.me)\\/i.test(input)) {
+    if (/(t\.me|telegram\.me)\//i.test(input)) {
       addLog('Detected: Telegram (Link)', 'INFO');
       data = importTelegram(input, count);
       
     // 2. Instagram Strict Detection
-    } else if (/(instagram\.com|instagr\.am)\\/i.test(input)) {
+    } else if (/(instagram\.com|instagr\.am)\//i.test(input)) {
       addLog('Detected: Instagram (Link)', 'INFO');
       data = importInstagram(input, count);
       
     // 3. VK Strict Detection (URL)
-    } else if (/(vk\.com|vk\.ru|m\.vk\.com)\\/i.test(input)) {
+    } else if (/(vk\.com|vk\.ru|m\.vk\.com)\//i.test(input)) {
       addLog('Detected: VK (Link)', 'INFO');
       // Extract owner from link for parser
-      var vkOwner = input.replace(/^(?:https?:\/\/)?(?:www\.|m\.)?(?:vk\.com|vk\.ru)\\/i, '').replace(/^\/+|\/+$/g, '');
+      const vkOwner = input.replace(/^(?:https?:\/\/)?(?:www\.|m\.)?(?:vk\.com|vk\.ru)\//i, '').replace(/^\/+|\/+$/g, '');
       data = importVk(vkOwner, count);
       
     // 4. VK Legacy (Plain ID/Slug) - Default for non-URL inputs
-    } else if (!/[./:\\\]/.test(input)) {
+    } else if (!/[./:\\]/.test(input)) {
       addLog('Detected: VK (ID/Slug)', 'INFO');
       data = importVk(input, count);
       
