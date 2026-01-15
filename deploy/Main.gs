@@ -583,7 +583,7 @@ function onOpen() {
       .addSeparator()
       .addItem('📦 Просмотр Распаковки', 'openUnpackingViewer')
       .addSeparator()
-      .addItem('📥 Импорт VK постов', 'importVkPosts')
+      .addItem('📥 Импорт соц. постов', 'importVkPosts')
       .addItem('🖼️ Транскрибация отзывов', 'ocrRun')
       .addSeparator()
       .addItem('⚙️ Настройки', 'openSettingsUI')
