@@ -49,16 +49,12 @@ function importSocialPosts() {
     // 3. VK Strict Detection (URL)
     } else if (/(vk\.com|vk\.ru|m\.vk\.com)\\/i.test(input)) {
       addLog('Detected: VK (Link)', 'INFO');
-      // Extract owner from link or pass full link if parser supports it
-      // Our parser expects "owner" (id/slug), so let's try to extract it roughly or pass as is
-      // Current logic: pass the input, let the external parser handle or extract ID locally?
-      // Legacy "importVk" just passes 'owner' param. 
-      // Let's assume the user inputs the ID/Slug for VK usually, but if they paste a link, we strip it.
+      // Extract owner from link for parser
       var vkOwner = input.replace(/^(?:https?:\/\/)?(?:www\.|m\.)?(?:vk\.com|vk\.ru)\\/i, '').replace(/^\/+|\/+$/g, '');
       data = importVk(vkOwner, count);
       
     // 4. VK Legacy (Plain ID/Slug) - Default for non-URL inputs
-    } else if (!/[./:\\]/.test(input)) {
+    } else if (!/[./:\\\]/.test(input)) {
       addLog('Detected: VK (ID/Slug)', 'INFO');
       data = importVk(input, count);
       
@@ -84,7 +80,6 @@ function importSocialPosts() {
   }
 
   // Write new data
-  // Expected format: [Date, Link, Text, Number, ...]
   const out = data.map((item, i) => {
     return [
       item.date || '',
@@ -119,7 +114,6 @@ function importVkPosts() {
  * VK Import (Legacy via Parser)
  */
 function importVk(owner, count) {
-  // Use global VK_PARSER_URL if available, otherwise define it locally or fail
   let parserUrl = '';
   try { parserUrl = VK_PARSER_URL; } catch(e) {}
   
@@ -143,10 +137,9 @@ function importVk(owner, count) {
  * Telegram Import (Direct Public Channel)
  */
 function importTelegram(input, count) {
-  // Convert t.me/durov -> t.me/s/durov
   let url = input;
+  // Convert t.me/durov -> t.me/s/durov
   if (!/\/s\//i.test(url) && !/\/\d+$/.test(url)) {
-    // Fixed regex: matches t.me/user or t.me/user/ (optional slash at end)
     url = url.replace(/(t\.me|telegram\.me)\/([^/]+)\/?$/, '$1/s/$2');
   }
 
@@ -156,32 +149,24 @@ function importTelegram(input, count) {
   const html = resp.getContentText();
   const posts = [];
   
-  // Regex Parsing
-  // <div class="tgme_widget_message ...">
   const msgRegex = /<div class="tgme_widget_message_bubble">([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
   let m;
   
   while ((m = msgRegex.exec(html)) !== null && posts.length < count) {
     const block = m[1];
-    
-    // Text
     let text = '';
     const txtM = block.match(/<div class="tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/i);
     if (txtM) text = cleanHtml(txtM[1]);
     
-    // Date
     let date = '';
     const dateM = block.match(/<time datetime="([^"]+)"/i);
     if (dateM) date = dateM[1];
     
-    // Link
     let link = '';
-    const linkM = block.match(/href="([^"]+)"/i); // usually the date link
+    const linkM = block.match(/href="([^"]+)"/i);
     if (linkM) link = linkM[1];
 
-    if (text) {
-        posts.push({ date, link, text });
-    }
+    if (text) posts.push({ date, link, text });
   }
   
   return posts;
@@ -191,7 +176,6 @@ function importTelegram(input, count) {
  * Instagram Import (via Picuki Bridge)
  */
 function importInstagram(input, count) {
-  // Extract username
   let username = input;
   const m = input.match(/(?:instagram\.com|instagr\.am)\/([^/?]+)/i);
   if (m) username = m[1];
@@ -206,8 +190,6 @@ function importInstagram(input, count) {
   const html = resp.getContentText();
   const posts = [];
 
-  // Find posts
-  // Picuki structure: <div class="box-photo"> ... <img src=\"...\"> ... <div class="photo-description">...</div>
   const boxRegex = /<div class="box-photo">([\s\S]*?)<div class="photo-description">([\s\S]*?)<\/div>/gi;
   let bm;
 
@@ -215,19 +197,16 @@ function importInstagram(input, count) {
     const descHtml = bm[2];
     const text = cleanHtml(descHtml);
     
-    // Link extraction is harder in Picuki list view, usually just relative
-    // We can construct a fake link or try to find the <a> wrapping the image in bm[1]
     let link = 'https://instagram.com/' + username;
     const linkM = bm[1].match(/href="([^"]+)"/);
     if (linkM) {
-        // Picuki links look like /media/12345...
-        // We can just keep the picuki link or generic
-        link = linkM[1];
-        if (link.startsWith('/')) link = 'https://www.picuki.com' + link;
+        let pLink = linkM[1];
+        if (pLink.startsWith('/')) pLink = 'https://www.picuki.com' + pLink;
+        link = pLink; 
     }
 
     posts.push({
-      date: new Date().toISOString().slice(0, 10), // Date is hard to parse relative "2h ago", using today
+      date: new Date().toISOString().slice(0, 10),
       link: link,
       text: text
     });
@@ -236,9 +215,6 @@ function importInstagram(input, count) {
   return posts;
 }
 
-/**
- * Helper: Clean HTML entities and tags
- */
 function cleanHtml(html) {
   if (!html) return '';
   let t = html.replace(/<br\s*\/?>/gi, '\n');
@@ -247,9 +223,6 @@ function cleanHtml(html) {
   return t.trim();
 }
 
-/**
- * Local version of stop words formula creation if not found globally
- */
 function createStopWordsFormulasLocal(sheet, totalRows) {
   try {
     const stopWordsRange = '$E$3:$E$100';
@@ -257,15 +230,14 @@ function createStopWordsFormulasLocal(sheet, totalRows) {
     const formulas = [];
 
     for (let row = 3; row <= totalRows; row++) {
-      // Build formula strings in parts for safety and readability
       const searchStop = 'ISNUMBER(SEARCH(' + stopWordsRange + ', C' + row + '))';
-      const checkStop = '(' + stopWordsRange + '<>""")';
+      const checkStop = '(' + stopWordsRange + '<>""' + ')';
       const formulaF = '=IF(SUMPRODUCT(--(' + searchStop + ')*' + checkStop + ') > 0, "", C' + row + ')';
       
       const formulaG = '=IF(F' + row + '<>"", COUNTA(F$3:F' + row + '), "")';
       
       const searchPos = 'ISNUMBER(SEARCH(' + positiveWordsRange + ', C' + row + '))';
-      const checkPos = '(' + positiveWordsRange + '<>""")';
+      const checkPos = '(' + positiveWordsRange + '<>""' + ')';
       const formulaI = '=IF(SUMPRODUCT(--(' + searchPos + ')*' + checkPos + ') > 0, C' + row + ', "")';
       
       const formulaJ = '=IF(I' + row + '<>"", COUNTA(I$3:I' + row + '), "")';
