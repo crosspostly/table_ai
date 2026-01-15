@@ -37,24 +37,24 @@ function importSocialPosts() {
   
   try {
     // 1. Telegram Strict Detection
-    if (/(t\.me|telegram\.me)\//i.test(input)) {
+    if (/(t\.me|telegram\.me)\\/i.test(input)) {
       addLog('Detected: Telegram (Link)', 'INFO');
       data = importTelegram(input, count);
       
     // 2. Instagram Strict Detection
-    } else if (/(instagram\.com|instagr\.am)\//i.test(input)) {
+    } else if (/(instagram\.com|instagr\.am)\\/i.test(input)) {
       addLog('Detected: Instagram (Link)', 'INFO');
       data = importInstagram(input, count);
       
     // 3. VK Strict Detection (URL)
-    } else if (/(vk\.com|vk\.ru|m\.vk\.com)\//i.test(input)) {
+    } else if (/(vk\.com|vk\.ru|m\.vk\.com)\\/i.test(input)) {
       addLog('Detected: VK (Link)', 'INFO');
       // Extract owner from link or pass full link if parser supports it
       // Our parser expects "owner" (id/slug), so let's try to extract it roughly or pass as is
       // Current logic: pass the input, let the external parser handle or extract ID locally?
       // Legacy "importVk" just passes 'owner' param. 
       // Let's assume the user inputs the ID/Slug for VK usually, but if they paste a link, we strip it.
-      var vkOwner = input.replace(/^(?:https?:\/\/)?(?:www\.|m\.)?(?:vk\.com|vk\.ru)\//i, '').replace(/^\/+|\/+$/g, '');
+      var vkOwner = input.replace(/^(?:https?:\/\/)?(?:www\.|m\.)?(?:vk\.com|vk\.ru)\\/i, '').replace(/^\/+|\/+$/g, '');
       data = importVk(vkOwner, count);
       
     // 4. VK Legacy (Plain ID/Slug) - Default for non-URL inputs
@@ -146,7 +146,8 @@ function importTelegram(input, count) {
   // Convert t.me/durov -> t.me/s/durov
   let url = input;
   if (!/\/s\//i.test(url) && !/\/\d+$/.test(url)) {
-    url = url.replace(/(t\.me|telegram\.me)\/([^/]+)\\/?$/, '$1/s/$2');
+    // Fixed regex: matches t.me/user or t.me/user/ (optional slash at end)
+    url = url.replace(/(t\.me|telegram\.me)\/([^/]+)\/?$/, '$1/s/$2');
   }
 
   const resp = UrlFetchApp.fetch(url, {muteHttpExceptions: true});
@@ -206,7 +207,7 @@ function importInstagram(input, count) {
   const posts = [];
 
   // Find posts
-  // Picuki structure: <div class="box-photo"> ... <img src="..."> ... <div class="photo-description">...</div>
+  // Picuki structure: <div class="box-photo"> ... <img src=\"...\"> ... <div class="photo-description">...</div>
   const boxRegex = /<div class="box-photo">([\s\S]*?)<div class="photo-description">([\s\S]*?)<\/div>/gi;
   let bm;
 
@@ -256,10 +257,19 @@ function createStopWordsFormulasLocal(sheet, totalRows) {
     const formulas = [];
 
     for (let row = 3; row <= totalRows; row++) {
-      const formulaF = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + stopWordsRange + ', C' + row + ')))*(' + stopWordsRange + '<>""')) > 0, "", C' + row + ')';
+      // Build formula strings in parts for safety and readability
+      const searchStop = 'ISNUMBER(SEARCH(' + stopWordsRange + ', C' + row + '))';
+      const checkStop = '(' + stopWordsRange + '<>""")';
+      const formulaF = '=IF(SUMPRODUCT(--(' + searchStop + ')*' + checkStop + ') > 0, "", C' + row + ')';
+      
       const formulaG = '=IF(F' + row + '<>"", COUNTA(F$3:F' + row + '), "")';
-      const formulaI = '=IF(SUMPRODUCT(--(ISNUMBER(SEARCH(' + positiveWordsRange + ', C' + row + ')))*(' + positiveWordsRange + '<>""')) > 0, C' + row + ', "")';
+      
+      const searchPos = 'ISNUMBER(SEARCH(' + positiveWordsRange + ', C' + row + '))';
+      const checkPos = '(' + positiveWordsRange + '<>""")';
+      const formulaI = '=IF(SUMPRODUCT(--(' + searchPos + ')*' + checkPos + ') > 0, C' + row + ', "")';
+      
       const formulaJ = '=IF(I' + row + '<>"", COUNTA(I$3:I' + row + '), "")';
+      
       formulas.push([formulaF, formulaG, '', formulaI, formulaJ]);
     }
 
