@@ -176,8 +176,13 @@ function importTelegram(input, count) {
       if (dateM) date = dateM[1];
       
       let link = '';
-      const linkM = block.match(/href="([^"]+)"/i);
-      if (linkM) link = linkM[1];
+      const dateLinkM = block.match(/<a[^>]*class="[^"]*tgme_widget_message_date[^"]*"[^>]*href="([^"]+)"/i);
+      if (dateLinkM) {
+        link = dateLinkM[1];
+      } else {
+        const linkM = block.match(/href="([^"]+)"/i);
+        if (linkM) link = linkM[1];
+      }
 
       if (text) {
         posts.push({ date, link, text });
