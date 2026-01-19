@@ -1,3 +1,10 @@
+# ⚠️ DEPRECATED DOCUMENTATION
+
+> **NOTE:** This guide is for an older version (v2.0.0).
+> Please refer to the up-to-date **[Main Deployment Guide](../docs/DEPLOYMENT.md)** for the current version (v3.x+).
+
+---
+
 # 🚀 РУКОВОДСТВО ПО РАЗВЕРТЫВАНИЮ TABLE AI + TEMPLATE SYSTEM V2.0
 
 **Дата:** 2025-10-18  

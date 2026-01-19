@@ -135,6 +135,7 @@ function importVk(owner, count) {
 
 /**
  * Telegram Import (Direct Public Channel)
+ * Updated to support pagination via "Load more" link
  */
 function importTelegram(input, count) {
   let url = input;
@@ -143,30 +144,70 @@ function importTelegram(input, count) {
     url = url.replace(/(t\.me|telegram\.me)\/([^/]+)\/?$/, '$1/s/$2');
   }
 
-  const resp = UrlFetchApp.fetch(url, {muteHttpExceptions: true});
-  if (resp.getResponseCode() >= 300) throw new Error('Telegram HTTP ' + resp.getResponseCode());
-  
-  const html = resp.getContentText();
   const posts = [];
-  
-  const msgRegex = /<div class="tgme_widget_message_bubble">([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
-  let m;
-  
-  while ((m = msgRegex.exec(html)) !== null && posts.length < count) {
-    const block = m[1];
-    let text = '';
-    const txtM = block.match(/<div class="tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/i);
-    if (txtM) text = cleanHtml(txtM[1]);
-    
-    let date = '';
-    const dateM = block.match(/<time datetime="([^"]+)"/i);
-    if (dateM) date = dateM[1];
-    
-    let link = '';
-    const linkM = block.match(/href="([^"]+)"/i);
-    if (linkM) link = linkM[1];
+  let pageIterations = 0;
+  const MAX_PAGES = 20; // Safety limit to prevent infinite loops
 
-    if (text) posts.push({ date, link, text });
+  while (posts.length < count && url && pageIterations < MAX_PAGES) {
+    addLog('Fetching Telegram: ' + url, 'INFO');
+    
+    const resp = UrlFetchApp.fetch(url, {muteHttpExceptions: true});
+    if (resp.getResponseCode() >= 300) {
+      addLog('Telegram Error HTTP ' + resp.getResponseCode(), 'ERROR');
+      break; 
+    }
+    
+    const html = resp.getContentText();
+    const msgRegex = /<div class="tgme_widget_message_bubble">([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
+    let m;
+    let foundOnThisPage = 0;
+    
+    // Parse posts on current page
+    while ((m = msgRegex.exec(html)) !== null) {
+      if (posts.length >= count) break;
+
+      const block = m[1];
+      let text = '';
+      const txtM = block.match(/<div class="tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/i);
+      if (txtM) text = cleanHtml(txtM[1]);
+      
+      let date = '';
+      const dateM = block.match(/<time datetime="([^"]+)"/i);
+      if (dateM) date = dateM[1];
+      
+      let link = '';
+      const linkM = block.match(/href="([^"]+)"/i);
+      if (linkM) link = linkM[1];
+
+      if (text) {
+        posts.push({ date, link, text });
+        foundOnThisPage++;
+      }
+    }
+
+    if (posts.length >= count) break;
+
+    // Check for "Load more" link for pagination
+    // Looks like: <a href="/s/durov?before=448" class="tme_messages_more ...">
+    const moreLinkTag = html.match(/<a[^>]*class="[^"]*tme_messages_more[^"]*"[^>]*>/i);
+    
+    if (moreLinkTag) {
+      const hrefM = moreLinkTag[0].match(/href="([^"]+)"/i);
+      if (hrefM) {
+        let nextPath = hrefM[1];
+        // Resolve relative URL
+        if (nextPath.startsWith('/')) {
+          url = 'https://t.me' + nextPath;
+        } else {
+          url = nextPath;
+        }
+        pageIterations++;
+      } else {
+        url = null;
+      }
+    } else {
+      url = null; // No more pages found
+    }
   }
   
   return posts;
