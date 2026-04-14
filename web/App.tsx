@@ -91,13 +91,13 @@ const App = () => {
   };
 
   const handleVkLogin = () => {
-    // Теперь бекенд делает прямой редирект, поэтому переходим сразу на эндпоинт
-    window.location.href = '/api/auth/vk/login';
+    // Теперь бекенд делает прямой редирект, поэтому переходим сразу на эндпоинт воркера
+    window.location.href = 'https://table-ai-backend.sheepoff.workers.dev/api/auth/vk/login';
   };
 
   const handleMockLogin = async () => {
-    // Прямой редирект на бэкенд — он создаст юзера, JWT и вернёт обратно на /auth/success
-    window.location.href = '/api/auth/mock/login';
+    // Прямой редирект на воркер в Cloudflare
+    window.location.href = 'https://table-ai-backend.sheepoff.workers.dev/api/auth/mock/login';
   };
 
   const handleSaasLogout = () => {

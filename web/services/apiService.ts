@@ -1,6 +1,6 @@
 
-// Используем относительные пути — nginx проксирует /api на бэкенд (порт 8787)
-const API_BASE_URL = '';
+// Используем URL развернутого воркера в Cloudflare
+const API_BASE_URL = 'https://table-ai-backend.sheepoff.workers.dev';
 
 export const getUserMe = async (token: string) => {
   const response = await fetch(`${API_BASE_URL}/api/user/me`, {
