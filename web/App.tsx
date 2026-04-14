@@ -5,6 +5,7 @@ import { TableList } from './components/TableList';
 import { SheetViewer } from './components/SheetViewer';
 import { getUserSpreadsheets, getSpreadsheetMetadata } from './services/googleSheets';
 import { findScriptIdForSpreadsheet, getScriptFunctions, checkScriptAvailability, executeScriptFunction, getScriptStatus } from './services/appsScriptService';
+import { getUserMe, getContent, importMockContent } from './services/apiService';
 
 // Временной интерфейс для ScriptStatus
 interface ScriptStatus {
@@ -27,7 +28,83 @@ const App = () => {
     scriptId: null
   });
 
+  // Состояние для SaaS
+  const [saasToken, setSaasToken] = useState<string | null>(localStorage.getItem('saasToken'));
+  const [saasUser, setSaasUser] = useState<any>(null);
+  const [contentList, setContentList] = useState<any[]>([]);
+  const [loadingContent, setLoadingContent] = useState(false);
+
   const [files, setFiles] = useState<DriveFile[]>([]);
+  // ... (rest of states)
+
+  // --- SAAS AUTH CAPTURE ---
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (token) {
+      localStorage.setItem('saasToken', token);
+      setSaasToken(token);
+      // Очищаем URL от токена
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (saasToken && !saasUser) {
+      getUserMe(saasToken)
+        .then(setSaasUser)
+        .catch(() => {
+          localStorage.removeItem('saasToken');
+          setSaasToken(null);
+        });
+    }
+  }, [saasToken]);
+
+  // Загрузка контента
+  const fetchContent = async () => {
+    if (!saasToken) return;
+    setLoadingContent(true);
+    try {
+      const data = await getContent(saasToken);
+      setContentList(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingContent(false);
+    }
+  };
+
+  useEffect(() => {
+    if (saasToken) {
+      fetchContent();
+    }
+  }, [saasToken]);
+
+  const handleImportMock = async () => {
+    if (!saasToken) return;
+    try {
+      await importMockContent(saasToken);
+      fetchContent(); // Обновляем список
+    } catch (e) {
+      alert('Ошибка при импорте мок-данных');
+    }
+  };
+
+  const handleVkLogin = () => {
+    // Теперь бекенд делает прямой редирект, поэтому переходим сразу на эндпоинт
+    window.location.href = '/api/auth/vk/login';
+  };
+
+  const handleMockLogin = async () => {
+    // Прямой редирект на бэкенд — он создаст юзера, JWT и вернёт обратно на /auth/success
+    window.location.href = '/api/auth/mock/login';
+  };
+
+  const handleSaasLogout = () => {
+    localStorage.removeItem('saasToken');
+    setSaasToken(null);
+    setSaasUser(null);
+  };
   const [loadingFiles, setLoadingFiles] = useState(false);
   
   const [selectedFile, setSelectedFile] = useState<DriveFile | null>(null);
@@ -259,21 +336,132 @@ const App = () => {
 
   // --- RENDER ---
 
-  if (!appState.token) {
+  if (!saasToken && !appState.token) {
     return (
       <div className="min-h-screen bg-[#f5f7fa] flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-2xl shadow-lg max-w-sm w-full text-center">
           <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">🔮</div>
           <h1 className="text-2xl font-bold text-slate-800 mb-2">Table AI</h1>
           <p className="text-slate-500 mb-8">Умное управление таблицами</p>
-          <button 
-            onClick={handleAuth}
-            disabled={!gsiLoaded}
-            className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-3 disabled:opacity-50"
-          >
-            <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5 bg-white rounded-full p-0.5" />
-            {gsiLoaded ? 'Войти через Google' : 'Загрузка...'}
-          </button>
+          
+          <div className="space-y-4">
+            <button 
+              onClick={handleVkLogin}
+              className="w-full py-4 bg-[#0077FF] text-white font-bold rounded-xl shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-3"
+            >
+              <img src="https://www.svgrepo.com/show/475700/vk.svg" className="w-5 h-5 bg-white rounded-full p-0.5" />
+              Войти через ВКонтакте
+            </button>
+
+            <button 
+              onClick={handleMockLogin}
+              className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-3"
+            >
+              🚀 Тестовый вход (Mock)
+            </button>
+
+            <div className="text-slate-300 text-sm">или</div>
+
+            <button 
+              onClick={handleAuth}
+              disabled={!gsiLoaded}
+              className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl shadow-sm active:scale-[0.98] transition-transform flex items-center justify-center gap-3 disabled:opacity-50"
+            >
+              <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" />
+              {gsiLoaded ? 'Google Sheets (Legacy)' : 'Загрузка...'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Если залогинены в SaaS, показываем SaaS интерфейс (пока заглушка)
+  if (saasToken && saasUser) {
+    return (
+      <div className="min-h-screen bg-[#f5f7fa]">
+        <div className="bg-white p-4 shadow-sm flex justify-between items-center sticky top-0 z-10">
+          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Table AI SaaS</h1>
+          <div className="flex items-center gap-3">
+            <img src={saasUser.avatar_url} className="w-8 h-8 rounded-full border border-slate-200" alt="Avatar" />
+            <span className="text-sm font-medium text-slate-700 hidden sm:inline">{saasUser.name}</span>
+            <button onClick={handleSaasLogout} className="text-slate-400 hover:text-red-500 ml-2">🚪</button>
+          </div>
+        </div>
+        
+        <div className="max-w-6xl mx-auto p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-slate-800">Мой контент</h2>
+            <div className="flex gap-3">
+              <button 
+                onClick={handleImportMock}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+              >
+                📥 Импорт Mock
+              </button>
+              <button 
+                onClick={fetchContent}
+                className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+              >
+                🔄 Обновить
+              </button>
+            </div>
+          </div>
+
+          {loadingContent ? (
+            <div className="flex justify-center p-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            </div>
+          ) : contentList.length > 0 ? (
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Тип</th>
+                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Контент</th>
+                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Дата</th>
+                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Действие</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contentList.map((item: any) => (
+                    <tr key={item.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                      <td className="p-4">
+                        <span className="px-2 py-1 bg-blue-50 text-blue-600 text-[10px] font-bold rounded uppercase">
+                          {item.source_type}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <p className="text-sm text-slate-700 line-clamp-2 max-w-md">
+                          {item.raw_text}
+                        </p>
+                      </td>
+                      <td className="p-4 text-xs text-slate-400">
+                        {new Date(item.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="p-4">
+                        <button className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
+                          Распаковать ✨
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="bg-white p-12 rounded-2xl shadow-sm text-center border-2 border-dashed border-slate-100">
+              <div className="text-4xl mb-4">Empty 📭</div>
+              <h3 className="text-lg font-medium text-slate-800 mb-2">Контент пока не загружен</h3>
+              <p className="text-slate-500 mb-6 text-sm">Нажмите кнопку импорта, чтобы наполнить базу тестовыми данными.</p>
+              <button 
+                onClick={handleImportMock}
+                className="px-6 py-3 bg-indigo-50 text-indigo-600 rounded-xl font-bold hover:bg-indigo-100 transition-colors"
+              >
+                Загрузить тестовые посты
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
