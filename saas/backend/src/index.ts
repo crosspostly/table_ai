@@ -76,16 +76,18 @@ app.get('/api/auth/mock/login', async (c) => {
 // 1. Получить URL для логина через ВК
 app.get('/api/auth/vk/login', (c) => {
   const clientId = c.env.VK_CLIENT_ID
-  const frontendUrl = c.env.FRONTEND_URL || 'https://klublocal.ddns.net'
-  const redirectUri = `${frontendUrl}/api/auth/vk/callback`
-  const scope = 'email' // email может быть не всегда доступен. Убираем offline.
+  // ВАЖНО: Callback должен идти на сам воркер, а не на фронтенд домен
+  const urlObj = new URL(c.req.url)
+  const redirectUri = `${urlObj.origin}/api/auth/vk/callback`
+  const scope = 'email'
 
   const vkLoginUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&display=page&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code`
 
+  console.log('[auth/vk/login] Redirecting to VK with callback:', redirectUri);
   return c.redirect(vkLoginUrl)
 })
 
-// 2. Callback от ВК (обмен code на токен и поиск/создание юзера)
+// 2. Callback от ВК
 app.get('/api/auth/vk/callback', async (c) => {
   console.log('[auth/vk/callback] Received callback from VK');
   const code = c.req.query('code')
@@ -97,7 +99,9 @@ app.get('/api/auth/vk/callback', async (c) => {
   const clientId = c.env.VK_CLIENT_ID
   const secureKey = c.env.VK_SECURE_KEY
   const frontendUrl = c.env.FRONTEND_URL || 'https://klublocal.ddns.net'
-  const redirectUri = `${frontendUrl}/api/auth/vk/callback`
+  // Callback URI должен совпадать с тем, что был отправлен в /authorize
+  const urlObj = new URL(c.req.url)
+  const redirectUri = `${urlObj.origin}/api/auth/vk/callback`
 
   try {
     // Шаг 1: Обмен code на access_token

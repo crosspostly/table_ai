@@ -93,8 +93,9 @@ app.get('/api/auth/mock/login', async (c) => {
 
 app.get('/api/auth/vk/login', (c) => {
   console.log('[auth/vk/login] Initiating VK login redirect');
-  const redirectUri = `${env.FRONTEND_URL}/api/auth/vk/callback`
-  // Прямой редирект вместо возврата JSON. Убираем v=5.131 для authorize (не обязательно) и оставляем базовый scope.
+  const urlObj = new URL(c.req.url)
+  const redirectUri = `${urlObj.origin}/api/auth/vk/callback`
+  // Прямой редирект вместо возврата JSON.
   const url = `https://oauth.vk.com/authorize?client_id=${env.VK_CLIENT_ID}&display=page&redirect_uri=${encodeURIComponent(redirectUri)}&scope=email&response_type=code`
   return c.redirect(url)
 })
@@ -102,7 +103,8 @@ app.get('/api/auth/vk/login', (c) => {
 app.get('/api/auth/vk/callback', async (c) => {
   console.log('[auth/vk/callback] Received callback from VK');
   const code = c.req.query('code')
-  const redirectUri = `${env.FRONTEND_URL}/api/auth/vk/callback`
+  const urlObj = new URL(c.req.url)
+  const redirectUri = `${urlObj.origin}/api/auth/vk/callback`
   
   try {
     console.log('[auth/vk/callback] Exchanging code for access token');
