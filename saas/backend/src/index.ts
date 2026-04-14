@@ -84,7 +84,8 @@ app.get('/api/auth/vk/login', (c) => {
 
   const vkLoginUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&display=page&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code`
 
-  console.log('[auth/vk/login] Redirecting to VK with callback:', redirectUri);
+  console.log(`[auth/vk/login] DEBUG: Generated redirect_uri: ${redirectUri}`);
+  console.log('[auth/vk/login] Redirecting to VK...');
   return c.redirect(vkLoginUrl)
 })
 
@@ -228,11 +229,45 @@ app.get('/api/content', authMiddleware, async (c) => {
   }
 })
 
+import { analyzeContent } from './ai'
+
+// ... (after authMiddleware)
+
 // === Эндпоинты для AI и Распаковки ===
 app.post('/api/ai/analyze', authMiddleware, async (c) => {
-  // TODO: Логика получения промпта из таблицы `prompts`
-  // И отправка запроса в Gemini API
-  return c.json({ message: 'Analysis started' })
+  const payload = c.get('jwtPayload')
+  const userId = payload.sub
+  const { prompt, text, maxTokens, temperature } = await c.req.json()
+  const apiKey = c.env.GEMINI_API_KEY
+
+  console.log(`[/ai/analyze] AI Analysis requested by user: ${userId}`)
+
+  try {
+    const result = await analyzeContent(apiKey, prompt + "\n\n" + text, maxTokens, temperature)
+    
+    // Сохраняем результат в D1
+    const resultId = crypto.randomUUID()
+    await c.env.DB.prepare(
+      'INSERT INTO results (id, user_id, result_text) VALUES (?, ?, ?)'
+    ).bind(resultId, userId, result).run()
+
+    return c.json({ success: true, result, id: resultId })
+  } catch (e: any) {
+    console.error('[/ai/analyze] Error:', e.message)
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+app.get('/api/results', authMiddleware, async (c) => {
+  const payload = c.get('jwtPayload')
+  const userId = payload.sub
+  
+  try {
+    const { results } = await c.env.DB.prepare('SELECT * FROM results WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    return c.json(results)
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
 })
 
 export default app
