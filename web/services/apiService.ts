@@ -1,6 +1,6 @@
 
-// Используем URL развернутого воркера в Cloudflare
-const API_BASE_URL = 'https://table-ai-backend.sheepoff.workers.dev';
+// Используем относительные пути — nginx проксирует /api на воркер
+const API_BASE_URL = '';
 
 export const getUserMe = async (token: string) => {
   const response = await fetch(`${API_BASE_URL}/api/user/me`, {
