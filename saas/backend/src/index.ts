@@ -66,8 +66,9 @@ app.get('/api/auth/mock/login', async (c) => {
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 // 1 неделя
     }
     const token = await sign(payload, jwtSecret)
+    console.log('[auth/mock] Token issued, redirecting to frontend');
 
-    return c.redirect(`${frontendUrl}/auth/success?token=${token}`)
+    return c.redirect(`${frontendUrl}/?token=${token}`)
   } catch (e: any) {
     return c.json({ error: e.message }, 500)
   }
@@ -76,9 +77,9 @@ app.get('/api/auth/mock/login', async (c) => {
 // 1. Получить URL для логина через ВК
 app.get('/api/auth/vk/login', (c) => {
   const clientId = c.env.VK_CLIENT_ID
-  // ВАЖНО: Callback должен идти на сам воркер, а не на фронтенд домен
-  const urlObj = new URL(c.req.url)
-  const redirectUri = `${urlObj.origin}/api/auth/vk/callback`
+  const frontendUrl = c.env.FRONTEND_URL || 'https://klublocal.ddns.net'
+  // ВСЕГДА используем основной домен для колбэка VK
+  const redirectUri = `${frontendUrl}/api/auth/vk/callback`
   const scope = 'email'
 
   const vkLoginUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&display=page&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code`
@@ -99,9 +100,7 @@ app.get('/api/auth/vk/callback', async (c) => {
   const clientId = c.env.VK_CLIENT_ID
   const secureKey = c.env.VK_SECURE_KEY
   const frontendUrl = c.env.FRONTEND_URL || 'https://klublocal.ddns.net'
-  // Callback URI должен совпадать с тем, что был отправлен в /authorize
-  const urlObj = new URL(c.req.url)
-  const redirectUri = `${urlObj.origin}/api/auth/vk/callback`
+  const redirectUri = `${frontendUrl}/api/auth/vk/callback`
 
   try {
     // Шаг 1: Обмен code на access_token
@@ -161,8 +160,8 @@ app.get('/api/auth/vk/callback', async (c) => {
     const token = await sign(payload, jwtSecret)
 
     console.log('[auth/vk/callback] Token issued, redirecting to frontend');
-    // Редирект на фронтенд с токеном
-    return c.redirect(`${frontendUrl}/auth/success?token=${token}`)
+    // Редирект на корень фронтенда с токеном (фронтенд сам его подхватит)
+    return c.redirect(`${frontendUrl}/?token=${token}`)
 
   } catch (e: any) {
     console.error('[auth/vk/callback] Catch error:', e.message);
