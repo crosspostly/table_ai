@@ -29,7 +29,7 @@ app.use('*', async (c, next) => {
 // Middleware для защиты роутов
 const authMiddleware = (c: any, next: any) => {
   const jwtSecret = c.env.JWT_SECRET || 'fallback-secret-for-dev'
-  return jwt({ secret: jwtSecret })(c, next)
+  return jwt({ secret: jwtSecret, alg: 'HS256' })(c, next)
 }
 
 app.get('/', (c) => {

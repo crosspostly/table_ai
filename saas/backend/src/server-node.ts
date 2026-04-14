@@ -49,7 +49,7 @@ app.use('*', async (c, next) => {
 })
 
 const authMiddleware = (c: any, next: any) => {
-  return jwt({ secret: env.JWT_SECRET })(c, next)
+  return jwt({ secret: env.JWT_SECRET, alg: 'HS256' })(c, next)
 }
 
 app.get('/', (c) => c.json({ status: 'ok', adapter: 'node-server' }))
@@ -189,5 +189,9 @@ app.post('/api/content/mock-import', authMiddleware, (c: any) => {
 })
 
 const port = 8787
-console.log(`Server is running on http://0.0.0.0:${port}`)
-serve({ fetch: app.fetch, port, hostname: '0.0.0.0' })
+if (process.env.NODE_ENV !== 'test') {
+  console.log(`Server is running on http://0.0.0.0:${port}`)
+  serve({ fetch: app.fetch, port, hostname: '0.0.0.0' })
+}
+
+export default app
