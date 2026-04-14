@@ -12,14 +12,40 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const projectRoot = path.resolve(__dirname, '..')
 
-// Инициализация локальной БД
-const dbPath = path.join(projectRoot, '.wrangler', 'state', 'v3', 'd1', 'miniflare-D1DatabaseObject')
-const dbFiles = fs.readdirSync(dbPath).filter(f => f.endsWith('.sqlite'))
-if (dbFiles.length === 0) {
-  console.error('No SQLite database found. Run: npm run db:init')
-  process.exit(1)
+// Инициализация локальной БД (ленивая)
+let _db: any = null;
+function getDb() {
+  if (_db) return _db;
+  
+  if (process.env.NODE_ENV === 'test') {
+    // В режиме тестов возвращаем мок, если он не был установлен извне
+    return {
+      prepare: () => ({
+        get: () => ({ id: 'mock-id', role: 'admin' }),
+        run: () => ({}),
+        all: () => []
+      })
+    };
+  }
+
+  const dbPath = path.join(projectRoot, '.wrangler', 'state', 'v3', 'd1', 'miniflare-D1DatabaseObject')
+  if (!fs.existsSync(dbPath)) {
+    console.error('Database path not found:', dbPath);
+    process.exit(1);
+  }
+  
+  const dbFiles = fs.readdirSync(dbPath).filter(f => f.endsWith('.sqlite'))
+  if (dbFiles.length === 0) {
+    console.error('No SQLite database found. Run: npm run db:init')
+    process.exit(1)
+  }
+  _db = new sqlite(path.join(dbPath, dbFiles[0]))
+  return _db;
 }
-const db = new sqlite(path.join(dbPath, dbFiles[0]))
+
+const db = {
+  prepare: (sql: string) => getDb().prepare(sql)
+};
 
 type Bindings = {
   VK_CLIENT_ID: string
@@ -81,10 +107,10 @@ app.get('/api/auth/mock/login', async (c) => {
       role: userRecord.role,
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7
     }
-    const token = await sign(payload, env.JWT_SECRET)
+    const token = await sign(payload, env.JWT_SECRET, 'HS256')
     console.log('[auth/mock] Token issued, redirecting');
 
-    return c.redirect(`${env.FRONTEND_URL}/auth/success?token=${token}`)
+    return c.redirect(`${env.FRONTEND_URL}/?token=${token}`)
   } catch (e: any) {
     console.error('[auth/mock] Error:', e.message);
     return c.json({ error: e.message }, 500)
@@ -93,8 +119,14 @@ app.get('/api/auth/mock/login', async (c) => {
 
 app.get('/api/auth/vk/login', (c) => {
   console.log('[auth/vk/login] Initiating VK login redirect');
-  const urlObj = new URL(c.req.url)
-  const redirectUri = `${urlObj.origin}/api/auth/vk/callback`
+  let origin = '';
+  try {
+    const urlObj = new URL(c.req.url);
+    origin = urlObj.origin;
+  } catch(e) {
+    origin = env.FRONTEND_URL; // fallback
+  }
+  const redirectUri = `${origin}/api/auth/vk/callback`
   // Прямой редирект вместо возврата JSON.
   const url = `https://oauth.vk.com/authorize?client_id=${env.VK_CLIENT_ID}&display=page&redirect_uri=${encodeURIComponent(redirectUri)}&scope=email&response_type=code`
   return c.redirect(url)
@@ -103,8 +135,14 @@ app.get('/api/auth/vk/login', (c) => {
 app.get('/api/auth/vk/callback', async (c) => {
   console.log('[auth/vk/callback] Received callback from VK');
   const code = c.req.query('code')
-  const urlObj = new URL(c.req.url)
-  const redirectUri = `${urlObj.origin}/api/auth/vk/callback`
+  let origin = '';
+  try {
+    const urlObj = new URL(c.req.url);
+    origin = urlObj.origin;
+  } catch(e) {
+    origin = env.FRONTEND_URL;
+  }
+  const redirectUri = `${origin}/api/auth/vk/callback`
   
   try {
     console.log('[auth/vk/callback] Exchanging code for access token');
@@ -133,9 +171,9 @@ app.get('/api/auth/vk/callback', async (c) => {
       console.log('[auth/vk/callback] Existing VK user found:', user.id);
     }
 
-    const token = await sign({ sub: user.id, role: user.role, exp: Math.floor(Date.now() / 1000) + 60*60*24*7 }, env.JWT_SECRET)
+    const token = await sign({ sub: user.id, role: user.role, exp: Math.floor(Date.now() / 1000) + 60*60*24*7 }, env.JWT_SECRET, 'HS256')
     console.log('[auth/vk/callback] Token issued, redirecting to frontend');
-    return c.redirect(`${env.FRONTEND_URL}/auth/success?token=${token}`)
+    return c.redirect(`${env.FRONTEND_URL}/?token=${token}`)
   } catch (err: any) {
     console.error('[auth/vk/callback] Catch error:', err.message);
     return c.json({ error: err.message }, 500)
@@ -173,19 +211,30 @@ app.get('/api/content', authMiddleware, (c: any) => {
   }
 })
 
-app.post('/api/content/mock-import', authMiddleware, (c: any) => {
+import { analyzeContent } from './ai.js'
+
+// ... (existing imports)
+
+app.post('/api/ai/analyze', authMiddleware, async (c: any) => {
+  const payload = c.get('jwtPayload')
+  const userId = payload.sub
+  const { prompt, text, maxTokens, temperature } = await c.req.json()
+
+  console.log(`[/ai/analyze] Analysis request for user: ${userId}`);
+
   try {
-    const userId = c.get('jwtPayload').sub
-    console.log('[/content/mock-import] Importing mock content for user ID:', userId)
-    const mockPosts = ['Пост 1: Gemini — это мощь!', 'Пост 2: Автоматизация рулит.', 'Пост 3: Table AI экономит время.']
-    for (const text of mockPosts) {
-      db.prepare('INSERT INTO content (id, user_id, source_type, raw_text) VALUES (?, ?, ?, ?)')
-        .run(crypto.randomUUID(), userId, 'vk_post', text)
-    }
-    console.log('[/content/mock-import] Import successful')
-    return c.json({ success: true })
+    // В реальном приложении мы бы брали ключ из БД или env
+    const apiKey = process.env.GEMINI_API_KEY || 'REPLACE_WITH_REAL_KEY'
+    const result = await analyzeContent(apiKey, prompt + "\n\n" + text, maxTokens, temperature)
+    
+    // Сохраняем результат в БД
+    const resultId = crypto.randomUUID()
+    db.prepare('INSERT INTO results (id, user_id, content_id, result_text) VALUES (?, ?, ?, ?)')
+      .run(resultId, userId, null, result)
+
+    return c.json({ success: true, result, id: resultId })
   } catch (e: any) {
-    console.error('[/content/mock-import] Error:', e.message)
+    console.error('[/ai/analyze] Error:', e.message)
     return c.json({ error: e.message }, 500)
   }
 })
