@@ -189,27 +189,85 @@ app.get('/api/user/me', authMiddleware, async (c) => {
 
 // === Эндпоинты для работы с контентом ===
 
-app.post('/api/content/mock-import', authMiddleware, async (c) => {
+app.post('/api/content/import', authMiddleware, async (c) => {
   const payload = c.get('jwtPayload')
   const userId = payload.sub
-  console.log('[/content/mock-import] Importing mock content for user ID:', userId)
-  
-  const mockPosts = [
-    { id: crypto.randomUUID(), text: 'Пост 1: Обзор новой нейросети Gemini 1.5 Pro. Потрясающие возможности контекста!' },
-    { id: crypto.randomUUID(), text: 'Пост 2: Как автоматизировать работу с таблицами с помощью ИИ. Пошаговый гайд.' },
-    { id: crypto.randomUUID(), text: 'Пост 3: Отзыв клиента: "Table AI сэкономил нам 20 часов работы в неделю".' }
-  ]
+  const { source, url, count } = await c.req.json()
+  console.log(`[/content/import] Importing ${count} posts from ${source}: ${url} for user: ${userId}`)
 
   try {
-    for (const post of mockPosts) {
+    const importId = crypto.randomUUID()
+    await c.env.DB.prepare(
+      'INSERT INTO imports (id, user_id, source_url, source_type, post_count, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(importId, userId, url, source, count, 'completed').run()
+
+    // Имитируем парсинг (в реальности здесь вызов VK/TG парсера)
+    for (let i = 1; i <= count; i++) {
+      const postId = crypto.randomUUID()
       await c.env.DB.prepare(
-        'INSERT INTO content (id, user_id, source_type, raw_text) VALUES (?, ?, ?, ?)'
-      ).bind(post.id, userId, 'vk_post', post.text).run()
+        'INSERT INTO content (id, user_id, import_id, source_type, raw_text) VALUES (?, ?, ?, ?, ?)'
+      ).bind(postId, userId, importId, source, `Пост #${i} из ${source}: Содержание тестового поста #${i} для пакетного анализа.`).run()
     }
-    console.log('[/content/mock-import] Import successful')
-    return c.json({ success: true, message: 'Mock content imported' })
+
+    return c.json({ success: true, importId, count })
   } catch (e: any) {
-    console.error('[/content/mock-import] Error:', e.message)
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+app.post('/api/content/manual-import', authMiddleware, async (c) => {
+  const payload = c.get('jwtPayload')
+  const userId = payload.sub
+  const { text, sourceType } = await c.req.json() // sourceType: 'reviews' or 'manual'
+
+  try {
+    const importId = crypto.randomUUID()
+    const postId = crypto.randomUUID()
+    
+    await c.env.DB.prepare(
+      'INSERT INTO imports (id, user_id, source_url, source_type, post_count, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(importId, userId, 'manual-input', sourceType, 1, 'completed').run()
+
+    await c.env.DB.prepare(
+      'INSERT INTO content (id, user_id, import_id, source_type, raw_text) VALUES (?, ?, ?, ?, ?)'
+    ).bind(postId, userId, importId, sourceType, text).run()
+
+    return c.json({ success: true, id: postId })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+app.post('/api/ai/analyze-batch', authMiddleware, async (c) => {
+  const payload = c.get('jwtPayload')
+  const userId = payload.sub
+  const { promptId, contentIds } = await c.req.json()
+  const apiKey = c.env.GEMINI_API_KEY
+
+  try {
+    // 1. Получаем текст всех выбранных постов
+    const idList = contentIds.map((_: any) => '?').join(',')
+    const { results: posts } = await c.env.DB.prepare(
+      `SELECT raw_text FROM content WHERE id IN (${idList}) AND user_id = ?`
+    ).bind(...contentIds, userId).all()
+
+    const fullText = posts.map((p: any) => p.raw_text).join("\n\n---\n\n")
+
+    // 2. Получаем промпт
+    const promptData: any = await c.env.DB.prepare('SELECT content FROM prompts WHERE id = ?').bind(promptId).first()
+    const prompt = promptData?.content || "Проанализируй эти посты:"
+
+    // 3. Вызываем Gemini
+    const result = await analyzeContent(apiKey, prompt + "\n\nДАННЫЕ:\n" + fullText)
+
+    // 4. Сохраняем общий результат
+    const resultId = crypto.randomUUID()
+    await c.env.DB.prepare(
+      'INSERT INTO results (id, user_id, prompt_id, input_content_ids, ai_response) VALUES (?, ?, ?, ?, ?)'
+    ).bind(resultId, userId, promptId, JSON.stringify(contentIds), result).run()
+
+    return c.json({ success: true, result, id: resultId })
+  } catch (e: any) {
     return c.json({ error: e.message }, 500)
   }
 })
@@ -237,19 +295,21 @@ import { analyzeContent } from './ai'
 app.post('/api/ai/analyze', authMiddleware, async (c) => {
   const payload = c.get('jwtPayload')
   const userId = payload.sub
-  const { prompt, text, maxTokens, temperature } = await c.req.json()
+  const { prompt, text, maxTokens, temperature, contentId, promptId } = await c.req.json()
   const apiKey = c.env.GEMINI_API_KEY
 
-  console.log(`[/ai/analyze] AI Analysis requested by user: ${userId}`)
+  console.log(`[/ai/analyze] AI Analysis requested by user: ${userId} for content: ${contentId}`)
 
   try {
     const result = await analyzeContent(apiKey, prompt + "\n\n" + text, maxTokens, temperature)
     
     // Сохраняем результат в D1
     const resultId = crypto.randomUUID()
+    const contentIdsJson = JSON.stringify(contentId ? [contentId] : [])
+    
     await c.env.DB.prepare(
-      'INSERT INTO results (id, user_id, result_text) VALUES (?, ?, ?)'
-    ).bind(resultId, userId, result).run()
+      'INSERT INTO results (id, user_id, prompt_id, input_content_ids, ai_response) VALUES (?, ?, ?, ?, ?)'
+    ).bind(resultId, userId, promptId || 'manual', contentIdsJson, result).run()
 
     return c.json({ success: true, result, id: resultId })
   } catch (e: any) {
@@ -261,9 +321,18 @@ app.post('/api/ai/analyze', authMiddleware, async (c) => {
 app.get('/api/results', authMiddleware, async (c) => {
   const payload = c.get('jwtPayload')
   const userId = payload.sub
-  
+
   try {
-    const { results } = await c.env.DB.prepare('SELECT * FROM results WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    const { results } = await c.env.DB.prepare('SELECT * FROM results WHERE user_id = ? ORDER BY created_at DESC').all()
+    return c.json(results)
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+app.get('/api/prompts', authMiddleware, async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare('SELECT * FROM prompts WHERE is_active = 1').all()
     return c.json(results)
   } catch (e: any) {
     return c.json({ error: e.message }, 500)
@@ -271,3 +340,4 @@ app.get('/api/results', authMiddleware, async (c) => {
 })
 
 export default app
+

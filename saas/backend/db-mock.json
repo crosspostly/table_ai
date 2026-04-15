@@ -1,0 +1,12 @@
+{
+  "users": [
+    {
+      "id": "e6ea42a5-9d99-4fcd-9d7b-b75ed76e0cb0",
+      "vk_id": "123456789",
+      "name": "Тестовый Пользователь",
+      "avatar_url": "https://ui-avatars.com/api/?name=Test",
+      "role": "admin"
+    }
+  ],
+  "content": []
+}
