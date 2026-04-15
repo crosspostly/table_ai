@@ -218,12 +218,12 @@ app.post('/api/content/import', authMiddleware, async (c) => {
 app.post('/api/content/manual-import', authMiddleware, async (c) => {
   const payload = c.get('jwtPayload')
   const userId = payload.sub
-  const { text, sourceType } = await c.req.json() // sourceType: 'reviews' or 'manual'
+  const { text, sourceType } = await c.req.json()
 
   try {
     const importId = crypto.randomUUID()
     const postId = crypto.randomUUID()
-    
+
     await c.env.DB.prepare(
       'INSERT INTO imports (id, user_id, source_url, source_type, post_count, status) VALUES (?, ?, ?, ?, ?, ?)'
     ).bind(importId, userId, 'manual-input', sourceType, 1, 'completed').run()
@@ -238,7 +238,76 @@ app.post('/api/content/manual-import', authMiddleware, async (c) => {
   }
 })
 
+app.post('/api/content/ocr-import', authMiddleware, async (c) => {
+  const payload = c.get('jwtPayload')
+  const userId = payload.sub
+  const { imageBase64, mimeType } = await c.req.json()
+  const apiKey = c.env.GEMINI_API_KEY
+
+  try {
+    console.log(`[/content/ocr-import] Processing image for user: ${userId}`);
+    const prompt = "Извлеки весь текст из этого скриншота отзыва. Верни ТОЛЬКО чистый текст отзыва без комментариев.";
+
+    // Передаем картинку в Gemini для извлечения текста
+    const extractedText = await analyzeContent(apiKey, prompt, 1000, 0.1, { data: imageBase64, mimeType });
+
+    const importId = crypto.randomUUID()
+    const postId = crypto.randomUUID()
+
+    await c.env.DB.prepare(
+      'INSERT INTO imports (id, user_id, source_url, source_type, post_count, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(importId, userId, 'ocr-vision', 'reviews', 1, 'completed').run()
+
+    await c.env.DB.prepare(
+      'INSERT INTO content (id, user_id, import_id, source_type, raw_text) VALUES (?, ?, ?, ?, ?)'
+    ).bind(postId, userId, importId, 'reviews', extractedText).run()
+
+    return c.json({ success: true, text: extractedText, id: postId })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+// === CRUD для Промптов ===
+
+app.post('/api/prompts', authMiddleware, async (c) => {
+  const { name, content, description } = await c.req.json()
+  const id = crypto.randomUUID()
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO prompts (id, name, content, description) VALUES (?, ?, ?, ?)'
+    ).bind(id, name, content, description).run()
+    return c.json({ success: true, id })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+app.put('/api/prompts/:id', authMiddleware, async (c) => {
+  const id = c.req.param('id')
+  const { name, content, description, is_active } = await c.req.json()
+  try {
+    await c.env.DB.prepare(
+      'UPDATE prompts SET name = ?, content = ?, description = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(name, content, description, is_active ? 1 : 0, id).run()
+    return c.json({ success: true })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
+app.delete('/api/prompts/:id', authMiddleware, async (c) => {
+  const id = c.req.param('id')
+  try {
+    await c.env.DB.prepare('DELETE FROM prompts WHERE id = ?').bind(id).run()
+    return c.json({ success: true })
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500)
+  }
+})
+
 app.post('/api/ai/analyze-batch', authMiddleware, async (c) => {
+
   const payload = c.get('jwtPayload')
   const userId = payload.sub
   const { promptId, contentIds } = await c.req.json()
@@ -318,21 +387,9 @@ app.post('/api/ai/analyze', authMiddleware, async (c) => {
   }
 })
 
-app.get('/api/results', authMiddleware, async (c) => {
-  const payload = c.get('jwtPayload')
-  const userId = payload.sub
-
-  try {
-    const { results } = await c.env.DB.prepare('SELECT * FROM results WHERE user_id = ? ORDER BY created_at DESC').all()
-    return c.json(results)
-  } catch (e: any) {
-    return c.json({ error: e.message }, 500)
-  }
-})
-
 app.get('/api/prompts', authMiddleware, async (c) => {
   try {
-    const { results } = await c.env.DB.prepare('SELECT * FROM prompts WHERE is_active = 1').all()
+    const { results } = await c.env.DB.prepare('SELECT * FROM prompts ORDER BY name ASC').all()
     return c.json(results)
   } catch (e: any) {
     return c.json({ error: e.message }, 500)

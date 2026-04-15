@@ -5,7 +5,7 @@ import { TableList } from './components/TableList';
 import { SheetViewer } from './components/SheetViewer';
 import { getUserSpreadsheets, getSpreadsheetMetadata } from './services/googleSheets';
 import { findScriptIdForSpreadsheet, getScriptFunctions, checkScriptAvailability, executeScriptFunction, getScriptStatus } from './services/appsScriptService';
-import { getUserMe, getContent, importPosts, importManualText, analyzeBatch, getResults, getPrompts } from './services/apiService';
+import { getUserMe, getContent, importPosts, importManualText, importOcrImage, analyzeBatch, getResults, getPrompts, createPrompt, updatePrompt, deletePrompt } from './services/apiService';
 
 // Временной интерфейс для ScriptStatus
 interface ScriptStatus {
@@ -44,6 +44,7 @@ const App = () => {
   const [postCount, setPostCount] = useState(10);
   const [manualText, setManualText] = useState('');
   const [selectedPromptId, setSelectedPromptId] = useState<string>('manual');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'prompts'>('dashboard');
 
   const [files, setFiles] = useState<DriveFile[]>([]);
   // ... (rest of states)
@@ -168,6 +169,58 @@ const App = () => {
     localStorage.removeItem('saasToken');
     setSaasToken(null);
     setSaasUser(null);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !saasToken) return;
+
+    setImporting(true);
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64String = (reader.result as string).split(',')[1];
+      try {
+        await importOcrImage(saasToken, base64String, file.type);
+        fetchContent();
+      } catch (e) {
+        alert('Ошибка OCR анализа');
+      } finally {
+        setImporting(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('Результат скопирован!');
+  };
+
+  const printResult = (id: string, text: string) => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(`
+      <html>
+        <head>
+          <title>Table AI - Результат анализа</title>
+          <style>
+            body { font-family: sans-serif; padding: 40px; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; }
+            .header { border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px; }
+            .content { white-space: pre-wrap; font-size: 14px; }
+            @media print { .no-print { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Table AI - Отчет об анализе</h1>
+            <p>Дата: ${new Date().toLocaleString()}</p>
+          </div>
+          <div class="content">${text}</div>
+          <script>setTimeout(() => { window.print(); window.close(); }, 500);</script>
+        </body>
+      </html>
+    `);
+    win.document.close();
   };
   const [loadingFiles, setLoadingFiles] = useState(false);
   
@@ -446,9 +499,25 @@ const App = () => {
       <div className="min-h-screen bg-[#f8fafc]">
         {/* Header */}
         <div className="bg-white border-b border-slate-200 p-4 flex justify-between items-center sticky top-0 z-10">
-          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <span className="text-indigo-600">🎯</span> Table AI SaaS
-          </h1>
+          <div className="flex items-center gap-8">
+            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <span className="text-indigo-600">🎯</span> Table AI
+            </h1>
+            <nav className="flex gap-1 bg-slate-100 p-1 rounded-xl">
+              <button 
+                onClick={() => setActiveTab('dashboard')}
+                className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Дашборд
+              </button>
+              <button 
+                onClick={() => setActiveTab('prompts')}
+                className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'prompts' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Библиотека промптов
+              </button>
+            </nav>
+          </div>
           <div className="flex items-center gap-3">
             <div className="text-right">
               <div className="text-sm font-bold text-slate-900">{saasUser.name}</div>
@@ -460,174 +529,263 @@ const App = () => {
         </div>
 
         <div className="max-w-5xl mx-auto p-6 space-y-8">
-          {/* Section 1: Collector Form */}
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-              <h2 className="text-lg font-bold text-slate-800">📥 Сбор данных (Collector)</h2>
-              <p className="text-sm text-slate-500">Загрузите посты для массового анализа</p>
-            </div>
-            <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-500 uppercase ml-1">Источник</label>
-                <select 
-                  value={importSource}
-                  onChange={(e) => setImportSource(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                >
-                  <option value="vk">ВКонтакте (Группа/ID)</option>
-                  <option value="telegram">Telegram (Канал)</option>
-                  <option value="reviews">Отзывы (Текст)</option>
-                  <option value="manual">Текст (Вручную)</option>
-                </select>
-              </div>
-              
-              {(importSource === 'reviews' || importSource === 'manual') ? (
-                <div className="md:col-span-3 space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-1">
-                    {importSource === 'reviews' ? 'Вставьте текст отзывов' : 'Вставьте текст'}
-                  </label>
-                  <textarea 
-                    value={manualText}
-                    onChange={(e) => setManualText(e.target.value)}
-                    placeholder="Каждый отзыв с новой строки или единым блоком..."
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none min-h-[100px]"
-                  />
-                </div>
-              ) : (
-                <>
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase ml-1">Ссылка или ID</label>
-                    <input 
-                      type="text"
-                      value={sourceUrl}
-                      onChange={(e) => setSourceUrl(e.target.value)}
-                      placeholder="Например: durov или vk.com/group"
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase ml-1">Кол-во постов</label>
-                    <input 
-                      type="number"
-                      value={postCount}
-                      onChange={(e) => setPostCount(Number(e.target.value))}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                  </div>
-                </>
-              )}
-              <div className="md:col-span-4">
-                <button 
-                  onClick={handleImport}
-                  disabled={importing || !sourceUrl}
-                  className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]"
-                >
-                  {importing ? '⏳ Загрузка контента...' : '🚀 Загрузить данные для анализа'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 2: Content List & Batch Analysis */}
-          {contentList.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center px-2">
-                <h2 className="text-lg font-bold text-slate-800">📊 Контент для анализа ({contentList.length})</h2>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setSelectedContentIds(contentList.map(c => c.id))}
-                    className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg"
-                  >
-                    Выбрать все
-                  </button>
-                  <button 
-                    onClick={() => setSelectedContentIds([])}
-                    className="text-xs font-bold text-slate-400 hover:bg-slate-50 px-3 py-1.5 rounded-lg"
-                  >
-                    Сбросить
-                  </button>
-                </div>
-              </div>
-
+          {activeTab === 'dashboard' ? (
+            <>
+              {/* Section 1: Collector Form */}
               <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="max-h-80 overflow-y-auto p-4 space-y-2">
-                  {contentList.map((item: any) => (
-                    <div 
-                      key={item.id}
-                      onClick={() => toggleContentSelection(item.id)}
-                      className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-start gap-4 ${
-                        selectedContentIds.includes(item.id) 
-                          ? 'border-indigo-500 bg-indigo-50/50' 
-                          : 'border-slate-50 bg-white hover:border-slate-200'
-                      }`}
-                    >
-                      <div className={`mt-1 w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${
-                        selectedContentIds.includes(item.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-200'
-                      }`}>
-                        {selectedContentIds.includes(item.id) && <span className="text-white text-[10px]">✓</span>}
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mb-1">
-                          {item.source_type} • {new Date(item.created_at).toLocaleDateString()}
-                        </div>
-                        <p className="text-sm text-slate-700 line-clamp-2">{item.raw_text}</p>
-                      </div>
-                    </div>
-                  ))}
+                <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                  <h2 className="text-lg font-bold text-slate-800">📥 Сбор данных (Collector)</h2>
+                  <p className="text-sm text-slate-500">Загрузите посты для массового анализа</p>
                 </div>
-                <div className="p-6 bg-slate-50 border-t border-slate-100 space-y-4">
+                <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase ml-1">Тип анализа (Промпт)</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase ml-1">Источник</label>
                     <select 
-                      value={selectedPromptId}
-                      onChange={(e) => setSelectedPromptId(e.target.value)}
-                      className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                      value={importSource}
+                      onChange={(e) => setImportSource(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                     >
-                      {promptsList.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                      {promptsList.length === 0 && <option value="manual">Стандартный анализ</option>}
+                      <option value="vk">ВКонтакте (Группа/ID)</option>
+                      <option value="telegram">Telegram (Канал)</option>
+                      <option value="reviews">Отзывы (Текст)</option>
+                      <option value="ocr">OCR (Скриншот)</option>
+                      <option value="manual">Текст (Вручную)</option>
                     </select>
                   </div>
-                  <button 
-                    onClick={handleAnalyzeBatch}
-                    disabled={analyzing || selectedContentIds.length === 0}
-                    className="w-full py-4 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 disabled:opacity-50 transition-all shadow-lg shadow-emerald-200"
-                  >
-                    {analyzing ? '🧬 Идет глубокий анализ...' : `✨ Запустить анализ (${selectedContentIds.length} объектов разом)`}
-                  </button>
+                  
+                  {(importSource === 'reviews' || importSource === 'manual') ? (
+                    <div className="md:col-span-3 space-y-1.5">
+                      <label className="text-xs font-bold text-slate-500 uppercase ml-1">
+                        {importSource === 'reviews' ? 'Вставьте текст отзывов' : 'Вставьте текст'}
+                      </label>
+                      <textarea 
+                        value={manualText}
+                        onChange={(e) => setManualText(e.target.value)}
+                        placeholder="Каждый отзыв с новой строки или единым блоком..."
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none min-h-[100px]"
+                      />
+                    </div>
+                  ) : importSource === 'ocr' ? (
+                    <div className="md:col-span-3 space-y-1.5">
+                      <label className="text-xs font-bold text-slate-500 uppercase ml-1">Загрузите скриншот отзыва</label>
+                      <input 
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="md:col-span-2 space-y-1.5">
+                        <label className="text-xs font-bold text-slate-500 uppercase ml-1">Ссылка или ID</label>
+                        <input 
+                          type="text"
+                          value={sourceUrl}
+                          onChange={(e) => setSourceUrl(e.target.value)}
+                          placeholder="Например: durov или vk.com/group"
+                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-500 uppercase ml-1">Кол-во постов</label>
+                        <input 
+                          type="number"
+                          value={postCount}
+                          onChange={(e) => setPostCount(Number(e.target.value))}
+                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div className="md:col-span-4">
+                    <button 
+                      onClick={handleImport}
+                      disabled={importing || (!sourceUrl && importSource !== 'ocr' && !manualText)}
+                      className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]"
+                    >
+                      {importing ? '⏳ Обработка...' : '🚀 Загрузить данные для анализа'}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Section 3: Results */}
-          {resultsList.length > 0 && (
-            <div className="space-y-6 mt-12">
-              <h2 className="text-2xl font-black text-slate-900 px-2">📓 Результаты «Распаковки»</h2>
-              <div className="grid gap-6">
-                {resultsList.map((res: any) => (
-                  <div key={res.id} className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-4">
-                       <span className="bg-emerald-100 text-emerald-700 text-[10px] font-black px-3 py-1 rounded-full uppercase">
-                         Complete
-                       </span>
+              {/* Section 2: Content List & Batch Analysis */}
+              {contentList.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center px-2">
+                    <h2 className="text-lg font-bold text-slate-800">📊 Контент для анализа ({contentList.length})</h2>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => setSelectedContentIds(contentList.map(c => c.id))}
+                        className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg"
+                      >
+                        Выбрать все
+                      </button>
+                      <button 
+                        onClick={() => setSelectedContentIds([])}
+                        className="text-xs font-bold text-slate-400 hover:bg-slate-50 px-3 py-1.5 rounded-lg"
+                      >
+                        Сбросить
+                      </button>
                     </div>
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-bold text-xl">
-                        {res.prompt_id === 'manual' ? '🎯' : '💎'}
-                      </div>
-                      <div>
-                        <div className="text-sm font-black text-slate-900 uppercase tracking-tight">
-                          {res.prompt_id === 'manual' ? 'Глубокий анализ постов' : res.prompt_id}
+                  </div>
+
+                  <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="max-h-80 overflow-y-auto p-4 space-y-2">
+                      {contentList.map((item: any) => (
+                        <div 
+                          key={item.id}
+                          onClick={() => toggleContentSelection(item.id)}
+                          className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-start gap-4 ${
+                            selectedContentIds.includes(item.id) 
+                              ? 'border-indigo-500 bg-indigo-50/50' 
+                              : 'border-slate-50 bg-white hover:border-slate-200'
+                          }`}
+                        >
+                          <div className={`mt-1 w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${
+                            selectedContentIds.includes(item.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-200'
+                          }`}>
+                            {selectedContentIds.includes(item.id) && <span className="text-white text-[10px]">✓</span>}
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mb-1">
+                              {item.source_type} • {new Date(item.created_at).toLocaleDateString()}
+                            </div>
+                            <p className="text-sm text-slate-700 line-clamp-2">{item.raw_text}</p>
+                          </div>
                         </div>
-                        <div className="text-xs text-slate-400">
-                          {new Date(res.created_at).toLocaleString()} • Обработано {JSON.parse(res.input_content_ids || '[]').length} объектов
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                    <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap font-medium">
-                      {res.ai_response}
+                    <div className="p-6 bg-slate-50 border-t border-slate-100 space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-500 uppercase ml-1">Тип анализа (Промпт)</label>
+                        <select 
+                          value={selectedPromptId}
+                          onChange={(e) => setSelectedPromptId(e.target.value)}
+                          className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                        >
+                          {promptsList.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                          {promptsList.length === 0 && <option value="manual">Стандартный анализ</option>}
+                        </select>
+                      </div>
+                      <button 
+                        onClick={handleAnalyzeBatch}
+                        disabled={analyzing || selectedContentIds.length === 0}
+                        className="w-full py-4 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 disabled:opacity-50 transition-all shadow-lg shadow-emerald-200"
+                      >
+                        {analyzing ? '🧬 Идет глубокий анализ...' : `✨ Запустить анализ (${selectedContentIds.length} объектов разом)`}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Section 3: Results */}
+              {resultsList.length > 0 && (
+                <div className="space-y-6 mt-12">
+                  <h2 className="text-2xl font-black text-slate-900 px-2">📓 Результаты «Распаковки»</h2>
+                  <div className="grid gap-6">
+                    {resultsList.map((res: any) => (
+                      <div key={res.id} className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4">
+                           <span className="bg-emerald-100 text-emerald-700 text-[10px] font-black px-3 py-1 rounded-full uppercase">
+                             Complete
+                           </span>
+                        </div>
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-bold text-xl">
+                            {res.prompt_id === 'manual' ? '🎯' : '💎'}
+                          </div>
+                          <div>
+                            <div className="text-sm font-black text-slate-900 uppercase tracking-tight">
+                              {res.prompt_id === 'manual' ? 'Глубокий анализ постов' : res.prompt_id}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              {new Date(res.created_at).toLocaleString()} • Обработано {JSON.parse(res.input_content_ids || '[]').length} объектов
+                            </div>
+                          </div>
+                          <div className="ml-auto flex gap-2">
+                            <button 
+                              onClick={() => copyToClipboard(res.ai_response)}
+                              className="p-2 bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all"
+                              title="Копировать"
+                            >
+                              📋
+                            </button>
+                            <button 
+                              onClick={() => printResult(res.id, res.ai_response)}
+                              className="p-2 bg-slate-50 text-slate-400 hover:text-emerald-600 rounded-xl transition-all"
+                              title="Печать"
+                            >
+                              🖨️
+                            </button>
+                          </div>
+                        </div>
+                        <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap font-medium">
+                          {res.ai_response}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-black text-slate-900">📚 Библиотека промптов</h2>
+                <button 
+                  onClick={async () => {
+                    const name = prompt('Название промпта:');
+                    const content = prompt('Текст промпта (используйте {{input}} для вставки данных):');
+                    if (name && content) {
+                      await createPrompt(saasToken, { name, content, description: '' });
+                      fetchPrompts();
+                    }
+                  }}
+                  className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
+                >
+                  + Создать промпт
+                </button>
+              </div>
+              
+              <div className="grid gap-4">
+                {promptsList.map((p: any) => (
+                  <div key={p.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex justify-between items-start">
+                    <div className="flex-1">
+                      <h3 className="font-bold text-slate-800 mb-1">{p.name}</h3>
+                      <p className="text-xs text-slate-400 mb-3">{p.description || 'Нет описания'}</p>
+                      <pre className="text-xs bg-slate-50 p-4 rounded-xl border border-slate-100 text-slate-600 whitespace-pre-wrap font-mono line-clamp-3">
+                        {p.content}
+                      </pre>
+                    </div>
+                    <div className="ml-6 flex flex-col gap-2">
+                      <button 
+                        onClick={async () => {
+                          const newContent = prompt('Новый текст промпта:', p.content);
+                          if (newContent) {
+                            await updatePrompt(saasToken, p.id, { ...p, content: newContent });
+                            fetchPrompts();
+                          }
+                        }}
+                        className="p-2 text-slate-400 hover:text-indigo-600 bg-slate-50 rounded-lg"
+                      >
+                        ✏️
+                      </button>
+                      <button 
+                        onClick={async () => {
+                          if (confirm('Удалить этот промпт?')) {
+                            await deletePrompt(saasToken, p.id);
+                            fetchPrompts();
+                          }
+                        }}
+                        className="p-2 text-slate-400 hover:text-red-500 bg-slate-50 rounded-lg"
+                      >
+                        🗑️
+                      </button>
                     </div>
                   </div>
                 ))}

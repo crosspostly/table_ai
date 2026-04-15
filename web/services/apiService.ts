@@ -48,6 +48,19 @@ export const importManualText = async (token: string, text: string, sourceType: 
   return await response.json();
 };
 
+export const importOcrImage = async (token: string, imageBase64: string, mimeType: string) => {
+  const response = await fetch(`${API_BASE_URL}/api/content/ocr-import`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ imageBase64, mimeType })
+  });
+  if (!response.ok) throw new Error('Failed to import image for OCR');
+  return await response.json();
+};
+
 export const analyzeBatch = async (token: string, promptId: string, contentIds: string[]) => {
   const response = await fetch(`${API_BASE_URL}/api/ai/analyze-batch`, {
     method: 'POST',
@@ -92,5 +105,42 @@ export const getPrompts = async (token: string) => {
     }
   });
   if (!response.ok) throw new Error('Failed to get prompts');
+  return await response.json();
+};
+
+export const createPrompt = async (token: string, prompt: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/prompts`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(prompt)
+  });
+  if (!response.ok) throw new Error('Failed to create prompt');
+  return await response.json();
+};
+
+export const updatePrompt = async (token: string, id: string, prompt: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/prompts/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(prompt)
+  });
+  if (!response.ok) throw new Error('Failed to update prompt');
+  return await response.json();
+};
+
+export const deletePrompt = async (token: string, id: string) => {
+  const response = await fetch(`${API_BASE_URL}/api/prompts/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  if (!response.ok) throw new Error('Failed to delete prompt');
   return await response.json();
 };
