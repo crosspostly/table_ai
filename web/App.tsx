@@ -5,7 +5,7 @@ import { TableList } from './components/TableList';
 import { SheetViewer } from './components/SheetViewer';
 import { getUserSpreadsheets, getSpreadsheetMetadata } from './services/googleSheets';
 import { findScriptIdForSpreadsheet, getScriptFunctions, checkScriptAvailability, executeScriptFunction, getScriptStatus } from './services/appsScriptService';
-import { getUserMe, getContent, importMockContent } from './services/apiService';
+import { getUserMe, getContent, importPosts, importManualText, analyzeBatch, getResults, getPrompts } from './services/apiService';
 
 // Временной интерфейс для ScriptStatus
 interface ScriptStatus {
@@ -33,6 +33,17 @@ const App = () => {
   const [saasUser, setSaasUser] = useState<any>(null);
   const [contentList, setContentList] = useState<any[]>([]);
   const [loadingContent, setLoadingContent] = useState(false);
+  const [resultsList, setResultsList] = useState<any[]>([]);
+  const [promptsList, setPromptsList] = useState<any[]>([]);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  // Параметры импорта
+  const [importSource, setImportSource] = useState('vk');
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [postCount, setPostCount] = useState(10);
+  const [manualText, setManualText] = useState('');
+  const [selectedPromptId, setSelectedPromptId] = useState<string>('manual');
 
   const [files, setFiles] = useState<DriveFile[]>([]);
   // ... (rest of states)
@@ -74,19 +85,72 @@ const App = () => {
     }
   };
 
+  const fetchResults = async () => {
+    if (!saasToken) return;
+    try {
+      const data = await getResults(saasToken);
+      setResultsList(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchPrompts = async () => {
+    if (!saasToken) return;
+    try {
+      const data = await getPrompts(saasToken);
+      setPromptsList(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     if (saasToken) {
       fetchContent();
+      fetchResults();
+      fetchPrompts();
     }
   }, [saasToken]);
 
-  const handleImportMock = async () => {
+  const [selectedContentIds, setSelectedContentIds] = useState<string[]>([]);
+
+  const handleImport = async () => {
     if (!saasToken) return;
+    setImporting(true);
     try {
-      await importMockContent(saasToken);
+      if (importSource === 'reviews' || importSource === 'manual') {
+        if (!manualText) return;
+        await importManualText(saasToken, manualText, importSource);
+        setManualText('');
+      } else {
+        if (!sourceUrl) return;
+        await importPosts(saasToken, importSource, sourceUrl, postCount);
+      }
       fetchContent(); // Обновляем список
     } catch (e) {
-      alert('Ошибка при импорте мок-данных');
+      alert('Ошибка при импорте');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const toggleContentSelection = (id: string) => {
+    setSelectedContentIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleAnalyzeBatch = async () => {
+    if (!saasToken || selectedContentIds.length === 0) return;
+    setAnalyzing(true);
+    try {
+      await analyzeBatch(saasToken, selectedPromptId, selectedContentIds);
+      fetchResults();
+    } catch (e) {
+      alert('Ошибка при пакетном анализе');
+    } finally {
+      setAnalyzing(false);
     }
   };
 
@@ -376,90 +440,198 @@ const App = () => {
     );
   }
 
-  // Если залогинены в SaaS, показываем SaaS интерфейс (пока заглушка)
+  // Если залогинены в SaaS, показываем SaaS интерфейс
   if (saasToken && saasUser) {
     return (
-      <div className="min-h-screen bg-[#f5f7fa]">
-        <div className="bg-white p-4 shadow-sm flex justify-between items-center sticky top-0 z-10">
-          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Table AI SaaS</h1>
+      <div className="min-h-screen bg-[#f8fafc]">
+        {/* Header */}
+        <div className="bg-white border-b border-slate-200 p-4 flex justify-between items-center sticky top-0 z-10">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <span className="text-indigo-600">🎯</span> Table AI SaaS
+          </h1>
           <div className="flex items-center gap-3">
-            <img src={saasUser.avatar_url} className="w-8 h-8 rounded-full border border-slate-200" alt="Avatar" />
-            <span className="text-sm font-medium text-slate-700 hidden sm:inline">{saasUser.name}</span>
-            <button onClick={handleSaasLogout} className="text-slate-400 hover:text-red-500 ml-2">🚪</button>
+            <div className="text-right">
+              <div className="text-sm font-bold text-slate-900">{saasUser.name}</div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider">{saasUser.role}</div>
+            </div>
+            <img src={saasUser.avatar_url} className="w-10 h-10 rounded-xl border-2 border-slate-100 shadow-sm" alt="Avatar" />
+            <button onClick={handleSaasLogout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all rounded-lg">🚪</button>
           </div>
         </div>
-        
-        <div className="max-w-6xl mx-auto p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-slate-800">Мой контент</h2>
-            <div className="flex gap-3">
-              <button 
-                onClick={handleImportMock}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
-              >
-                📥 Импорт Mock
-              </button>
-              <button 
-                onClick={fetchContent}
-                className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-              >
-                🔄 Обновить
-              </button>
+
+        <div className="max-w-5xl mx-auto p-6 space-y-8">
+          {/* Section 1: Collector Form */}
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+              <h2 className="text-lg font-bold text-slate-800">📥 Сбор данных (Collector)</h2>
+              <p className="text-sm text-slate-500">Загрузите посты для массового анализа</p>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase ml-1">Источник</label>
+                <select 
+                  value={importSource}
+                  onChange={(e) => setImportSource(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
+                  <option value="vk">ВКонтакте (Группа/ID)</option>
+                  <option value="telegram">Telegram (Канал)</option>
+                  <option value="reviews">Отзывы (Текст)</option>
+                  <option value="manual">Текст (Вручную)</option>
+                </select>
+              </div>
+              
+              {(importSource === 'reviews' || importSource === 'manual') ? (
+                <div className="md:col-span-3 space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase ml-1">
+                    {importSource === 'reviews' ? 'Вставьте текст отзывов' : 'Вставьте текст'}
+                  </label>
+                  <textarea 
+                    value={manualText}
+                    onChange={(e) => setManualText(e.target.value)}
+                    placeholder="Каждый отзыв с новой строки или единым блоком..."
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none min-h-[100px]"
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase ml-1">Ссылка или ID</label>
+                    <input 
+                      type="text"
+                      value={sourceUrl}
+                      onChange={(e) => setSourceUrl(e.target.value)}
+                      placeholder="Например: durov или vk.com/group"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase ml-1">Кол-во постов</label>
+                    <input 
+                      type="number"
+                      value={postCount}
+                      onChange={(e) => setPostCount(Number(e.target.value))}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </>
+              )}
+              <div className="md:col-span-4">
+                <button 
+                  onClick={handleImport}
+                  disabled={importing || !sourceUrl}
+                  className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]"
+                >
+                  {importing ? '⏳ Загрузка контента...' : '🚀 Загрузить данные для анализа'}
+                </button>
+              </div>
             </div>
           </div>
 
-          {loadingContent ? (
-            <div className="flex justify-center p-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            </div>
-          ) : contentList.length > 0 ? (
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100">
-                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Тип</th>
-                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Контент</th>
-                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Дата</th>
-                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Действие</th>
-                  </tr>
-                </thead>
-                <tbody>
+          {/* Section 2: Content List & Batch Analysis */}
+          {contentList.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center px-2">
+                <h2 className="text-lg font-bold text-slate-800">📊 Контент для анализа ({contentList.length})</h2>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setSelectedContentIds(contentList.map(c => c.id))}
+                    className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg"
+                  >
+                    Выбрать все
+                  </button>
+                  <button 
+                    onClick={() => setSelectedContentIds([])}
+                    className="text-xs font-bold text-slate-400 hover:bg-slate-50 px-3 py-1.5 rounded-lg"
+                  >
+                    Сбросить
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="max-h-80 overflow-y-auto p-4 space-y-2">
                   {contentList.map((item: any) => (
-                    <tr key={item.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                      <td className="p-4">
-                        <span className="px-2 py-1 bg-blue-50 text-blue-600 text-[10px] font-bold rounded uppercase">
-                          {item.source_type}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        <p className="text-sm text-slate-700 line-clamp-2 max-w-md">
-                          {item.raw_text}
-                        </p>
-                      </td>
-                      <td className="p-4 text-xs text-slate-400">
-                        {new Date(item.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="p-4">
-                        <button className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
-                          Распаковать ✨
-                        </button>
-                      </td>
-                    </tr>
+                    <div 
+                      key={item.id}
+                      onClick={() => toggleContentSelection(item.id)}
+                      className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-start gap-4 ${
+                        selectedContentIds.includes(item.id) 
+                          ? 'border-indigo-500 bg-indigo-50/50' 
+                          : 'border-slate-50 bg-white hover:border-slate-200'
+                      }`}
+                    >
+                      <div className={`mt-1 w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${
+                        selectedContentIds.includes(item.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-200'
+                      }`}>
+                        {selectedContentIds.includes(item.id) && <span className="text-white text-[10px]">✓</span>}
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mb-1">
+                          {item.source_type} • {new Date(item.created_at).toLocaleDateString()}
+                        </div>
+                        <p className="text-sm text-slate-700 line-clamp-2">{item.raw_text}</p>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+                <div className="p-6 bg-slate-50 border-t border-slate-100 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase ml-1">Тип анализа (Промпт)</label>
+                    <select 
+                      value={selectedPromptId}
+                      onChange={(e) => setSelectedPromptId(e.target.value)}
+                      className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                    >
+                      {promptsList.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                      {promptsList.length === 0 && <option value="manual">Стандартный анализ</option>}
+                    </select>
+                  </div>
+                  <button 
+                    onClick={handleAnalyzeBatch}
+                    disabled={analyzing || selectedContentIds.length === 0}
+                    className="w-full py-4 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 disabled:opacity-50 transition-all shadow-lg shadow-emerald-200"
+                  >
+                    {analyzing ? '🧬 Идет глубокий анализ...' : `✨ Запустить анализ (${selectedContentIds.length} объектов разом)`}
+                  </button>
+                </div>
+              </div>
             </div>
-          ) : (
-            <div className="bg-white p-12 rounded-2xl shadow-sm text-center border-2 border-dashed border-slate-100">
-              <div className="text-4xl mb-4">Empty 📭</div>
-              <h3 className="text-lg font-medium text-slate-800 mb-2">Контент пока не загружен</h3>
-              <p className="text-slate-500 mb-6 text-sm">Нажмите кнопку импорта, чтобы наполнить базу тестовыми данными.</p>
-              <button 
-                onClick={handleImportMock}
-                className="px-6 py-3 bg-indigo-50 text-indigo-600 rounded-xl font-bold hover:bg-indigo-100 transition-colors"
-              >
-                Загрузить тестовые посты
-              </button>
+          )}
+
+          {/* Section 3: Results */}
+          {resultsList.length > 0 && (
+            <div className="space-y-6 mt-12">
+              <h2 className="text-2xl font-black text-slate-900 px-2">📓 Результаты «Распаковки»</h2>
+              <div className="grid gap-6">
+                {resultsList.map((res: any) => (
+                  <div key={res.id} className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4">
+                       <span className="bg-emerald-100 text-emerald-700 text-[10px] font-black px-3 py-1 rounded-full uppercase">
+                         Complete
+                       </span>
+                    </div>
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-bold text-xl">
+                        {res.prompt_id === 'manual' ? '🎯' : '💎'}
+                      </div>
+                      <div>
+                        <div className="text-sm font-black text-slate-900 uppercase tracking-tight">
+                          {res.prompt_id === 'manual' ? 'Глубокий анализ постов' : res.prompt_id}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {new Date(res.created_at).toLocaleString()} • Обработано {JSON.parse(res.input_content_ids || '[]').length} объектов
+                        </div>
+                      </div>
+                    </div>
+                    <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap font-medium">
+                      {res.ai_response}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

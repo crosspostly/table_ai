@@ -229,8 +229,8 @@ app.post('/api/ai/analyze', authMiddleware, async (c: any) => {
     
     // Сохраняем результат в БД
     const resultId = crypto.randomUUID()
-    db.prepare('INSERT INTO results (id, user_id, content_id, result_text) VALUES (?, ?, ?, ?)')
-      .run(resultId, userId, null, result)
+    db.prepare('INSERT INTO results (id, user_id, prompt_id, input_content_ids, ai_response) VALUES (?, ?, ?, ?, ?)')
+      .run(resultId, userId, 'manual', '[]', result)
 
     return c.json({ success: true, result, id: resultId })
   } catch (e: any) {
